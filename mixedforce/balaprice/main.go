@@ -16,6 +16,7 @@ import (
 )
 
 var (
+	fInit       bool
 	fList       bool
 	fRun        bool
 	fTerminate  bool
@@ -28,6 +29,7 @@ var (
 )
 
 func init() {
+	flag.BoolVar(&fInit, "i", false, "Generate a simple config file. default false")
 	flag.BoolVar(&fList, "l", false, "list all assets price. default false")
 	flag.BoolVar(&fRun, "r", false, "Running fallback process. default false")
 	flag.BoolVar(&fTerminate, "t", false, "Terminate fallback process. default false")
@@ -47,6 +49,10 @@ func main() {
 	wd, e := os.Getwd()
 	if e != nil {
 		log.Printf("load config file failed: %v\n", e)
+		return
+	}
+	if fInit {
+		GeneratConfig(wd)
 		return
 	}
 	LoadConfig(wd)
@@ -216,5 +222,5 @@ func getSecret() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(f), nil
+	return strings.Split(string(f), "\n")[0], nil
 }
