@@ -1,0 +1,5 @@
+#bin file
+test
+
+#log file
+*.log
