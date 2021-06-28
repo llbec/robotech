@@ -163,7 +163,7 @@ func setPrice(astr string) {
 }
 
 func fallbackPrice(chSig, chExit chan int) {
-	tc := time.NewTicker(time.Duration(60) * time.Second)
+	tc := time.NewTicker(time.Duration(cfg.tickime) * time.Second)
 	defer tc.Stop()
 
 	for asset, addr := range cfg.assetscontract {

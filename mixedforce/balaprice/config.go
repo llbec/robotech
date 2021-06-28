@@ -27,6 +27,7 @@ type config struct {
 	testnet           bool
 	fallbackaddr      string
 	fallbacknet       string
+	tickime           int64
 }
 
 const (
@@ -40,6 +41,7 @@ const (
 	TESTNET    = "testnet"
 	FBADDR     = "fallbackcontract"
 	FBNET      = "fallbacknet"
+	TICK       = "ticktime"
 )
 
 func GeneratConfig(dir string) error {
@@ -64,6 +66,7 @@ func GeneratConfig(dir string) error {
 	viper.Set(TESTNET, false)
 	viper.Set(FBADDR, "0x2C2882158DC6774BF0cF2168065494A70135D40d")
 	viper.Set(FBNET, "hsc")
+	viper.Set(TICK, int64(300))
 
 	path := filepath.Join(dir, "config.yaml")
 	return viper.WriteConfigAs(path)
@@ -115,4 +118,5 @@ func readConfig() {
 	cfg.testnet = cfgfile.GetBool(TESTNET)
 	cfg.threhold = cfgfile.GetInt(THREHOLD)
 	cfg.fallbacknet = cfgfile.GetString(FBNET)
+	cfg.tickime = cfgfile.GetInt64(TICK)
 }
