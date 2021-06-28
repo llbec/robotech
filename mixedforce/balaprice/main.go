@@ -174,6 +174,7 @@ func fallbackPrice(chSig, chExit chan int) {
 		}
 		assets = append(assets, AssetFeeds{name: asset, price: p})
 	}
+	log.Println("Start to watch price")
 	for {
 		select {
 		case <-tc.C:
@@ -206,7 +207,7 @@ EXIT:
 }
 
 func isupdatePrice(p, lp *big.Int, d int, delta int64) bool {
-	v := p.Sub(p, lp)
+	v := big.NewInt(0).Sub(p, lp)
 	if v.CmpAbs(big.NewInt(int64(d/cfg.threhold))) >= 0 {
 		return true
 	}
