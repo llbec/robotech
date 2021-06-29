@@ -179,7 +179,7 @@ func fallbackPrice(chSig, chExit chan int) {
 				log.Println(e)
 				goto EXIT
 			}
-			output := fmt.Sprintf("Start update assets @ %s - last update %s:\n", time.Now().Format("2006-01-02 15:04:05"), time.Unix(lastupdate, 0).Format("2006-01-02 15:04:05"))
+			output := fmt.Sprintf("Start update assets @ %s - last update %s (interval %d):\n", time.Now().Format("2006-01-02 15:04:05"), time.Unix(lastupdate, 0).Format("2006-01-02 15:04:05"), cfg.interval)
 			isUpdate := false
 			for i, feeds := range assets {
 				lastp, _, e := gclSquadron.GetLastPrice(cfg.assetschanlinknet[feeds.name], strings.ToUpper(feeds.name), cfg.price, cfg.testnet)
