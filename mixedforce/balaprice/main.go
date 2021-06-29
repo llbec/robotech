@@ -184,7 +184,7 @@ func fallbackPrice(chSig, chExit chan int) {
 					log.Printf("read %s@%s price failed: %v\n", feeds.name, cfg.assetschanlinknet[feeds.name], e)
 					continue
 				}
-				delta := lastupdate - time.Now().Unix()
+				delta := time.Now().Unix() - lastupdate
 				if isupdatePrice(lastp, feeds.price, delta) {
 					e := gfbTeam.SetPrice(cfg.assetscontract[feeds.name], lastp)
 					if e != nil {
