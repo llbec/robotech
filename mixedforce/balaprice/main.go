@@ -132,7 +132,8 @@ func showPrice(asset string) {
 	if e != nil {
 		fmt.Println(e)
 	} else {
-		fmt.Printf("%6s/%s : %7s(%14v) bala(%14v) %d\n", asset, cfg.price, cfg.assetschanlinknet[asset], pNet, pFB, d)
+		z, _ := deltaPercent(pNet, pFB).Float64()
+		fmt.Printf("%6s/%s(%d) : %7s(%14v) bala(%14v) %.3f%%\n", asset, cfg.price, d, cfg.assetschanlinknet[asset], pNet, pFB, z)
 	}
 }
 
@@ -197,7 +198,8 @@ func fallbackPrice(chSig, chExit chan int) {
 					isUpdate = true
 					output += fmt.Sprintf("\tupdate %6s: %14v -> %14v\n", feeds.name, feeds.price, lastp)
 				} else {
-					output += fmt.Sprintf("\t  skip %6s: %14v -> %14v, delta time %v(%d)\n", feeds.name, feeds.price, lastp, delta, cfg.interval)
+					z, _ := deltaPercent(lastp, feeds.price).Float64()
+					output += fmt.Sprintf("\t  skip %6s: %14v -> %14v, delta %.3f%%(%d%%)\n", feeds.name, feeds.price, lastp, z, cfg.threhold)
 				}
 			}
 			if isUpdate {
@@ -228,15 +230,21 @@ func updateassets() error {
 	return nil
 }
 
-//deltaPercent return |x-y|*100/x
-func deltaPercent(x, y *big.Int) *big.Int {
+/*func deltaPercent(x, y *big.Int) *big.Int {
 	delta := big.NewInt(0).Sub(x, y)
 	return delta.Abs(delta).Mul(delta, big.NewInt(100)).Div(delta, x)
+}*/
+
+//deltaPercent return (x-y)*100/y
+func deltaPercent(x, y *big.Int) *big.Float {
+	delta := big.NewInt(0).Sub(x, y)
+	z := big.NewFloat(1).Mul(big.NewFloat(1).SetInt(delta), big.NewFloat(100))
+	return z.Quo(z, big.NewFloat(1).SetInt(y))
 }
 
 func isupdatePrice(p, lp *big.Int, delta int64) bool {
-	v := deltaPercent(p, lp)
-	if v.Cmp(big.NewInt(int64(cfg.threhold))) >= 0 {
+	v := deltaPercent(lp, p)
+	if v.Abs(v).Cmp(big.NewFloat(1).SetInt64(int64(cfg.threhold))) >= 0 {
 		return true
 	}
 
