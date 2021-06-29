@@ -179,23 +179,23 @@ func fallbackPrice(chSig, chExit chan int) {
 		select {
 		case <-tc.C:
 			for i, feeds := range assets {
-				lastp, d, e := gclSquadron.GetLastPrice(cfg.assetschanlinknet[feeds.name], strings.ToUpper(feeds.name), cfg.price, cfg.testnet)
+				lastp, _, e := gclSquadron.GetLastPrice(cfg.assetschanlinknet[feeds.name], strings.ToUpper(feeds.name), cfg.price, cfg.testnet)
 				if e != nil {
 					log.Printf("read %s@%s price failed: %v\n", feeds.name, cfg.assetschanlinknet[feeds.name], e)
 					continue
 				}
 				delta := lastupdate - time.Now().Unix()
-				if isupdatePrice(lastp, feeds.price, d, delta) {
+				if isupdatePrice(lastp, feeds.price, delta) {
 					e := gfbTeam.SetPrice(cfg.assetscontract[feeds.name], lastp)
 					if e != nil {
-						log.Printf("set %s price(%v) failed: %v\n", feeds.name, lastp.String(), e)
+						log.Printf("set %s: %v -> %v failed: %v\n", feeds.name, feeds.price, lastp.String(), e)
 						continue
 					}
 					assets[i].price = lastp
 					lastupdate = time.Now().Unix()
-					log.Printf("update %s price %v, time %v\n", feeds.name, lastp, lastupdate)
+					log.Printf("update %s: %v -> %v, time %v\n", feeds.name, feeds.price, lastp, time.Unix(lastupdate, 0).Format("2006-01-02 15:04:05"))
 				} else {
-					log.Printf("skip %s price %v(%v), delta time %v\n", feeds.name, lastp, feeds.price, delta)
+					log.Printf("skip %s: %v -> %v, delta time %v\n", feeds.name, feeds.price, lastp, delta)
 				}
 			}
 		case <-chSig:
@@ -206,9 +206,15 @@ EXIT:
 	chExit <- 1
 }
 
-func isupdatePrice(p, lp *big.Int, d int, delta int64) bool {
-	v := big.NewInt(0).Sub(p, lp)
-	if v.CmpAbs(big.NewInt(int64(d/cfg.threhold))) >= 0 {
+//deltaPercent return |x-y|*100/x
+func deltaPercent(x, y *big.Int) *big.Int {
+	delta := big.NewInt(0).Sub(x, y)
+	return delta.Abs(delta).Mul(delta, big.NewInt(100)).Div(delta, x)
+}
+
+func isupdatePrice(p, lp *big.Int, delta int64) bool {
+	v := deltaPercent(p, lp)
+	if v.Cmp(big.NewInt(int64(cfg.threhold))) >= 0 {
 		return true
 	}
 
