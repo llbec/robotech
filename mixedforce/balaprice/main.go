@@ -168,44 +168,63 @@ func fallbackPrice(chSig, chExit chan int) {
 	tc := time.NewTicker(time.Duration(cfg.tickime) * time.Second)
 	defer tc.Stop()
 
-	for asset, addr := range cfg.assetscontract {
-		p, e := gfbTeam.GetPrice(addr)
-		if e != nil {
-			log.Println(e)
-			goto EXIT
-		}
-		assets = append(assets, AssetFeeds{name: asset, price: p})
-	}
 	log.Println("Start to watch price")
 	for {
 		select {
 		case <-tc.C:
+			e := updateassets()
+			if e != nil {
+				log.Println(e)
+				goto EXIT
+			}
+			output := fmt.Sprintf("Start update assets @ %s - last update %s:\n", time.Now().Format("2006-01-02 15:04:05"), time.Unix(lastupdate, 0).Format("2006-01-02 15:04:05"))
+			isUpdate := false
 			for i, feeds := range assets {
 				lastp, _, e := gclSquadron.GetLastPrice(cfg.assetschanlinknet[feeds.name], strings.ToUpper(feeds.name), cfg.price, cfg.testnet)
 				if e != nil {
-					log.Printf("read %s@%s price failed: %v\n", feeds.name, cfg.assetschanlinknet[feeds.name], e)
+					output += fmt.Sprintf("\tread %s@%s price failed: %v\n", feeds.name, cfg.assetschanlinknet[feeds.name], e)
 					continue
 				}
 				delta := time.Now().Unix() - lastupdate
 				if isupdatePrice(lastp, feeds.price, delta) {
 					e := gfbTeam.SetPrice(cfg.assetscontract[feeds.name], lastp)
 					if e != nil {
-						log.Printf("set %s: %v -> %v failed: %v\n", feeds.name, feeds.price, lastp.String(), e)
+						output += fmt.Sprintf("\tset %s: %v -> %v failed: %v\n", feeds.name, feeds.price, lastp.String(), e)
 						continue
 					}
 					assets[i].price = lastp
-					lastupdate = time.Now().Unix()
-					log.Printf("update %s: %v -> %v, time %v\n", feeds.name, feeds.price, lastp, time.Unix(lastupdate, 0).Format("2006-01-02 15:04:05"))
+					isUpdate = true
+					output += fmt.Sprintf("\tupdate %6s: %14v -> %14v\n", feeds.name, feeds.price, lastp)
 				} else {
-					log.Printf("skip %s: %v -> %v, delta time %v\n", feeds.name, feeds.price, lastp, delta)
+					output += fmt.Sprintf("\t  skip %6s: %14v -> %14v, delta time %v(%d)\n", feeds.name, feeds.price, lastp, delta, cfg.interval)
 				}
 			}
+			if isUpdate {
+				lastupdate = time.Now().Unix()
+			}
+			log.Print(output)
 		case <-chSig:
 			goto EXIT
 		}
 	}
 EXIT:
 	chExit <- 1
+}
+
+func updateassets() error {
+	if !gCfgUpdated {
+		return nil
+	}
+	assets = assets[:0]
+	for asset, addr := range cfg.assetscontract {
+		p, e := gfbTeam.GetPrice(addr)
+		if e != nil {
+			return e
+		}
+		assets = append(assets, AssetFeeds{name: asset, price: p})
+	}
+	gCfgUpdated = false
+	return nil
 }
 
 //deltaPercent return |x-y|*100/x

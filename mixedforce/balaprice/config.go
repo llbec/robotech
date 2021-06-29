@@ -10,11 +10,12 @@ import (
 )
 
 var (
-	lastupdate = int64(0)
-	assets     []AssetFeeds
-	cfgfile    *viper.Viper
-	cfgLock    sync.Mutex
-	cfg        *config
+	lastupdate  = int64(0)
+	assets      []AssetFeeds
+	cfgfile     *viper.Viper
+	cfgLock     sync.Mutex
+	cfg         *config
+	gCfgUpdated = false
 )
 
 type config struct {
@@ -119,5 +120,8 @@ func readConfig() error {
 	cfg.threhold = cfgfile.GetInt(THREHOLD)
 	cfg.fallbacknet = cfgfile.GetString(FBNET)
 	cfg.tickime = cfgfile.GetInt64(TICK)
+
+	gCfgUpdated = true
+
 	return nil
 }
