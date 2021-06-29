@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/big"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -48,7 +49,7 @@ func main() {
 
 	wd, e := os.Getwd()
 	if e != nil {
-		log.Printf("load config file failed: %v\n", e)
+		log.Printf("os.Getwd failed: %v\n", e)
 		return
 	}
 	if fInit {
@@ -106,7 +107,7 @@ func main() {
 		}
 		gfbTeam.SetKey(sk)
 		d := daemon.NewDaemon(1234, fallbackPrice)
-		d.Run("fallback.log")
+		d.Run(filepath.Join(wd, "fallback.log"))
 		return
 	}
 
