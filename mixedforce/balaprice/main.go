@@ -55,7 +55,9 @@ func main() {
 		GeneratConfig(wd)
 		return
 	}
-	LoadConfig(wd)
+	if e := LoadConfig(wd); e != nil {
+		goto HELP
+	}
 
 	//init global var
 	gnode = chainlinksquadron.NewChainNode()
@@ -87,9 +89,8 @@ func main() {
 		return
 	}
 
-	sk := ""
-
 	if fSet != "" {
+		sk := ""
 		fmt.Println("Enter fallback manager's private key")
 		fmt.Scanf("%s", &sk)
 		gfbTeam.SetKey(sk)
@@ -109,6 +110,7 @@ func main() {
 		return
 	}
 
+HELP:
 	flag.Usage()
 }
 

@@ -72,7 +72,7 @@ func GeneratConfig(dir string) error {
 	return viper.WriteConfigAs(path)
 }
 
-func LoadConfig(dir string) {
+func LoadConfig(dir string) error {
 	cfgfile = viper.New()
 	cfgfile.AddConfigPath(dir)
 	cfgfile.SetConfigName("config")
@@ -84,13 +84,13 @@ func LoadConfig(dir string) {
 		readConfig()
 		//showCfg()
 	})
-	readConfig()
+	return readConfig()
 }
 
-func readConfig() {
+func readConfig() error {
 	err := cfgfile.ReadInConfig()
 	if err != nil { // Handle errors reading the config file
-		panic(err)
+		return err
 	}
 	cfgLock.Lock()
 	defer cfgLock.Unlock()
@@ -119,4 +119,5 @@ func readConfig() {
 	cfg.threhold = cfgfile.GetInt(THREHOLD)
 	cfg.fallbacknet = cfgfile.GetString(FBNET)
 	cfg.tickime = cfgfile.GetInt64(TICK)
+	return nil
 }

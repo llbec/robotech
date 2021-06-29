@@ -20,6 +20,9 @@ fi
 export GOPROXY=https://goproxy.io,direct
 ```
 
+```
+go env -w GOPATH=$HOME/go
+```
 # install protoc
 
 [protoc](https://github.com/protocolbuffers/protobuf.git)
