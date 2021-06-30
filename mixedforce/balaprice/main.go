@@ -181,17 +181,20 @@ func fallbackPrice(chSig, chExit chan int) {
 			}
 			output := fmt.Sprintf("Start update assets @ %s - last update %s (interval %d):\n", time.Now().Format("2006-01-02 15:04:05"), time.Unix(lastupdate, 0).Format("2006-01-02 15:04:05"), cfg.interval)
 			isUpdate := false
+			isLog := false
 			delta := time.Now().Unix() - lastupdate
 			for i, feeds := range assets {
 				lastp, _, e := gclSquadron.GetLastPrice(cfg.assetschanlinknet[feeds.name], strings.ToUpper(feeds.name), cfg.price, cfg.testnet)
 				if e != nil {
 					output += fmt.Sprintf("\tread %s@%s price failed: %v\n", feeds.name, cfg.assetschanlinknet[feeds.name], e)
+					isLog = true
 					continue
 				}
 				if isupdatePrice(lastp, feeds.price, delta) {
 					e := gfbTeam.SetPrice(cfg.assetscontract[feeds.name], lastp)
 					if e != nil {
 						output += fmt.Sprintf("\tset %s: %v -> %v failed: %v\n", feeds.name, feeds.price, lastp.String(), e)
+						isLog = true
 						continue
 					}
 					assets[i].price = lastp
@@ -204,8 +207,10 @@ func fallbackPrice(chSig, chExit chan int) {
 			}
 			if isUpdate && delta >= cfg.interval {
 				lastupdate = time.Now().Unix()
+				log.Print(output)
+			} else if isLog {
+				log.Print(output)
 			}
-			log.Print(output)
 		case <-chSig:
 			goto EXIT
 		}
