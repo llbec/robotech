@@ -26,6 +26,13 @@ func NewRpc(host, path, scheme, token string) *Rpc {
 	}
 }
 
+/*
+curl -X POST -H "Content-Type: application/json"
+  --user <PROJECT_ID>:<PROJECT_SECRET>
+  --url https://filecoin.infura.io
+  --data '{ "id": 0, "jsonrpc": "2.0", "method": "Filecoin.ChainHead", "params": [] }'
+*/
+
 func (rpc *Rpc) Post(method string, params map[string]interface{}) ([]byte, error) {
 	body := make(map[string]interface{})
 	body["jsonrpc"] = "2.0"
