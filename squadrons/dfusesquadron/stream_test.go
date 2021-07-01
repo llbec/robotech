@@ -7,5 +7,6 @@ import (
 )
 
 func Test_ReadBlock(t *testing.T) {
-	dfusesquadron.ReadBlock(-10, 0)
+	st := dfusesquadron.NewStream("server_7d59808b3e874fd899e7f785e546642a", "heco.streamingfast.io:443", "true")
+	st.Search(-10, 0)
 }

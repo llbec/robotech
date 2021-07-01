@@ -16,17 +16,28 @@ import (
 	"google.golang.org/grpc/credentials/oauth"
 )
 
-func ReadBlock(blockstart int64, blockend uint64) {
-	apiKey := "server_7d59808b3e874fd899e7f785e546642a"
-	endpoint := "heco.streamingfast.io:443"
+type Stream struct {
+	apiKey   string
+	endpoint string
+	filter   string
+}
+
+func NewStream(key, point, filter string) *Stream {
+	return &Stream{
+		apiKey:   key,
+		endpoint: point,
+		filter:   filter,
+	}
+}
+
+func (stm *Stream) Search(blockstart int64, blockend uint64) {
 	cursor := ""
-	filter := "true"
 	var dialOptions []grpc.DialOption
 
-	dfuse, err := dfuse.NewClient("api.streamingfast.io", apiKey)
+	dfuse, err := dfuse.NewClient("api.streamingfast.io", stm.apiKey)
 	noError(err, "unable to create streamingfast client")
 
-	conn, err := dgrpc.NewExternalClient(endpoint, dialOptions...)
+	conn, err := dgrpc.NewExternalClient(stm.endpoint, dialOptions...)
 	noError(err, "unable to create external gRPC client")
 
 	streamClient := pbbstream.NewBlockStreamV2Client(conn)
@@ -44,7 +55,7 @@ stream:
 			StartCursor:       cursor,
 			StopBlockNum:      blockend,
 			ForkSteps:         forkSteps,
-			IncludeFilterExpr: filter,
+			IncludeFilterExpr: stm.filter,
 			Details:           pbbstream.BlockDetails_BLOCK_DETAILS_FULL,
 		}, grpc.PerRPCCredentials(credentials))
 		noError(err, "unable to start blocks stream")
