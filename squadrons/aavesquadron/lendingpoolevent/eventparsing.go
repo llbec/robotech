@@ -119,8 +119,17 @@ func borrowEventHandle(eventLog types.Log) (interface{}, error) {
 	return retval, nil
 }
 func depositEventHandle(eventLog types.Log) (interface{}, error) {
+	datas, err := contractAbi.Unpack("Deposit", eventLog.Data)
+	if err != nil {
+		return nil, fmt.Errorf("depositEventHandle unpack: %v", err)
+	}
 	retval := DepositEventData{}
-	fmt.Print(retval)
+	retval.Reserve = common.BytesToAddress(eventLog.Topics[1].Bytes())
+	retval.User = datas[0].(common.Address)
+	retval.OnBehalfOf = common.BytesToAddress(eventLog.Topics[2].Bytes())
+	retval.Amount = datas[1].(*big.Int)
+	retval.Referral = utils.BytesToUInt16(eventLog.Topics[3].Bytes())
+	//fmt.Print(retval)
 	return retval, nil
 }
 func flashLoanEventHandle(eventLog types.Log) (interface{}, error) {

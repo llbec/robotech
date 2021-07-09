@@ -11,7 +11,7 @@ var (
 	BorrowEvent              = crypto.Keccak256Hash([]byte("Borrow(address,address,address,uint256,uint256,uint256,uint16)"))
 	DepositEvent             = crypto.Keccak256Hash([]byte("Deposit(address,address,address,uint256,uint16)"))
 	FlashLoanEvent           = crypto.Keccak256Hash([]byte("FlashLoan(address,address,address,uint256,uint256,uint16)"))
-	LiquidationEvent         = crypto.Keccak256Hash([]byte("Borrow(address,address,address,uint256,uint256,address,bool)"))
+	LiquidationEvent         = crypto.Keccak256Hash([]byte("LiquidationCall(address,address,address,uint256,uint256,address,bool)"))
 	PausedEvent              = crypto.Keccak256Hash([]byte("Paused()"))
 	RebalanceStableRateEvent = crypto.Keccak256Hash([]byte("RebalanceStableBorrowRate(address,address)"))
 	RepayEvent               = crypto.Keccak256Hash([]byte("Repay(address,address,address,uint256)"))
