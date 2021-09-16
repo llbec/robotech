@@ -6,6 +6,6 @@ import (
 )
 
 type AaveSquadron struct {
-	rpcClient   *ethclient.Client
+	RpcClient   *ethclient.Client
 	LendingPool *aave.LendingPool
 }

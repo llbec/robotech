@@ -22,12 +22,12 @@ func (aSquadron *AaveSquadron) SetRpcClient(url string) error {
 	if err != nil {
 		return err
 	}
-	aSquadron.rpcClient = client
+	aSquadron.RpcClient = client
 	return nil
 }
 
 func (aSquadron *AaveSquadron) SetLendingPool(addr string) error {
-	pool, err := aave.NewLendingPool(common.HexToAddress(addr), aSquadron.rpcClient)
+	pool, err := aave.NewLendingPool(common.HexToAddress(addr), aSquadron.RpcClient)
 	if err != nil {
 		return err
 	}
@@ -47,11 +47,11 @@ func (aSquadron *AaveSquadron) GetTxOpts(skey string) (*bind.TransactOpts, error
 	}
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
-	nonce, err := aSquadron.rpcClient.PendingNonceAt(context.Background(), fromAddress)
+	nonce, err := aSquadron.RpcClient.PendingNonceAt(context.Background(), fromAddress)
 	if err != nil {
 		return nil, fmt.Errorf("read nonce failed %v", err)
 	}
-	chainid, err := aSquadron.rpcClient.ChainID(context.Background())
+	chainid, err := aSquadron.RpcClient.ChainID(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("read chain ID failed %v", err)
 	}
@@ -59,7 +59,7 @@ func (aSquadron *AaveSquadron) GetTxOpts(skey string) (*bind.TransactOpts, error
 	if err != nil {
 		return nil, fmt.Errorf("new transaction failed %v", err)
 	}
-	gasPrice, err := aSquadron.rpcClient.SuggestGasPrice(context.Background())
+	gasPrice, err := aSquadron.RpcClient.SuggestGasPrice(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("read suggest Gas price failed %v", err)
 	}
@@ -71,5 +71,5 @@ func (aSquadron *AaveSquadron) GetTxOpts(skey string) (*bind.TransactOpts, error
 }
 
 func (aSquadron *AaveSquadron) GetAToken(addr string) (*aave.AToken, error) {
-	return aave.NewAToken(common.HexToAddress(addr), aSquadron.rpcClient)
+	return aave.NewAToken(common.HexToAddress(addr), aSquadron.RpcClient)
 }

@@ -14,8 +14,12 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+type parseFunc func(eventLog types.Log) (interface{}, error)
+
 var (
 	contractAbi = abi.ABI{}
+	handleList  = make(map[common.Hash]EventHandle)
+	parseList   = make(map[common.Hash]parseFunc)
 )
 
 func init() {
@@ -24,9 +28,39 @@ func init() {
 		log.Fatalf("Parsing contract abi error: %v\n", err)
 	}
 	contractAbi = cabi
+	parseInit()
 }
 
-func HandleLendingPoolEvent(eventLog types.Log, evt common.Hash) (interface{}, error) {
+func parseInit() {
+	parseList[BorrowEvent] = borrowEventParse
+	parseList[DepositEvent] = depositEventParse
+	parseList[FlashLoanEvent] = flashLoanEventParse
+	parseList[LiquidationEvent] = liquidationEventParse
+	parseList[PausedEvent] = pausedEventParse
+	parseList[RebalanceStableRateEvent] = rebalanceStableRateEventParse
+	parseList[RepayEvent] = repayEventParse
+	parseList[ReserveUpdatedEvent] = reserveUpdatedEventParse
+	parseList[CollateralDisableEvent] = collateralDisableEventParse
+	parseList[CollateralEnableEvent] = collateralEnableEventParse
+	parseList[SwapEvent] = swapEventParse
+	parseList[UnpausedEvent] = unpausedEventParse
+	parseList[WithdrawEvent] = withdrawEventParse
+}
+
+func RegisterHandle(evt common.Hash, handle EventHandle) {
+	handleList[evt] = handle
+}
+
+func LendingPoolEventHandle(eventLog types.Log) error {
+	retVar, err := parseList[eventLog.Topics[0]](eventLog)
+	if err != nil {
+		return err
+	}
+	handleList[eventLog.Topics[0]](eventLog.BlockNumber, eventLog.Index, retVar)
+	return nil
+}
+
+func ParseLendingPoolEvent(eventLog types.Log, evt common.Hash) (interface{}, error) {
 	check := func() bool {
 		return eventLog.Topics[0] == evt
 	}
@@ -35,77 +69,77 @@ func HandleLendingPoolEvent(eventLog types.Log, evt common.Hash) (interface{}, e
 		if !check() {
 			break
 		}
-		return borrowEventHandle(eventLog)
+		return borrowEventParse(eventLog)
 	case DepositEvent:
 		if !check() {
 			break
 		}
-		return depositEventHandle(eventLog)
+		return depositEventParse(eventLog)
 	case FlashLoanEvent:
 		if !check() {
 			break
 		}
-		return flashLoanEventHandle(eventLog)
+		return flashLoanEventParse(eventLog)
 	case LiquidationEvent:
 		if !check() {
 			break
 		}
-		return liquidationEventHandle(eventLog)
+		return liquidationEventParse(eventLog)
 	case PausedEvent:
 		if !check() {
 			break
 		}
-		return pausedEventHandle(eventLog)
+		return pausedEventParse(eventLog)
 	case RebalanceStableRateEvent:
 		if !check() {
 			break
 		}
-		return rebalanceStableRateEventHandle(eventLog)
+		return rebalanceStableRateEventParse(eventLog)
 	case RepayEvent:
 		if !check() {
 			break
 		}
-		return repayEventHandle(eventLog)
+		return repayEventParse(eventLog)
 	case ReserveUpdatedEvent:
 		if !check() {
 			break
 		}
-		return reserveUpdatedEventHandle(eventLog)
+		return reserveUpdatedEventParse(eventLog)
 	case CollateralDisableEvent:
 		if !check() {
 			break
 		}
-		return collateralDisableEventHandle(eventLog)
+		return collateralDisableEventParse(eventLog)
 	case CollateralEnableEvent:
 		if !check() {
 			break
 		}
-		return collateralEnableEventHandle(eventLog)
+		return collateralEnableEventParse(eventLog)
 	case SwapEvent:
 		if !check() {
 			break
 		}
-		return swapEventHandle(eventLog)
+		return swapEventParse(eventLog)
 	case UnpausedEvent:
 		if !check() {
 			break
 		}
-		return unpausedEventHandle(eventLog)
+		return unpausedEventParse(eventLog)
 	case WithdrawEvent:
 		if !check() {
 			break
 		}
-		return withdrawEventHandle(eventLog)
+		return withdrawEventParse(eventLog)
 	default:
-		return nil, fmt.Errorf("unknow event(%v) in block(%v) TX(%v) index(%v)", eventLog.Topics[0], eventLog.BlockNumber, eventLog.TxHash, eventLog.Index)
+		return nil, fmt.Errorf("Can not Parse event(%v) in block(%v) TX(%v) index(%v)", eventLog.Topics[0], eventLog.BlockNumber, eventLog.TxHash, eventLog.Index)
 	}
 	return nil, nil
 }
 
-func borrowEventHandle(eventLog types.Log) (interface{}, error) {
+func borrowEventParse(eventLog types.Log) (interface{}, error) {
 	datas, err := contractAbi.Unpack("Borrow", eventLog.Data)
 	if err != nil {
-		return nil, fmt.Errorf("borrowEventHandle unpack: %v", err)
+		return nil, fmt.Errorf("borrowEventParse unpack: %v", err)
 	}
 	retval := BorrowEventData{}
 	retval.Reserve = common.BytesToAddress(eventLog.Topics[1].Bytes())
@@ -118,10 +152,10 @@ func borrowEventHandle(eventLog types.Log) (interface{}, error) {
 	//fmt.Print(retval.User)
 	return retval, nil
 }
-func depositEventHandle(eventLog types.Log) (interface{}, error) {
+func depositEventParse(eventLog types.Log) (interface{}, error) {
 	datas, err := contractAbi.Unpack("Deposit", eventLog.Data)
 	if err != nil {
-		return nil, fmt.Errorf("depositEventHandle unpack: %v", err)
+		return nil, fmt.Errorf("depositEventParse unpack: %v", err)
 	}
 	retval := DepositEventData{}
 	retval.Reserve = common.BytesToAddress(eventLog.Topics[1].Bytes())
@@ -132,54 +166,70 @@ func depositEventHandle(eventLog types.Log) (interface{}, error) {
 	//fmt.Print(retval)
 	return retval, nil
 }
-func flashLoanEventHandle(eventLog types.Log) (interface{}, error) {
+func flashLoanEventParse(eventLog types.Log) (interface{}, error) {
 	retval := FlashLoanEventData{}
 	fmt.Print(retval)
 	return retval, nil
 }
-func liquidationEventHandle(eventLog types.Log) (interface{}, error) {
+func liquidationEventParse(eventLog types.Log) (interface{}, error) {
 	retval := LiquidationCallEventData{}
 	fmt.Print(retval)
 	return retval, nil
 }
-func pausedEventHandle(eventLog types.Log) (interface{}, error) {
+func pausedEventParse(eventLog types.Log) (interface{}, error) {
 	return nil, nil
 }
-func rebalanceStableRateEventHandle(eventLog types.Log) (interface{}, error) {
+func rebalanceStableRateEventParse(eventLog types.Log) (interface{}, error) {
 	retval := RebalanceStableBorrowRateEventData{}
 	fmt.Print(retval)
 	return retval, nil
 }
-func repayEventHandle(eventLog types.Log) (interface{}, error) {
+func repayEventParse(eventLog types.Log) (interface{}, error) {
+	datas, err := contractAbi.Unpack("Repay", eventLog.Data)
+	if err != nil {
+		return nil, fmt.Errorf("repayEventParse unpack: %v", err)
+	}
 	retval := RepayEventData{}
-	fmt.Print(retval)
+	retval.Reserve = common.BytesToAddress(eventLog.Topics[1].Bytes())
+	retval.User = common.BytesToAddress(eventLog.Topics[2].Bytes())
+	retval.Repayer = common.BytesToAddress(eventLog.Topics[3].Bytes())
+	retval.Amount = datas[0].(*big.Int)
+	//fmt.Print(retval)
 	return retval, nil
 }
-func reserveUpdatedEventHandle(eventLog types.Log) (interface{}, error) {
+func reserveUpdatedEventParse(eventLog types.Log) (interface{}, error) {
 	retval := ReserveDataUpdatedEventData{}
 	fmt.Print(retval)
 	return retval, nil
 }
-func collateralDisableEventHandle(eventLog types.Log) (interface{}, error) {
+func collateralDisableEventParse(eventLog types.Log) (interface{}, error) {
 	retval := ReserveUsedAsCollateralDisabledEventData{}
 	fmt.Print(retval)
 	return retval, nil
 }
-func collateralEnableEventHandle(eventLog types.Log) (interface{}, error) {
+func collateralEnableEventParse(eventLog types.Log) (interface{}, error) {
 	retval := ReserveUsedAsCollateralEnabledEventData{}
 	fmt.Print(retval)
 	return retval, nil
 }
-func swapEventHandle(eventLog types.Log) (interface{}, error) {
+func swapEventParse(eventLog types.Log) (interface{}, error) {
 	retval := SwapEventData{}
 	fmt.Print(retval)
 	return retval, nil
 }
-func unpausedEventHandle(eventLog types.Log) (interface{}, error) {
+func unpausedEventParse(eventLog types.Log) (interface{}, error) {
 	return nil, nil
 }
-func withdrawEventHandle(eventLog types.Log) (interface{}, error) {
+func withdrawEventParse(eventLog types.Log) (interface{}, error) {
+	datas, err := contractAbi.Unpack("Withdraw", eventLog.Data)
+	if err != nil {
+		return nil, fmt.Errorf("withdrawEventParse unpack: %v", err)
+	}
 	retval := WithdrawEventData{}
-	fmt.Print(retval)
+	retval.Reserve = common.BytesToAddress(eventLog.Topics[1].Bytes())
+	retval.User = common.BytesToAddress(eventLog.Topics[2].Bytes())
+	retval.To = common.BytesToAddress(eventLog.Topics[3].Bytes())
+	retval.Amount = datas[0].(*big.Int)
+	//fmt.Print(retval)
 	return retval, nil
 }

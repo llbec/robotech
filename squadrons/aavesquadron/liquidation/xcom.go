@@ -79,7 +79,7 @@ func (xc *XCom) GetDebtors() (map[common.Address]uint, uint64) {
 			log.Fatal("GetDebtors:FilterLogs ", err)
 		}
 		for _, vLog := range logs {
-			data, err := lendingpoolevent.HandleLendingPoolEvent(vLog, lendingpoolevent.BorrowEvent)
+			data, err := lendingpoolevent.ParseLendingPoolEvent(vLog, lendingpoolevent.BorrowEvent)
 			if err == nil && data != nil {
 				usr := data.(lendingpoolevent.BorrowEventData).User
 				fmt.Printf("add usr:%v\n", usr)
@@ -194,7 +194,7 @@ func (xc *XCom) WatchDebt(start uint64) {
 		case err := <-sub.Err():
 			log.Fatal("WatchDebt:sub.Err ", err)
 		case vLog := <-logs:
-			data, err := lendingpoolevent.HandleLendingPoolEvent(vLog, lendingpoolevent.BorrowEvent)
+			data, err := lendingpoolevent.ParseLendingPoolEvent(vLog, lendingpoolevent.BorrowEvent)
 			if err == nil && data != nil {
 				//xcliqudation.handleBorrowEvent(data.(poolevent.BorrowEventData))
 				usr := data.(lendingpoolevent.BorrowEventData).User

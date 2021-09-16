@@ -23,6 +23,8 @@ var (
 	WithdrawEvent            = crypto.Keccak256Hash([]byte("Withdraw(address,address,address,uint256)"))
 )
 
+type EventHandle func(height uint64, logIndex uint, eventData interface{})
+
 type BorrowEventData struct {
 	Reserve        common.Address
 	User           common.Address

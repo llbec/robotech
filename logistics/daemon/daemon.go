@@ -46,17 +46,23 @@ func (dmon *Daemon) Run(logfile string) {
 }
 
 func (dmon *Daemon) Stop() {
+	dmon.Input(-1)
+}
+
+func (dmon *Daemon) Input(sig int) {
 	client, err := rpc.DialHTTP("tcp", fmt.Sprintf("127.0.0.1:%d", dmon.port))
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
 	var reply int
-	err = client.Call("Daemon.Cmd", 1, &reply)
+	err = client.Call("Daemon.Cmd", sig, &reply)
 	if err != nil {
 		log.Fatal("Daemon.Cmd error:", err)
 	}
 }
 
+// http client call
+//
 func (dmon *Daemon) Cmd(arg int, rep *int) error {
 	dmon.ch <- arg
 	return nil

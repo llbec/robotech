@@ -6,68 +6,115 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
+	"time"
 
+	"github.com/llbec/robotech/logistics/daemon"
 	"github.com/llbec/robotech/squadrons/filecoinsquadron"
 	"github.com/llbec/robotech/squadrons/filecoinsquadron/xlandteam"
 )
 
 var (
-	fHelp       bool
+	fRun        bool
 	fInit       bool
-	fPath       string
+	fQuit       bool
 	fHeight     int64
+	fGet        int64
 	filecoinAPI *filecoinsquadron.FileCoinAPI
 	xland       *xlandteam.XlandTeam
+	waitsecond  int
 )
 
 func init() {
-	flag.BoolVar(&fHelp, "h", false, "help")
+	flag.BoolVar(&fRun, "r", false, "help")
 	flag.BoolVar(&fInit, "i", false, "create config file with example values")
-	flag.StringVar(&fPath, "p", ".", "specify config file path. defult is \".\"")
-	flag.Int64Var(&fHeight, "s", math.MaxInt64, "start height. default is current block")
+	flag.BoolVar(&fQuit, "q", false, "quit")
+	//flag.StringVar(&fPath, "p", ".", "specify config file path. defult is \".\"")
+	flag.Int64Var(&fHeight, "n", math.MaxInt64, "start height. default is current block")
+	flag.Int64Var(&fGet, "g", math.MaxInt64, "Get Block")
 
-	file := "./" + "running" + ".log"
+	/*file := "./" + "running" + ".log"
 	logFile, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0766)
 	if err != nil {
 		panic(err)
 	}
 	log.SetOutput(logFile) // 将文件设置为log输出的文件
 	log.SetPrefix("[XlanSaveValue]")
-	log.SetFlags(log.LstdFlags | log.Lshortfile | log.LUTC)
+	log.SetFlags(log.LstdFlags | log.Lshortfile | log.LUTC)*/
 }
 
 func main() {
 	flag.Parse()
-	if fHelp {
-		flag.Usage()
-		return
-	}
-	if fInit {
-		err := GeneratConfig(fPath)
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			fmt.Printf("create xland.yaml at %v\n", fPath)
-		}
+
+	wd, e := os.Getwd()
+	if e != nil {
+		log.Printf("os.Getwd failed: %v\n", e)
 		return
 	}
 
-	// init
-	LoadConfig(fPath)
+	if fInit {
+		err := GeneratConfig(wd)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Printf("create xland.yaml at %v\n", wd)
+		}
+		return
+	}
+	if fQuit {
+		d := daemon.NewDaemon(1234, nil)
+		d.Stop()
+		return
+	}
+	if fGet != math.MaxInt64 {
+		LoadConfig(wd)
+		getTipSet()
+	}
+	if fRun {
+		LoadConfig(wd)
+		if fHeight == math.MaxInt64 {
+			fmt.Printf("")
+		}
+		d := daemon.NewDaemon(1234, radar)
+		d.Run(filepath.Join(wd, "running.log"))
+	}
+
+	flag.Usage()
+}
+
+func radar(chSig, chExit chan int) {
+	waitsecond = 60
 	rpc := filecoinsquadron.NewRpc(Server, "/rpc/v0", "http", Token)
 	subs := filecoinsquadron.NewSubscribe(Server, "/rpc/v0", "ws", Token)
 	filecoinAPI = filecoinsquadron.NewFileCoinAPI(rpc, subs)
 	xland = xlandteam.NewXlandTeam(XlandServer)
 
-	chainnotify := make(chan int64, 10)
-	go tipSetRadar(fHeight, chainnotify)
-	watchHeight(chainnotify)
+	blocknotify := make(chan int64, 10)
+
+	go watchHeight(blocknotify)
+
+	select {
+	case current := <-blocknotify:
+		err := tipSetRadar(fHeight, current)
+		if err != nil {
+			log.Println(err)
+		} else {
+			fHeight = current + 1
+		}
+	case <-chSig:
+		goto EXIT
+	}
+
+EXIT:
+	chExit <- 1
 }
 
 func watchHeight(newHeight chan int64) {
 	for {
 		conn, err := filecoinAPI.ChainNotify()
 		if err != nil {
+			log.Println("ChainNotify:", err)
+			time.Sleep(time.Duration(waitsecond) * time.Second)
 			continue
 		}
 		defer conn.Close()
@@ -87,46 +134,64 @@ func watchHeight(newHeight chan int64) {
 	}
 }
 
-func tipSetRadar(start int64, chainnotify chan int64) {
-	last := start
-	for {
-		current := <-chainnotify
-		if last > current {
-			last = current
+func getTipSet() {
+	rpc := filecoinsquadron.NewRpc(Server, "/rpc/v0", "http", Token)
+	filecoinAPI = filecoinsquadron.NewFileCoinAPI(rpc, nil)
+	tipsetBytes, err := filecoinAPI.GetTipsetByHeight(fGet)
+	if err != nil {
+		fmt.Printf("Height(%v): %v\n", fGet, err)
+		return
+	}
+
+	tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
+	if err != nil {
+		fmt.Printf("Height(%v): %v\n", fGet, err)
+		return
+	}
+
+	for _, b := range tipset.Blocks {
+		msgs, err := filecoinAPI.PayeeRadarInBlock(Payee, b)
+		if err != nil {
+			fmt.Printf("Height(%v): %v\n", fGet, err)
 		}
-		for ; last < current; last++ {
-			targets := make(map[string]filecoinsquadron.MsgInfo)
-			tipsetBytes, err := filecoinAPI.GetTipsetByHeight(last)
-			if err != nil {
-				log.Println("GetTipsetByHeight:", err)
-				continue
-			}
-
-			tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
-			if err != nil {
-				log.Println("ReadTipSet:", err)
-				continue
-			}
-
-			for _, b := range tipset.Blocks {
-				msgs, err := filecoinAPI.PayeeRadarInBlock(Payee, b)
-				if err != nil {
-					log.Println("PayeeRadarInBlock:", err)
-					continue
-				}
-				for _, m := range msgs {
-					targets[m.Cid] = m
-				}
-			}
-
-			for _, tx := range targets {
-				err := xland.XlandSaveValue(tipset.Timestamp, tx.Value.String())
-				log.Printf("Block(%v), save value<%v-%v>\n", tipset.Height, tipset.Timestamp, tx.Value)
-				if err != nil {
-					log.Printf("save value failed(%v)\n", err)
-				}
-			}
-			log.Printf("Block(%v) match %v\n", tipset.Height, len(targets))
+		fmt.Printf("Height(%v) match %d :]n", fGet, len(msgs))
+		for _, m := range msgs {
+			fmt.Printf(("\t%v: %v -> %v, %v\n"), m.Cid, m.From, m.To, m.Value)
 		}
 	}
+}
+
+func tipSetRadar(start, current int64) error {
+	for last := start; last <= current; last++ {
+		targets := make(map[string]filecoinsquadron.MsgInfo)
+		tipsetBytes, err := filecoinAPI.GetTipsetByHeight(last)
+		if err != nil {
+			return fmt.Errorf("Height(%v): %v", last, err)
+		}
+
+		tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
+		if err != nil {
+			return fmt.Errorf("Height(%v): %v", last, err)
+		}
+
+		for _, b := range tipset.Blocks {
+			msgs, err := filecoinAPI.PayeeRadarInBlock(Payee, b)
+			if err != nil {
+				return fmt.Errorf("Height(%v): %v", last, err)
+			}
+			for _, m := range msgs {
+				targets[m.Cid] = m
+			}
+		}
+
+		for _, tx := range targets {
+			err := xland.XlandSaveValue(tipset.Timestamp, tx.Value.String())
+			log.Printf("Block(%v), save value<%v-%v>\n", tipset.Height, tipset.Timestamp, tx.Value)
+			if err != nil {
+				log.Printf("save value failed(%v)\n", err)
+			}
+		}
+		log.Printf("Block(%v) match %v\n", tipset.Height, len(targets))
+	}
+	return nil
 }
