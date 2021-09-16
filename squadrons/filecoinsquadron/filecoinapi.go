@@ -143,6 +143,53 @@ func (api *FileCoinAPI) ReadTipSet(rpcBytes []byte) (*TipSet, error) {
 	return tipSet, nil
 }
 
+func (api *FileCoinAPI) ReadBlock(blockid string) ([]MsgInfo, error) {
+	targets := []MsgInfo{}
+
+	rpcBytes, err := api.ChainGetBlockMessages(blockid)
+	if err != nil {
+		return nil, err
+	}
+
+	rpcJson, err := simplejson.NewJson(rpcBytes)
+	if err != nil {
+		return nil, fmt.Errorf("simplejson new: %v", err)
+	}
+	txsJson := rpcJson.GetPath("result", "SecpkMessages")
+	txs, err := txsJson.Array()
+	if err != nil {
+		return nil, fmt.Errorf("secpkMessages array: %v", err)
+	}
+
+	for i := 0; i < len(txs); i++ {
+		to, err := txsJson.GetIndex(i).GetPath("Message", "To").String()
+		if err != nil {
+			return nil, fmt.Errorf("message[%d] To: %v", i, err)
+		}
+		txhash, err := txsJson.GetIndex(i).GetPath("CID", "/").String()
+		if err != nil {
+			return nil, fmt.Errorf("message[%d] cid: %v", i, err)
+		}
+		value, err := txsJson.GetIndex(i).GetPath("Message", "Value").Bytes()
+		if err != nil {
+			return nil, fmt.Errorf("message[%d] Value: %v", i, err)
+		}
+		v, err := strconv.ParseFloat(string(value), 64)
+		if err != nil {
+			return nil, fmt.Errorf("message[%d] ParseFloat: %v", i, err)
+		}
+		vBig := big.NewFloat(v)
+		vBig.Quo(vBig, big.NewFloat(1e18))
+		from, err := txsJson.GetIndex(i).GetPath("Message", "From").String()
+		if err != nil {
+			return nil, fmt.Errorf("message[%d] From: %v", i, err)
+		}
+		targets = append(targets, MsgInfo{Cid: txhash, From: from, To: to, Value: vBig})
+	}
+
+	return targets, nil
+}
+
 func (api *FileCoinAPI) PayeeRadarInBlock(payee string, blockid string) ([]MsgInfo, error) {
 	targets := []MsgInfo{}
 
