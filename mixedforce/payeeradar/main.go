@@ -145,15 +145,17 @@ func getTipSet() {
 		return
 	}
 
-	fmt.Print(filecoinAPI.TipsetString(tipsetBytes))
+	//fmt.Print(filecoinAPI.TipsetString(tipsetBytes))
 
-	/*tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
+	tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
 	if err != nil {
 		fmt.Printf("Height(%v): %v\n", fGet, err)
 		return
 	}
 
-	count := 0
+	fmt.Print(tipset)
+
+	/*count := 0
 	fmt.Printf("TipSet(%v):\n", fGet)
 	for _, b := range tipset.Blocks {
 		msgs, err := filecoinAPI.ReadBlock(b)
