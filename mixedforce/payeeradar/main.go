@@ -151,16 +151,19 @@ func getTipSet() {
 		return
 	}
 
+	count := 0
+	fmt.Printf("TipSet(%v):]\n", fGet)
 	for _, b := range tipset.Blocks {
 		msgs, err := filecoinAPI.PayeeRadarInBlock(Payee, b)
 		if err != nil {
-			fmt.Printf("Height(%v): %v\n", fGet, err)
+			fmt.Printf("Block(%v): %v\n", fGet, err)
 		}
-		fmt.Printf("Height(%v) match %d :]n", fGet, len(msgs))
 		for _, m := range msgs {
+			count += 1
 			fmt.Printf(("\t%v: %v -> %v, %v\n"), m.Cid, m.From, m.To, m.Value)
 		}
 	}
+	fmt.Printf("match %d\n", count)
 }
 
 func tipSetRadar(start, current int64) error {
