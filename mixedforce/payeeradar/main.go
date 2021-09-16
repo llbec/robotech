@@ -145,7 +145,7 @@ func getTipSet() {
 		return
 	}
 
-	fmt.Print(filecoinAPI.TipSetToString(tipsetBytes))
+	fmt.Print(filecoinAPI.TipsetString(tipsetBytes))
 
 	/*tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
 	if err != nil {
