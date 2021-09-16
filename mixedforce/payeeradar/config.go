@@ -71,7 +71,7 @@ func readConfig() {
 }
 
 func GeneratConfig(cfgpath string) error {
-	viper.Set(SERVERIP, "183.238.69.213:2234")
+	viper.Set(SERVERIP, "192.168.11.51:1235")
 	viper.Set(XLAND, "183.238.69.213:10001")
 	viper.Set(TOKEN, ".key/wallet.token")
 	viper.Set(PAYEE, "0x8d0214E7B831E814a3151196e1c0818873486D4B")

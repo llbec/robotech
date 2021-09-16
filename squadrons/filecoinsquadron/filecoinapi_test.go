@@ -3,9 +3,13 @@ package filecoinsquadron_test
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"strconv"
 	"testing"
 	"unsafe"
+
+	"github.com/llbec/robotech/squadrons/filecoinsquadron"
 )
 
 func Test_paramsforChainGetTipSetByHeight(t *testing.T) {
@@ -27,4 +31,27 @@ func Test_paramsforChainGetTipSetByHeight(t *testing.T) {
 
 	str := (*string)(unsafe.Pointer(&bytesData))
 	fmt.Println("rpc params:\n", *str)
+}
+
+func getToken() string {
+	f, err := os.Open("token")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	content, err := ioutil.ReadAll(f)
+	if err != nil {
+		return ""
+	}
+	return string(content)
+}
+
+func Test_BodyParse(t *testing.T) {
+	rpc := filecoinsquadron.NewRpc("192.168.11.51:1235", "/rpc/v0", "http", getToken())
+	filecoinAPI := filecoinsquadron.NewFileCoinAPI(rpc, nil)
+	tipsetBuf, err := filecoinAPI.GetTipsetByHeight(1116849)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Print(tipsetBuf)
 }
