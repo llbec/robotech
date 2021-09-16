@@ -145,7 +145,9 @@ func getTipSet() {
 		return
 	}
 
-	tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
+	fmt.Print(filecoinAPI.TipSetToString(tipsetBytes))
+
+	/*tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
 	if err != nil {
 		fmt.Printf("Height(%v): %v\n", fGet, err)
 		return
@@ -163,7 +165,7 @@ func getTipSet() {
 			fmt.Printf(("\t%v: %v -> %v, %v\n"), m.Cid, m.From, m.To, m.Value)
 		}
 	}
-	fmt.Printf("msgs %d\n", count)
+	fmt.Printf("msgs %d\n", count)*/
 }
 
 func tipSetRadar(start, current int64) error {

@@ -106,6 +106,18 @@ func (api *FileCoinAPI) ReadHeightFromTipSet(rpcBytes []byte) (int64, error) {
 	return height, nil
 }
 
+func (api *FileCoinAPI) TipSetToString(rpcBytes []byte) string {
+	tipSetJson, err := simplejson.NewJson(rpcBytes)
+	if err != nil {
+		return err.Error()
+	}
+	str, err := tipSetJson.String()
+	if err != nil {
+		return err.Error()
+	}
+	return str
+}
+
 func (api *FileCoinAPI) ReadTipSet(rpcBytes []byte) (*TipSet, error) {
 	tipSetJson, err := simplejson.NewJson(rpcBytes)
 	if err != nil {
