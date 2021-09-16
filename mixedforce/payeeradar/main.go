@@ -69,6 +69,7 @@ func main() {
 	if fGet != math.MaxInt64 {
 		LoadConfig(wd)
 		getTipSet()
+		return
 	}
 	if fRun {
 		LoadConfig(wd)
@@ -77,6 +78,7 @@ func main() {
 		}
 		d := daemon.NewDaemon(1234, radar)
 		d.Run(filepath.Join(wd, "running.log"))
+		return
 	}
 
 	flag.Usage()
