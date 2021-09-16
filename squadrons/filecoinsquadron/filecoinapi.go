@@ -106,14 +106,6 @@ func (api *FileCoinAPI) ReadHeightFromTipSet(rpcBytes []byte) (int64, error) {
 	return height, nil
 }
 
-func (api *FileCoinAPI) TipsetString(rpcBytes []byte) string {
-	tipSetJson, err := simplejson.NewJson(rpcBytes)
-	if err != nil {
-		return err.Error()
-	}
-	return fmt.Sprint(tipSetJson)
-}
-
 func (api *FileCoinAPI) ReadTipSet(rpcBytes []byte) (*TipSet, error) {
 	tipSetJson, err := simplejson.NewJson(rpcBytes)
 	if err != nil {
@@ -149,6 +141,27 @@ func (api *FileCoinAPI) ReadTipSet(rpcBytes []byte) (*TipSet, error) {
 	}
 
 	return tipSet, nil
+}
+
+func (api *FileCoinAPI) TipsetString(rpcBytes []byte) string {
+	tipSetJson, err := simplejson.NewJson(rpcBytes)
+	if err != nil {
+		return err.Error()
+	}
+	return fmt.Sprint(tipSetJson)
+}
+
+func (api *FileCoinAPI) BlockSting(blockid string) string {
+	rpcBytes, err := api.ChainGetBlockMessages(blockid)
+	if err != nil {
+		return err.Error()
+	}
+
+	rpcJson, err := simplejson.NewJson(rpcBytes)
+	if err != nil {
+		return err.Error()
+	}
+	return fmt.Sprint(rpcJson)
 }
 
 func (api *FileCoinAPI) ReadBlock(blockid string) ([]MsgInfo, error) {
