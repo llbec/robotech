@@ -131,7 +131,7 @@ func watchHeight(newHeight chan int64) {
 
 			height, err := filecoinAPI.ReadHeightFromTipSet(message)
 			if err != nil {
-				log.Println("ReadMessage:", err)
+				log.Println("ReadHeightFromTipSet:", err)
 			}
 			newHeight <- height
 		}
@@ -143,7 +143,7 @@ func getTipSet() {
 	filecoinAPI = filecoinsquadron.NewFileCoinAPI(rpc, nil)
 	tipsetBytes, err := filecoinAPI.GetTipsetByHeight(fGet)
 	if err != nil {
-		fmt.Printf("Height(%v): %v\n", fGet, err)
+		fmt.Printf("GetTipsetByHeight(%v): %v\n", fGet, err)
 		return
 	}
 
@@ -151,7 +151,7 @@ func getTipSet() {
 
 	tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
 	if err != nil {
-		fmt.Printf("Height(%v): %v\n", fGet, err)
+		fmt.Printf("ReadTipSet Height(%v): %v\n", fGet, err)
 		return
 	}
 
@@ -183,18 +183,18 @@ func tipSetRadar(start, current int64) error {
 		targets := make(map[string]filecoinsquadron.MsgInfo)
 		tipsetBytes, err := filecoinAPI.GetTipsetByHeight(last)
 		if err != nil {
-			return fmt.Errorf("Height(%v): %v", last, err)
+			return fmt.Errorf("GetTipsetByHeight Height(%v): %v", last, err)
 		}
 
 		tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
 		if err != nil {
-			return fmt.Errorf("Height(%v): %v", last, err)
+			return fmt.Errorf("ReadTipSet Height(%v): %v", last, err)
 		}
 
 		for _, b := range tipset.Blocks {
 			msgs, err := filecoinAPI.PayeeRadarInBlock(Payee, b)
 			if err != nil {
-				return fmt.Errorf("Height(%v): %v", last, err)
+				return fmt.Errorf("PayeeRadarInBlock Height(%v): %v", last, err)
 			}
 			for _, m := range msgs {
 				targets[m.Cid] = m
