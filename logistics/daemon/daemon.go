@@ -23,7 +23,7 @@ func (dmon *Daemon) Run(logfile string) {
 
 	e := Lock(os.Getpid())
 	if e != nil {
-		log.Printf("Process %d close by %v\n", os.Getpid(), e)
+		log.Printf("Process %d close by error: %v\n", os.Getpid(), e)
 		return
 	}
 	defer Unlock()

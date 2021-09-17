@@ -26,7 +26,7 @@ var (
 )
 
 func init() {
-	flag.BoolVar(&fRun, "r", false, "help")
+	flag.BoolVar(&fRun, "r", false, "running daemon")
 	flag.BoolVar(&fInit, "i", false, "create config file with example values")
 	flag.BoolVar(&fQuit, "q", false, "quit")
 	//flag.StringVar(&fPath, "p", ".", "specify config file path. defult is \".\"")
@@ -74,13 +74,15 @@ func main() {
 	if fRun {
 		LoadConfig(wd)
 		if fHeight == math.MaxInt64 {
-			fmt.Printf("")
+			fmt.Printf("Run failed: no start block number\n")
+			goto HELP
 		}
 		d := daemon.NewDaemon(1234, radar)
 		d.Run(filepath.Join(wd, "running.log"))
 		return
 	}
 
+HELP:
 	flag.Usage()
 }
 
