@@ -156,19 +156,24 @@ func getTipSet() {
 	//fmt.Print(filecoinAPI.BlockSting(tipset.Blocks[0]))
 
 	count := 0
+	targets := make(map[string]filecoinsquadron.MsgInfo)
 	fmt.Printf("TipSet(%v):\n", fGet)
 	for _, b := range tipset.Blocks {
-		fmt.Print(filecoinAPI.BlockSting(b))
-		msgs, err := filecoinAPI.PayeeRadarInBlock(Payee, b)
+		//fmt.Print(filecoinAPI.BlockSting(b))
+		msgs, err := filecoinAPI.GetBlockMsgs(b)
 		if err != nil {
 			fmt.Printf("Block(%v): %v\n", fGet, err)
 		}
 		for _, m := range msgs {
 			count += 1
 			fmt.Printf(("\t%v: %v -> %v, %v\n"), m.Cid, m.From, m.To, m.Value)
+			if m.To == Payee {
+				targets[m.Cid] = m
+			}
 		}
 	}
 	fmt.Printf("msgs %d\n", count)
+	fmt.Println(targets)
 }
 
 func tipSetRadar(start, current int64) error {
