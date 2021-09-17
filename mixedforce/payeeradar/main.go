@@ -97,16 +97,18 @@ func radar(chSig, chExit chan int) {
 
 	go watchHeight(blocknotify)
 
-	select {
-	case current := <-blocknotify:
-		err := tipSetRadar(fHeight, current)
-		if err != nil {
-			log.Println(err)
-		} else {
-			fHeight = current + 1
+	for {
+		select {
+		case current := <-blocknotify:
+			err := tipSetRadar(fHeight, current)
+			if err != nil {
+				log.Println(err)
+			} else {
+				fHeight = current + 1
+			}
+		case <-chSig:
+			goto EXIT
 		}
-	case <-chSig:
-		goto EXIT
 	}
 
 EXIT:
