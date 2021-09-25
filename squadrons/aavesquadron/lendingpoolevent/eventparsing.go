@@ -56,7 +56,10 @@ func LendingPoolEventHandle(eventLog types.Log) error {
 	if err != nil {
 		return err
 	}
-	handleList[eventLog.Topics[0]](eventLog.BlockNumber, eventLog.Index, retVar)
+	if handleList[eventLog.Topics[0]] != nil {
+		handleList[eventLog.Topics[0]](eventLog.BlockNumber, eventLog.Index, retVar)
+	}
+
 	return nil
 }
 
