@@ -74,7 +74,7 @@ func showDebtors() {
 	count := 0
 	for account, amount := range debtors {
 		count += 1
-		fmt.Printf("\r%v: %v - %v\n", count, account, amount)
+		fmt.Printf("****** %v: %v - %v\n", count, account, amount)
 	}
 }
 
