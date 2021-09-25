@@ -195,7 +195,7 @@ func liquidateThread(chSig, chExit chan int) {
 		syncBlock(int64(curHeight), int64(height))
 		curHeight = height
 	}
-	log.Printf("sync block finished\n")
+	log.Printf("sync block finished with %v debtors\n", len(debtors))
 	tcLiq := time.NewTicker(time.Duration(LiquidatePeroid) * time.Second)
 	defer tcLiq.Stop()
 	tcBlk := time.NewTicker(time.Duration(BlockPeroid) * time.Second)
