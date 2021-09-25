@@ -150,7 +150,7 @@ func getUsrLiquidationData(usr common.Address) (common.Address, common.Address, 
 func liquidationAccount(usr common.Address) error {
 	collateralAsset, debtAsset, debttocover := getUsrLiquidationData(usr)
 	fmt.Println(collateralAsset, debtAsset, usr, debttocover)
-	txOps, err := GetAuther("")
+	txOps, err := GetAuther(sKey)
 	if err != nil {
 		return err
 	}

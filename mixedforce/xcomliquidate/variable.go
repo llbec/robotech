@@ -23,13 +23,13 @@ var (
 	DmPort               int
 	LiquidatePeroid      int64
 	BlockPeroid          int64
+	sKey                 string
 )
 
 var (
 	curHeight       = uint64(0)
 	workDir         string
 	healthThreshold = big.NewInt(1e18)
-	liquidateLevel1 = big.NewInt(1e10)
-	liquidatePass   = big.NewInt(1e7)
+	liquidateLevel1 = big.NewInt(2 * 1e8)
 	Reserves        map[common.Address]*big.Int
 )

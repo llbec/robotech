@@ -99,6 +99,7 @@ func InitEnv(dir string) {
 	DmPort = viper.GetInt(DMPORT)
 	LiquidatePeroid = viper.GetInt64(LIQUPEROID)
 	BlockPeroid = viper.GetInt64(BLKPEROID)
+	sKey = viper.GetString(SKEY)
 }
 
 func GetAuther(secretkey string) (*bind.TransactOpts, error) {
