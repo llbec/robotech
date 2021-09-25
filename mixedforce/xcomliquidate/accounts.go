@@ -40,6 +40,8 @@ func initAccounts() {
 		filepath.Join(workDir, "database"),
 	)
 
+	debtors = make(map[string]*big.Int)
+
 	lendingpoolevent.RegisterHandle(lendingpoolevent.BorrowEvent, logBorrow)
 }
 
