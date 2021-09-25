@@ -13,20 +13,6 @@ import (
 	"github.com/llbec/robotech/utils"
 )
 
-const (
-	actDeposit  = 1
-	actWithdraw = 2
-	actBorrow   = 3
-	actRepay    = 4
-	maxEnd      = 1000
-)
-
-var (
-	usrDb   db.DB
-	logDb   db.DB
-	debtors map[string]*big.Int
-)
-
 func initAccounts() {
 	usrDb = db.NewDB(
 		db.LevelDBBackend,

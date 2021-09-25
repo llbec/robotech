@@ -24,7 +24,6 @@ const (
 	AAVELIQUIDATIONADAPTER   = "liquidationAdapter"
 	AAVEORACLE               = "AaveOracle"
 	STARTHEIGHT              = "height"
-	DMPORT                   = "port"
 	LIQUPEROID               = "liquidatePeroid"
 	BLKPEROID                = "blockPeroid"
 )
@@ -37,7 +36,7 @@ func GeneratConfig(dir string) error {
 	viper.Set(AAVELIQUIDATIONADAPTER, "0xAD7958B141fd151910A67e973A4e1173d38C5801")
 	viper.Set(AAVEORACLE, "0x1be62C4A97a45B04628E2B4f38F2eC71cC709e24")
 	viper.Set(STARTHEIGHT, 4036695)
-	viper.Set(DMPORT, 1234)
+	//viper.Set(DMPORT, 1234)
 	viper.Set(LIQUPEROID, 10)
 	viper.Set(BLKPEROID, 3)
 
@@ -96,7 +95,7 @@ func InitEnv(dir string) {
 	}
 
 	StartHeight = viper.GetUint64(STARTHEIGHT)
-	DmPort = viper.GetInt(DMPORT)
+	//DmPort = viper.GetInt(DMPORT)
 	LiquidatePeroid = viper.GetInt64(LIQUPEROID)
 	BlockPeroid = viper.GetInt64(BLKPEROID)
 	sKey = viper.GetString(SKEY)

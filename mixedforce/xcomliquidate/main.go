@@ -51,8 +51,8 @@ func main() {
 	Reserves = make(map[common.Address]*big.Int)
 
 	if fList {
-		InitEnv(workDir)
-		initAccounts()
+		//InitEnv(workDir)
+		//initAccounts()
 		d := daemon.NewDaemon(DmPort, nil)
 		d.Input(1)
 		return
