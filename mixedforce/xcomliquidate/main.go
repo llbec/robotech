@@ -178,12 +178,12 @@ func liquidateThread(chSig, chExit chan int) {
 	if curHeight < StartHeight {
 		curHeight = StartHeight
 	}
-	fmt.Printf("sync block from %v\n", curHeight)
 	//get currunt height
 	height, err := Client.BlockNumber(context.Background())
 	if err != nil {
 		panic(fmt.Errorf("BlockNumber: %v", err))
 	}
+	fmt.Printf("sync block from %v, end %v\n", curHeight, height)
 	if curHeight < height {
 		syncBlock(int64(curHeight), int64(height))
 		curHeight = height
