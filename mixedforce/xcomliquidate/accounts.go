@@ -34,7 +34,7 @@ func initAccounts() {
 		filepath.Join(workDir, "database"),
 	)
 
-	usrDb = db.NewDB(
+	logDb = db.NewDB(
 		db.LevelDBBackend,
 		"log.db",
 		filepath.Join(workDir, "database"),
