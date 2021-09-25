@@ -173,7 +173,7 @@ func liquidationAccount(usr common.Address) error {
 }
 
 func liquidateThread(chSig, chExit chan int) {
-	fmt.Printf("liquidate start ...\n")
+	log.Printf("liquidate start ...\n")
 	curHeight = recoveryDB()
 	if curHeight < StartHeight {
 		curHeight = StartHeight
@@ -183,12 +183,12 @@ func liquidateThread(chSig, chExit chan int) {
 	if err != nil {
 		panic(fmt.Errorf("BlockNumber: %v", err))
 	}
-	fmt.Printf("sync block from %v, end %v\n", curHeight, height)
+	log.Printf("sync block from %v, end %v\n", curHeight, height)
 	if curHeight < height {
 		syncBlock(int64(curHeight), int64(height))
 		curHeight = height
 	}
-	fmt.Printf("sync block finished\n")
+	log.Printf("sync block finished\n")
 	tcLiq := time.NewTicker(time.Duration(LiquidatePeroid) * time.Second)
 	defer tcLiq.Stop()
 	tcBlk := time.NewTicker(time.Duration(BlockPeroid) * time.Second)
