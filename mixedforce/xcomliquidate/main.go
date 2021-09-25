@@ -73,7 +73,8 @@ func main() {
 func showDebtors() {
 	count := 0
 	for account, amount := range debtors {
-		fmt.Printf("\r%v: %v - %v\n", count+1, account, amount)
+		count += 1
+		fmt.Printf("\r%v: %v - %v\n", count, account, amount)
 	}
 }
 
@@ -90,7 +91,11 @@ func liquidation() {
 					//liquidate immediately
 					go liquidationAccount(common.HexToAddress(account))
 				} else {
-					log.Printf("pass: %v total collateral %v", account, data.TotalCollateralETH.String())
+					log.Printf("pass: %v total collateral %v,(line is %v)",
+						account,
+						data.TotalCollateralETH.String(),
+						liquidateLevel1,
+					)
 				}
 			}
 			if data.TotalDebtETH.Cmp(common.Big0) == 0 {
