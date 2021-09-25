@@ -63,7 +63,7 @@ func recoveryDB() uint64 {
 }
 
 func syncBlock(from, to int64) {
-	log.Printf("block sync task from %v to %v", from, to)
+	log.Printf("block sync task from %v to %v, step %v", from, to, maxEnd)
 	start := from
 	end := start + maxEnd
 	for {
