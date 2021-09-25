@@ -70,6 +70,13 @@ func main() {
 	flag.Usage()
 }
 
+func showDebtors() {
+	count := 0
+	for account, amount := range debtors {
+		fmt.Printf("\r%v: %v - %v\n", count+1, account, amount)
+	}
+}
+
 func liquidation() {
 	for account := range debtors {
 		data, err := LendingPool.GetUserAccountData(
@@ -215,7 +222,10 @@ func liquidateThread(chSig, chExit chan int) {
 			tcLiq.Reset(time.Duration(LiquidatePeroid) * time.Second)
 		//quit signal
 		case sig := <-chSig:
+			log.Printf("Thread rcv signal: %v\n", sig)
 			switch sig {
+			case 1:
+				showDebtors()
 			default:
 				goto EXIT
 			}
