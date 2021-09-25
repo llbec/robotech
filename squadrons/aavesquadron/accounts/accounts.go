@@ -1,6 +1,7 @@
 package accounts
 
 import (
+	"log"
 	"math/big"
 )
 
@@ -45,6 +46,7 @@ func (aMana *AccountMana) Withdraw(address string, asset string, amount *big.Int
 		} else {
 			aMana.Accounts[address].CollateralAssets[asset] = big.NewInt(0).Sub(big.NewInt(0), amount)
 			//log should not happen
+			log.Printf("No exit asset(%v): address(%v) withdraw %v", asset, address, amount)
 		}
 	} else {
 		account := NewAccount()
@@ -52,6 +54,7 @@ func (aMana *AccountMana) Withdraw(address string, asset string, amount *big.Int
 		account.CollateralAssets[asset] = big.NewInt(0).Sub(big.NewInt(0), amount)
 		aMana.Accounts[address] = &account
 		//log should not happen
+		log.Printf("No exit address(%v): withdraw @ %v - %v", address, asset, amount)
 	}
 }
 
@@ -70,6 +73,7 @@ func (aMana *AccountMana) Borrow(address string, asset string, amount *big.Int) 
 		account.DebtAssets[asset] = amount
 		aMana.Accounts[address] = &account
 		//log should not happen
+		log.Printf("No exit address(%v): borrow @ %v - %v", address, asset, amount)
 	}
 }
 
@@ -82,6 +86,7 @@ func (aMana *AccountMana) Repay(address string, asset string, amount *big.Int) {
 		} else {
 			aMana.Accounts[address].DebtAssets[asset] = big.NewInt(0).Sub(big.NewInt(0), amount)
 			//log should not happen
+			log.Printf("No exit asset(%v): address(%v) repay %v", asset, address, amount)
 		}
 	} else {
 		account := NewAccount()
@@ -89,6 +94,7 @@ func (aMana *AccountMana) Repay(address string, asset string, amount *big.Int) {
 		account.DebtAssets[asset] = big.NewInt(0).Sub(big.NewInt(0), amount)
 		aMana.Accounts[address] = &account
 		//log should not happen
+		log.Printf("No exit address(%v): repay @ %v - %v", address, asset, amount)
 	}
 }
 
