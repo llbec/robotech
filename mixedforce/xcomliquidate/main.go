@@ -174,7 +174,7 @@ func liquidationAccount(usr common.Address) error {
 	if err != nil {
 		return fmt.Errorf("liquidationCall failed: %v %v@%v %v err: %v", collateralAsset, debttocover, debtAsset, usr, err)
 	} else {
-		log.Println("liquidate @ ", tx.Hash())
+		log.Printf("liquidate(%v): %v@(%v - %v)", tx.Hash(), usr, collateralAsset, debttocover)
 	}
 	return nil
 }
