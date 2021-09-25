@@ -97,7 +97,7 @@ func syncBlock(from, to int64) {
 func logBorrow(height uint64, logIndex uint, eventData interface{}) {
 	data, ok := (eventData).(lendingpoolevent.BorrowEventData)
 	if !ok {
-		log.Printf("Parse BorrowEventData failed!")
+		log.Printf("Parse BorrowEventData failed!\n")
 		return
 	}
 	_, ok = debtors[data.User.String()]
@@ -106,7 +106,7 @@ func logBorrow(height uint64, logIndex uint, eventData interface{}) {
 	}
 	act, err := LendingPool.GetUserAccountData(nil, data.User)
 	if err != nil {
-		log.Printf("logBorrow: GetUserAccountData error: %v", err)
+		log.Printf("logBorrow: GetUserAccountData error: %v\n", err)
 		return
 	}
 	debtors[data.User.String()] = act.TotalDebtETH

@@ -134,7 +134,7 @@ func ParseLendingPoolEvent(eventLog types.Log, evt common.Hash) (interface{}, er
 		}
 		return withdrawEventParse(eventLog)
 	default:
-		return nil, fmt.Errorf("Can not Parse event(%v) in block(%v) TX(%v) index(%v)", eventLog.Topics[0], eventLog.BlockNumber, eventLog.TxHash, eventLog.Index)
+		return nil, fmt.Errorf("can not Parse event(%v) in block(%v) TX(%v) index(%v)", eventLog.Topics[0], eventLog.BlockNumber, eventLog.TxHash, eventLog.Index)
 	}
 	return nil, nil
 }
@@ -171,12 +171,12 @@ func depositEventParse(eventLog types.Log) (interface{}, error) {
 }
 func flashLoanEventParse(eventLog types.Log) (interface{}, error) {
 	retval := FlashLoanEventData{}
-	fmt.Print(retval)
+	//fmt.Print(retval)
 	return retval, nil
 }
 func liquidationEventParse(eventLog types.Log) (interface{}, error) {
 	retval := LiquidationCallEventData{}
-	fmt.Print(retval)
+	//fmt.Print(retval)
 	return retval, nil
 }
 func pausedEventParse(eventLog types.Log) (interface{}, error) {
@@ -184,7 +184,7 @@ func pausedEventParse(eventLog types.Log) (interface{}, error) {
 }
 func rebalanceStableRateEventParse(eventLog types.Log) (interface{}, error) {
 	retval := RebalanceStableBorrowRateEventData{}
-	fmt.Print(retval)
+	//fmt.Print(retval)
 	return retval, nil
 }
 func repayEventParse(eventLog types.Log) (interface{}, error) {
@@ -202,22 +202,22 @@ func repayEventParse(eventLog types.Log) (interface{}, error) {
 }
 func reserveUpdatedEventParse(eventLog types.Log) (interface{}, error) {
 	retval := ReserveDataUpdatedEventData{}
-	fmt.Print(retval)
+	//fmt.Print(retval)
 	return retval, nil
 }
 func collateralDisableEventParse(eventLog types.Log) (interface{}, error) {
 	retval := ReserveUsedAsCollateralDisabledEventData{}
-	fmt.Print(retval)
+	//fmt.Print(retval)
 	return retval, nil
 }
 func collateralEnableEventParse(eventLog types.Log) (interface{}, error) {
 	retval := ReserveUsedAsCollateralEnabledEventData{}
-	fmt.Print(retval)
+	//fmt.Print(retval)
 	return retval, nil
 }
 func swapEventParse(eventLog types.Log) (interface{}, error) {
 	retval := SwapEventData{}
-	fmt.Print(retval)
+	//fmt.Print(retval)
 	return retval, nil
 }
 func unpausedEventParse(eventLog types.Log) (interface{}, error) {
