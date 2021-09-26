@@ -21,7 +21,8 @@ var (
 	fHeight     int64
 	fGet        int64
 	filecoinAPI *filecoinsquadron.FileCoinAPI
-	xland       *xlandteam.XlandTeam
+	xlandMap    map[string]*xlandteam.XlandTeam
+	payeeMap    map[string]bool
 	waitsecond  int
 )
 
@@ -91,7 +92,12 @@ func radar(chSig, chExit chan int) {
 	rpc := filecoinsquadron.NewRpc(Server, "/rpc/v0", "http", Token)
 	subs := filecoinsquadron.NewSubscribe(Server, "/rpc/v0", "ws", Token)
 	filecoinAPI = filecoinsquadron.NewFileCoinAPI(rpc, subs)
-	xland = xlandteam.NewXlandTeam(XlandServer)
+	xlandMap = make(map[string]*xlandteam.XlandTeam)
+	payeeMap = make(map[string]bool)
+	for t, xl := range targets {
+		xlandMap[t] = xlandteam.NewXlandTeam(xl)
+		payeeMap[t] = true
+	}
 
 	blocknotify := make(chan int64, 10)
 
@@ -194,7 +200,7 @@ func tipSetRadar(start, current int64) error {
 		}
 
 		for _, b := range tipset.Blocks {
-			msgs, err := filecoinAPI.PayeeRadarInBlock(Payee, b)
+			msgs, err := filecoinAPI.PayeeRadarInBlock(payeeMap, b)
 			if err != nil {
 				return fmt.Errorf("PayeeRadarInBlock Height(%v): %v", last, err)
 			}
@@ -204,6 +210,11 @@ func tipSetRadar(start, current int64) error {
 		}
 
 		for _, tx := range targets {
+			xland := xlandMap[tx.To]
+			if xland == nil {
+				log.Printf("Target(%v) no xland serve address", tx.To)
+				continue
+			}
 			err := xland.XlandSaveValue(tipset.Timestamp, tx.Value.String())
 			log.Printf("Block(%v), save value<%v-%v>\n", tipset.Height, tipset.Timestamp, tx.Value)
 			if err != nil {

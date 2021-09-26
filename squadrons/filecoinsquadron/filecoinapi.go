@@ -246,7 +246,7 @@ func (api *FileCoinAPI) GetBlockMsgs(blockid string) ([]MsgInfo, error) {
 	return targets, nil
 }
 
-func (api *FileCoinAPI) PayeeRadarInBlock(payee string, blockid string) ([]MsgInfo, error) {
+func (api *FileCoinAPI) PayeeRadarInBlock(payee map[string]bool, blockid string) ([]MsgInfo, error) {
 	targets := []MsgInfo{}
 
 	rpcBytes, err := api.ChainGetBlockMessages(blockid)
@@ -271,7 +271,7 @@ func (api *FileCoinAPI) PayeeRadarInBlock(payee string, blockid string) ([]MsgIn
 		if err != nil {
 			return nil, fmt.Errorf("BlsMessage[%d] To: %v", i, err)
 		}
-		if to == payee {
+		if payee[to] {
 			txhash, err := blsTxsJson.GetIndex(i).GetPath("CID", "/").String()
 			if err != nil {
 				return nil, fmt.Errorf("BlsMessage[%d] cid: %v", i, err)
@@ -306,7 +306,7 @@ func (api *FileCoinAPI) PayeeRadarInBlock(payee string, blockid string) ([]MsgIn
 		if err != nil {
 			return nil, fmt.Errorf("secpkMessage[%d] To: %v", i, err)
 		}
-		if to == payee {
+		if payee[to] {
 			txhash, err := secpkTxsJson.GetIndex(i).GetPath("CID", "/").String()
 			if err != nil {
 				return nil, fmt.Errorf("secpkMessage[%d] cid: %v", i, err)

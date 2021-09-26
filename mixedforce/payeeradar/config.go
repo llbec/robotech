@@ -8,24 +8,22 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 )
 
 const (
 	SERVERIP = "server"
-	XLAND    = "xland"
-	PAYEE    = "payee"
+	PAYEE    = "target"
 	TOKEN    = "token"
 )
 
 var (
-	Payee       string
-	Token       string
-	Server      string
-	XlandServer string
-	CtrlChan    chan int
-	cfg         *viper.Viper
+	Payee    string
+	Token    string
+	Server   string
+	CtrlChan chan int
+	cfg      *viper.Viper
+	targets  map[string]string
 )
 
 func LoadConfig(cfgpath string) {
@@ -34,12 +32,12 @@ func LoadConfig(cfgpath string) {
 	cfg.SetConfigName("xland")
 	cfg.SetConfigType("yaml")
 
-	cfg.WatchConfig()
+	/*cfg.WatchConfig()
 	cfg.OnConfigChange(func(e fsnotify.Event) {
 		fmt.Printf("Config file:%s Op:%s\nreload file:%s\n", e.Name, e.Op, e.Name)
 		readConfig()
 		showCfg()
-	})
+	})*/
 	readConfig()
 	showCfg()
 }
@@ -65,20 +63,28 @@ func readConfig() {
 	lock.Lock()
 	defer lock.Unlock()
 	Server = cfg.GetString(SERVERIP)
-	XlandServer = cfg.GetString(XLAND)
-	Payee = cfg.GetString(PAYEE)
 	Token = string(content)
+
+	targets = cfg.GetStringMapString(PAYEE)
 }
 
 func GeneratConfig(cfgpath string) error {
 	viper.Set(SERVERIP, "192.168.11.51:1235")
-	viper.Set(XLAND, "183.238.69.213:10001")
-	viper.Set(TOKEN, ".key/wallet.token")
-	viper.Set(PAYEE, "0x8d0214E7B831E814a3151196e1c0818873486D4B")
+	//viper.Set(XLAND, "183.238.69.213:10001")
+	viper.Set(TOKEN, "wallet.token")
+	ts := map[string]string{}
+	ts["0x8d0214E7B831E814a3151196e1c0818873486D4B"] = "183.238.69.213:10001"
+	ts["0xE5C585eDE6ae6527Edf4cce5223715FCD5d76d07"] = "183.238.69.213:10002"
+	viper.Set(PAYEE, ts)
 	path := filepath.Join(cfgpath, "xland.yaml")
 	return viper.WriteConfigAs(path)
 }
 
 func showCfg() {
-	fmt.Printf("Running:\n\tfilecoin node Token:%v\n\tfilecoin node host:%v\n\tXland host:%v\n\tPayee:%v\n", Token, Server, XlandServer, Payee)
+	fmt.Printf("Running:\n\tfilecoin node Token:%v\n\tfilecoin node host:%v\n",
+		Token,
+		Server)
+	for t, xl := range targets {
+		fmt.Printf("\t%v @ %v\n", t, xl)
+	}
 }
