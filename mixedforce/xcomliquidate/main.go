@@ -48,8 +48,6 @@ func main() {
 		return
 	}
 
-	Reserves = make(map[common.Address]*big.Int)
-
 	if fList {
 		//InitEnv(workDir)
 		//initAccounts()
@@ -60,6 +58,7 @@ func main() {
 
 	if fRun {
 		InitEnv(workDir)
+		initReserves()
 		initAccounts()
 		d := daemon.NewDaemon(DmPort, liquidateThread)
 		d.Run(filepath.Join(workDir, "run.log"))
@@ -104,6 +103,17 @@ func liquidation() {
 				usrDb.Delete(addr[:])
 			}
 		}
+	}
+}
+
+func initReserves() {
+	Reserves = make(map[common.Address]*big.Int)
+	assets, err := LendingPool.GetReservesList(nil)
+	if err != nil {
+		log.Panicf("GetReservesList: %v", err)
+	}
+	for _, asset := range assets {
+		Reserves[asset] = common.Big0
 	}
 }
 
@@ -159,12 +169,13 @@ func getUsrLiquidationData(usr common.Address) (common.Address, common.Address, 
 	return collateralAsset, debtAsset, debtBalance.Div(debtBalance, big.NewInt(2))
 }
 
-func liquidationAccount(usr common.Address) error {
+func liquidationAccount(usr common.Address) {
 	collateralAsset, debtAsset, debttocover := getUsrLiquidationData(usr)
-	fmt.Println(collateralAsset, debtAsset, usr, debttocover)
+	fmt.Println("liquidation execute", collateralAsset, debtAsset, usr, debttocover)
 	txOps, err := GetAuther(sKey)
 	if err != nil {
-		return err
+		log.Printf("liquidation - GetAuther: %v\n", err)
+		return
 	}
 	tx, err := FlashLiquidationAdp.Execute(
 		txOps,
@@ -177,11 +188,10 @@ func liquidationAccount(usr common.Address) error {
 		},
 	)
 	if err != nil {
-		return fmt.Errorf("liquidationCall failed: %v %v@%v %v err: %v", collateralAsset, debttocover, debtAsset, usr, err)
+		log.Printf("liquidationCall failed: %v %v@%v %v err: %v\n", collateralAsset, debttocover, debtAsset, usr, err)
 	} else {
-		log.Printf("liquidate(%v): %v@(%v - %v)", tx.Hash(), usr, collateralAsset, debttocover)
+		log.Printf("liquidate(%v): %v@(%v - %v)\n", tx.Hash(), usr, collateralAsset, debttocover)
 	}
-	return nil
 }
 
 func liquidateThread(chSig, chExit chan int) {
