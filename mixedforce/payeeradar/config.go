@@ -70,11 +70,10 @@ func readConfig() {
 
 func GeneratConfig(cfgpath string) error {
 	viper.Set(SERVERIP, "192.168.11.51:1235")
-	//viper.Set(XLAND, "183.238.69.213:10001")
 	viper.Set(TOKEN, "wallet.token")
 	ts := map[string]string{}
-	ts["0x8d0214E7B831E814a3151196e1c0818873486D4B"] = "183.238.69.213:10001"
-	ts["0xE5C585eDE6ae6527Edf4cce5223715FCD5d76d07"] = "183.238.69.213:10002"
+	ts["d0214E7B831E814a3151196e1c0818873486D4B"] = "183.238.69.213:10002"
+	ts["E5C585eDE6ae6527Edf4cce5223715FCD5d76d07"] = "183.238.69.213:10002"
 	viper.Set(PAYEE, ts)
 	path := filepath.Join(cfgpath, "xland.yaml")
 	return viper.WriteConfigAs(path)

@@ -87,8 +87,7 @@ HELP:
 	flag.Usage()
 }
 
-func radar(chSig, chExit chan int) {
-	waitsecond = 60
+func initEnv() {
 	rpc := filecoinsquadron.NewRpc(Server, "/rpc/v0", "http", Token)
 	subs := filecoinsquadron.NewSubscribe(Server, "/rpc/v0", "ws", Token)
 	filecoinAPI = filecoinsquadron.NewFileCoinAPI(rpc, subs)
@@ -98,8 +97,12 @@ func radar(chSig, chExit chan int) {
 		xlandMap[t] = xlandteam.NewXlandTeam(xl)
 		payeeMap[t] = true
 	}
+}
 
+func radar(chSig, chExit chan int) {
+	waitsecond = 60
 	blocknotify := make(chan int64, 10)
+	initEnv()
 
 	go watchHeight(blocknotify)
 
