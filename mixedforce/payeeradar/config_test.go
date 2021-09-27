@@ -44,6 +44,11 @@ func Test_Radar(t *testing.T) {
 			for _, m := range msgs {
 				targets[m.Cid] = m
 				fmt.Println("got one ", m.From, m.To, m.Value)
+				xland := xlandMap[m.To]
+				err := xland.XlandSaveValue(tipset.Timestamp, m.Value.String())
+				if err != nil {
+					t.Errorf(err.Error())
+				}
 			}
 		}
 	}
