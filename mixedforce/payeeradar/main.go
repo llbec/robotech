@@ -219,9 +219,14 @@ func tipSetRadar(start, current int64) error {
 				continue
 			}
 			err := xland.XlandSaveValue(tipset.Timestamp, tx.Value.String())
-			log.Printf("Block(%v), save value<%v-%v>\n", tipset.Height, tipset.Timestamp, tx.Value)
+			log.Printf("Block(%v), save value<%v-%v> @ %v\n",
+				tipset.Height,
+				tipset.Timestamp,
+				tx.Value,
+				tx.To,
+			)
 			if err != nil {
-				log.Printf("save value failed(%v)\n", err)
+				log.Printf("save value failed(%v) @ %v\n", err, tx.To)
 			}
 		}
 		log.Printf("Block(%v) match %v\n", tipset.Height, len(targets))
