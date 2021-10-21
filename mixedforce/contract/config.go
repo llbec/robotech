@@ -12,3 +12,11 @@ func ReadABI(abiFile string) error {
 	contractABI = string(f)
 	return nil
 }
+
+func ReadAddress(addrFile string) (string, error) {
+	f, err := ioutil.ReadFile(addrFile)
+	if err != nil {
+		return "", err
+	}
+	return string(f), nil
+}
