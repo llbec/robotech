@@ -132,7 +132,6 @@ func watchHeight(newHeight chan int64) {
 			time.Sleep(time.Duration(waitsecond) * time.Second)
 			continue
 		}
-		defer conn.Close()
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
@@ -146,6 +145,7 @@ func watchHeight(newHeight chan int64) {
 			}
 			newHeight <- height
 		}
+		conn.Close()
 	}
 }
 
