@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/spf13/viper"
@@ -63,7 +64,7 @@ func readConfig() {
 	lock.Lock()
 	defer lock.Unlock()
 	Server = cfg.GetString(SERVERIP)
-	Token = string(content)
+	Token = strings.Replace(string(content), "\n", "", -1)
 
 	targets = cfg.GetStringMapString(PAYEE)
 }
