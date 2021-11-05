@@ -205,7 +205,7 @@ func tipSetRadar(start, current int64) error {
 		for _, b := range tipset.Blocks {
 			msgs, err := filecoinAPI.PayeeRadarInBlock(payeeMap, b)
 			if err != nil {
-				return fmt.Errorf("PayeeRadarInBlock Height(%v): %v", last, err)
+				return fmt.Errorf("PayeeRadarInBlock Height(%v-%s): %v", last, b, err)
 			}
 			for _, m := range msgs {
 				targets[m.Cid] = m

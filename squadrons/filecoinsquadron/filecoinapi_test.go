@@ -3,13 +3,13 @@ package filecoinsquadron_test
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"strconv"
 	"testing"
 	"unsafe"
 
+	"github.com/bitly/go-simplejson"
 	"github.com/llbec/robotech/squadrons/filecoinsquadron"
+	"github.com/spf13/viper"
 )
 
 func Test_paramsforChainGetTipSetByHeight(t *testing.T) {
@@ -33,25 +33,42 @@ func Test_paramsforChainGetTipSetByHeight(t *testing.T) {
 	fmt.Println("rpc params:\n", *str)
 }
 
-func getToken() string {
-	f, err := os.Open("token")
-	if err != nil {
-		return ""
+func loadCfg() (cfg *viper.Viper, filAPI *filecoinsquadron.FileCoinAPI) {
+	cfg = viper.New()
+	cfg.AddConfigPath(".")
+	cfg.SetConfigName("test")
+	cfg.SetConfigType("yaml")
+	if err := cfg.ReadInConfig(); err != nil { // Handle errors reading the config file
+		panic(err)
 	}
-	defer f.Close()
-	content, err := ioutil.ReadAll(f)
-	if err != nil {
-		return ""
-	}
-	return string(content)
+	rpc := filecoinsquadron.NewRpc(cfg.GetString("nodeserver"), "/rpc/v0", "http", cfg.GetString("nodetoken"))
+	filAPI = filecoinsquadron.NewFileCoinAPI(rpc, nil)
+	return
 }
 
 func Test_BodyParse(t *testing.T) {
-	rpc := filecoinsquadron.NewRpc("192.168.11.51:1235", "/rpc/v0", "http", getToken())
-	filecoinAPI := filecoinsquadron.NewFileCoinAPI(rpc, nil)
+	_, filecoinAPI := loadCfg()
 	tipsetBuf, err := filecoinAPI.GetTipsetByHeight(1116849)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fmt.Print(tipsetBuf)
+}
+
+func Test_BlockMessage(t *testing.T) {
+	cfg, api := loadCfg()
+
+	rpcBytes, err := api.ChainGetBlockMessages(cfg.GetString("height"))
+	if err != nil {
+		t.Fatal("ChainGetBlockMessages ", err)
+	}
+
+	fmt.Println(string(rpcBytes))
+
+	rpcJson, err := simplejson.NewJson(rpcBytes)
+	if err != nil {
+		t.Fatal("NewJson ", err)
+	}
+
+	fmt.Println("json ", rpcJson)
 }
