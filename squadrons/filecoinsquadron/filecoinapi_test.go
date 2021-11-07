@@ -47,18 +47,18 @@ func loadCfg() (cfg *viper.Viper, filAPI *filecoinsquadron.FileCoinAPI) {
 }
 
 func Test_BodyParse(t *testing.T) {
-	_, filecoinAPI := loadCfg()
-	tipsetBuf, err := filecoinAPI.GetTipsetByHeight(1116849)
+	cfg, filecoinAPI := loadCfg()
+	tipsetBuf, err := filecoinAPI.GetTipsetByHeight(cfg.GetInt64("height"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Print(tipsetBuf)
+	fmt.Print(string(tipsetBuf))
 }
 
 func Test_BlockMessage(t *testing.T) {
 	cfg, api := loadCfg()
 
-	rpcBytes, err := api.ChainGetBlockMessages(cfg.GetString("height"))
+	rpcBytes, err := api.ChainGetBlockMessages(cfg.GetString("block"))
 	if err != nil {
 		t.Fatal("ChainGetBlockMessages ", err)
 	}
