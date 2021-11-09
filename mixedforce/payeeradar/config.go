@@ -16,9 +16,11 @@ const (
 	SERVERIP = "server"
 	PAYEE    = "target"
 	TOKEN    = "token"
+	RECLIMIT = "maxtry"
 )
 
 var (
+	recLimit int
 	Payee    string
 	Token    string
 	Server   string
@@ -32,6 +34,9 @@ func LoadConfig(cfgpath string) {
 	cfg.AddConfigPath(cfgpath)
 	cfg.SetConfigName("xland")
 	cfg.SetConfigType("yaml")
+
+	//default value
+	cfg.SetDefault(RECLIMIT, 3)
 
 	/*cfg.WatchConfig()
 	cfg.OnConfigChange(func(e fsnotify.Event) {
@@ -65,7 +70,7 @@ func readConfig() {
 	defer lock.Unlock()
 	Server = cfg.GetString(SERVERIP)
 	Token = strings.Replace(string(content), "\n", "", -1)
-
+	recLimit = cfg.GetInt(RECLIMIT)
 	targets = cfg.GetStringMapString(PAYEE)
 }
 
@@ -76,6 +81,7 @@ func GeneratConfig(cfgpath string) error {
 	ts["d0214E7B831E814a3151196e1c0818873486D4B"] = "183.238.69.213:10002"
 	ts["E5C585eDE6ae6527Edf4cce5223715FCD5d76d07"] = "183.238.69.213:10002"
 	viper.Set(PAYEE, ts)
+	viper.Set(RECLIMIT, 3)
 	path := filepath.Join(cfgpath, "xland.yaml")
 	return viper.WriteConfigAs(path)
 }

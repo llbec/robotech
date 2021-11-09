@@ -125,26 +125,33 @@ EXIT:
 }
 
 func watchHeight(newHeight chan int64) {
+	tryCount := 0
 	for {
+		if tryCount >= recLimit {
+			log.Println("Quit connect failed ", tryCount)
+			return
+		}
 		conn, err := filecoinAPI.ChainNotify()
-		if err != nil {
-			log.Println("ChainNotify:", err)
-			time.Sleep(time.Duration(waitsecond) * time.Second)
-			continue
-		}
-		for {
-			_, message, err := conn.ReadMessage()
-			if err != nil {
-				log.Println("ReadMessage:", err)
-				break
-			}
+		if err == nil {
+			tryCount = 0
+			for {
+				_, message, err := conn.ReadMessage()
+				if err != nil {
+					log.Println("ReadMessage:", err)
+					break
+				}
 
-			height, err := filecoinAPI.ReadHeightFromTipSet(message)
-			if err != nil {
-				log.Println("ReadHeightFromTipSet:", err)
+				height, err := filecoinAPI.ReadHeightFromTipSet(message)
+				if err != nil {
+					log.Println("ReadHeightFromTipSet:", err)
+					break
+				}
+				newHeight <- height
 			}
-			newHeight <- height
 		}
+		log.Println("ChainNotify:", err)
+		time.Sleep(time.Duration(waitsecond) * time.Second)
+		tryCount += 1
 		conn.Close()
 	}
 }
