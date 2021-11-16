@@ -20,6 +20,7 @@ var (
 	fQuit       bool
 	fHeight     int64
 	fGet        int64
+	fCheck      int64
 	filecoinAPI *filecoinsquadron.FileCoinAPI
 	xlandMap    map[string]*xlandteam.XlandTeam
 	payeeMap    map[string]bool
@@ -33,6 +34,7 @@ func init() {
 	//flag.StringVar(&fPath, "p", ".", "specify config file path. defult is \".\"")
 	flag.Int64Var(&fHeight, "n", math.MaxInt64, "start height. default is current block")
 	flag.Int64Var(&fGet, "g", math.MaxInt64, "Get Block")
+	flag.Int64Var(&fCheck, "c", math.MaxInt64, "Check height and send notifacation")
 
 	/*file := "./" + "running" + ".log"
 	logFile, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0766)
@@ -70,6 +72,11 @@ func main() {
 	if fGet != math.MaxInt64 {
 		LoadConfig(wd)
 		getTipSet()
+		return
+	}
+	if fCheck != math.MaxInt64 {
+		LoadConfig(wd)
+		checkTipSet(fCheck)
 		return
 	}
 	if fRun {
@@ -239,4 +246,49 @@ func tipSetRadar(start, current int64) error {
 		log.Printf("Block(%v) match %v\n", tipset.Height, len(targets))
 	}
 	return nil
+}
+
+func checkTipSet(height int64) {
+	targets := make(map[string]filecoinsquadron.MsgInfo)
+	tipsetBytes, err := filecoinAPI.GetTipsetByHeight(height)
+	if err != nil {
+		fmt.Printf("GetTipsetByHeight Height(%v): %v", height, err)
+		return
+	}
+
+	tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
+	if err != nil {
+		fmt.Printf("ReadTipSet Height(%v): %v", height, err)
+		return
+	}
+
+	for _, b := range tipset.Blocks {
+		msgs, err := filecoinAPI.PayeeRadarInBlock(payeeMap, b)
+		if err != nil {
+			fmt.Printf("PayeeRadarInBlock Height(%v-%s): %v", height, b, err)
+			return
+		}
+		for _, m := range msgs {
+			targets[m.Cid] = m
+		}
+	}
+
+	for _, tx := range targets {
+		xland := xlandMap[tx.To]
+		if xland == nil {
+			fmt.Printf("Target(%v) no xland serve address", tx.To)
+			continue
+		}
+		err := xland.XlandSaveValue(tipset.Timestamp, tx.Value.String())
+		fmt.Printf("Block(%v), save value<%v-%v> @ %v\n",
+			tipset.Height,
+			tipset.Timestamp,
+			tx.Value,
+			tx.To,
+		)
+		if err != nil {
+			fmt.Printf("save value failed(%v) @ %v\n", err, tx.To)
+		}
+	}
+	fmt.Printf("Block(%v) match %v\n", tipset.Height, len(targets))
 }
