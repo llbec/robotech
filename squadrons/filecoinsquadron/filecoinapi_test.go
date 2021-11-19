@@ -70,7 +70,7 @@ func Test_PayeeRadarInBlock(t *testing.T) {
 		}
 		for _, m := range msgs {
 			ts[m.Cid] = m
-			fmt.Printf("Target(%v@%v): %v@%v\n", b, cfg.GetInt64("height"), m.To, m.Cid)
+			//fmt.Printf("Target(%v@%v): %v@%v\n", b, cfg.GetInt64("height"), m.To, m.Cid)
 		}
 	}
 	fmt.Println("result: ", ts)

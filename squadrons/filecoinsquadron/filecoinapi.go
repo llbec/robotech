@@ -95,13 +95,13 @@ func (api *FileCoinAPI) ChainNotify() (*websocket.Conn, error) {
 func (api *FileCoinAPI) ReadHeightFromTipSet(rpcBytes []byte) (int64, error) {
 	rpcJson, err := simplejson.NewJson(rpcBytes)
 	if err != nil {
-		return 0, fmt.Errorf("simplejson new: %v", err)
+		return 0, fmt.Errorf("ReadHeightFromTipSet NewJson new: %v", err)
 	}
 	tipSetJson := rpcJson.Get("params").GetIndex(1).GetIndex(0)
 	ts := tipSetJson.GetPath("Val", "Blocks").GetIndex(0).Get("Height")
 	height, err := ts.Int64()
 	if err != nil {
-		return 0, fmt.Errorf("timstamp: %v", err)
+		return 0, fmt.Errorf("ReadHeightFromTipSet timstamp: %v", err)
 	}
 	return height, nil
 }
@@ -109,7 +109,7 @@ func (api *FileCoinAPI) ReadHeightFromTipSet(rpcBytes []byte) (int64, error) {
 func (api *FileCoinAPI) ReadTipSet(rpcBytes []byte) (*TipSet, error) {
 	tipSetJson, err := simplejson.NewJson(rpcBytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ReadTipSet NewJson: %s", err)
 	}
 
 	tipSet := &TipSet{}
@@ -118,24 +118,23 @@ func (api *FileCoinAPI) ReadTipSet(rpcBytes []byte) (*TipSet, error) {
 	ts := b0.Get("Timestamp")
 	tipSet.Timestamp, err = ts.Int64()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ReadTipSet Timestamp: %s", err)
 	}
 	hs := b0.Get("Height")
 	tipSet.Height, err = hs.Int64()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ReadTipSet read Height: %s", err)
 	}
 
 	cidsJson := tipSetJson.GetPath("result", "Cids")
 	cidArray, err := cidsJson.Array()
 	if err != nil {
-		log.Fatalf("read Cids: %v\n", err)
-		return nil, err
+		return nil, fmt.Errorf("ReadTipSet read Cids: %v", err)
 	}
 	for i := range cidArray {
 		cidstr, err := cidsJson.GetIndex(i).Get("/").String()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("ReadTipSet read '/': %v", err)
 		}
 		tipSet.Blocks = append(tipSet.Blocks, cidstr)
 	}
@@ -169,41 +168,41 @@ func (api *FileCoinAPI) GetBlockMsgs(blockid string) ([]MsgInfo, error) {
 
 	rpcBytes, err := api.ChainGetBlockMessages(blockid)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetBlockMsgs ChainGetBlockMessages: %v", err)
 	}
 
 	rpcJson, err := simplejson.NewJson(rpcBytes)
 	if err != nil {
-		return nil, fmt.Errorf("simplejson new: %v", err)
+		return nil, fmt.Errorf("GetBlockMsgs NewJson: %v", err)
 	}
 
 	//BlsMessages
 	blsTxsJson := rpcJson.GetPath("result", "BlsMessages")
 	blsTxs, err := blsTxsJson.Array()
 	if err != nil {
-		return nil, fmt.Errorf("BlsMessages array: %v", err)
+		return nil, fmt.Errorf("GetBlockMsgs BlsMessages: %v", err)
 	}
 
 	for i := 0; i < len(blsTxs); i++ {
 		txhash, err := blsTxsJson.GetIndex(i).GetPath("CID", "/").String()
 		if err != nil {
-			return nil, fmt.Errorf("BlsMessage[%d] cid: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs BlsMessage[%d] cid: %v", i, err)
 		}
 		from, err := blsTxsJson.GetIndex(i).GetPath("From").String()
 		if err != nil {
-			return nil, fmt.Errorf("BlsMessage[%d] From: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs BlsMessage[%d] From: %v", i, err)
 		}
 		to, err := blsTxsJson.GetIndex(i).GetPath("To").String()
 		if err != nil {
-			return nil, fmt.Errorf("BlsMessage[%d] To: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs BlsMessage[%d] To: %v", i, err)
 		}
 		value, err := blsTxsJson.GetIndex(i).GetPath("Value").Bytes()
 		if err != nil {
-			return nil, fmt.Errorf("BlsMessage[%d] Value: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs BlsMessage[%d] Value: %v", i, err)
 		}
 		v, err := strconv.ParseFloat(string(value), 64)
 		if err != nil {
-			return nil, fmt.Errorf("BlsMessage[%d] ParseFloat: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs BlsMessage[%d] ParseFloat: %v", i, err)
 		}
 		vBig := big.NewFloat(v)
 		vBig.Quo(vBig, big.NewFloat(1e18))
@@ -214,31 +213,31 @@ func (api *FileCoinAPI) GetBlockMsgs(blockid string) ([]MsgInfo, error) {
 	secpkTxsJson := rpcJson.GetPath("result", "SecpkMessages")
 	txs, err := secpkTxsJson.Array()
 	if err != nil {
-		return nil, fmt.Errorf("secpkMessages array: %v", err)
+		return nil, fmt.Errorf("GetBlockMsgs SecpkMessages: %v", err)
 	}
 
 	for i := 0; i < len(txs); i++ {
 		to, err := secpkTxsJson.GetIndex(i).GetPath("Message", "To").String()
 		if err != nil {
-			return nil, fmt.Errorf("secpkMessage[%d] To: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs secpkMessage[%d] To: %v", i, err)
 		}
 		txhash, err := secpkTxsJson.GetIndex(i).GetPath("CID", "/").String()
 		if err != nil {
-			return nil, fmt.Errorf("secpkMessage[%d] cid: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs secpkMessage[%d] cid: %v", i, err)
 		}
 		value, err := secpkTxsJson.GetIndex(i).GetPath("Message", "Value").Bytes()
 		if err != nil {
-			return nil, fmt.Errorf("secpkMessage[%d] Value: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs secpkMessage[%d] Value: %v", i, err)
 		}
 		v, err := strconv.ParseFloat(string(value), 64)
 		if err != nil {
-			return nil, fmt.Errorf("secpkMessage[%d] ParseFloat: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs secpkMessage[%d] ParseFloat: %v", i, err)
 		}
 		vBig := big.NewFloat(v)
 		vBig.Quo(vBig, big.NewFloat(1e18))
 		from, err := secpkTxsJson.GetIndex(i).GetPath("Message", "From").String()
 		if err != nil {
-			return nil, fmt.Errorf("secpkMessage[%d] From: %v", i, err)
+			return nil, fmt.Errorf("GetBlockMsgs secpkMessage[%d] From: %v", i, err)
 		}
 		targets = append(targets, MsgInfo{Cid: txhash, From: from, To: to, Value: vBig})
 	}
@@ -256,37 +255,37 @@ func (api *FileCoinAPI) PayeeRadarInBlock(payee map[string]bool, blockid string)
 
 	rpcJson, err := simplejson.NewJson(rpcBytes)
 	if err != nil {
-		return nil, fmt.Errorf("simplejson new: %v", err)
+		return nil, fmt.Errorf("PayeeRadarInBlock NewJson: %v", err)
 	}
 
 	//BlsMessages
 	blsTxsJson := rpcJson.GetPath("result", "BlsMessages")
 	blsTxs, err := blsTxsJson.Array()
 	if err != nil {
-		return nil, fmt.Errorf("BlsMessages array: %v", err)
+		return nil, fmt.Errorf("PayeeRadarInBlock BlsMessages: %v", err)
 	}
 
 	for i := 0; i < len(blsTxs); i++ {
 		to, err := blsTxsJson.GetIndex(i).GetPath("To").String()
 		if err != nil {
-			return nil, fmt.Errorf("BlsMessage[%d] To: %v", i, err)
+			return nil, fmt.Errorf("PayeeRadarInBlock BlsMessage[%d] To: %v", i, err)
 		}
 		if payee[to] {
 			txhash, err := blsTxsJson.GetIndex(i).GetPath("CID", "/").String()
 			if err != nil {
-				return nil, fmt.Errorf("BlsMessage[%d] cid: %v", i, err)
+				return nil, fmt.Errorf("PayeeRadarInBlock BlsMessage[%d] cid: %v", i, err)
 			}
 			from, err := blsTxsJson.GetIndex(i).GetPath("From").String()
 			if err != nil {
-				return nil, fmt.Errorf("BlsMessage[%d] From: %v", i, err)
+				return nil, fmt.Errorf("PayeeRadarInBlock BlsMessage[%d] From: %v", i, err)
 			}
 			value, err := blsTxsJson.GetIndex(i).GetPath("Value").Bytes()
 			if err != nil {
-				return nil, fmt.Errorf("BlsMessage[%d] Value: %v", i, err)
+				return nil, fmt.Errorf("PayeeRadarInBlock BlsMessage[%d] Value: %v", i, err)
 			}
 			v, err := strconv.ParseFloat(string(value), 64)
 			if err != nil {
-				return nil, fmt.Errorf("BlsMessage[%d] ParseFloat: %v", i, err)
+				return nil, fmt.Errorf("PayeeRadarInBlock BlsMessage[%d] ParseFloat: %v", i, err)
 			}
 			vBig := big.NewFloat(v)
 			vBig.Quo(vBig, big.NewFloat(1e18))
@@ -298,32 +297,32 @@ func (api *FileCoinAPI) PayeeRadarInBlock(payee map[string]bool, blockid string)
 	secpkTxsJson := rpcJson.GetPath("result", "SecpkMessages")
 	txs, err := secpkTxsJson.Array()
 	if err != nil {
-		return nil, fmt.Errorf("secpkMessages array: %v", err)
+		return nil, fmt.Errorf("PayeeRadarInBlock SecpkMessages: %v", err)
 	}
 
 	for i := 0; i < len(txs); i++ {
 		to, err := secpkTxsJson.GetIndex(i).GetPath("Message", "To").String()
 		if err != nil {
-			return nil, fmt.Errorf("secpkMessage[%d] To: %v", i, err)
+			return nil, fmt.Errorf("PayeeRadarInBlock secpkMessage[%d] To: %v", i, err)
 		}
 		if payee[to] {
 			txhash, err := secpkTxsJson.GetIndex(i).GetPath("CID", "/").String()
 			if err != nil {
-				return nil, fmt.Errorf("secpkMessage[%d] cid: %v", i, err)
+				return nil, fmt.Errorf("PayeeRadarInBlock secpkMessage[%d] cid: %v", i, err)
 			}
 			value, err := secpkTxsJson.GetIndex(i).GetPath("Message", "Value").Bytes()
 			if err != nil {
-				return nil, fmt.Errorf("secpkMessage[%d] Value: %v", i, err)
+				return nil, fmt.Errorf("PayeeRadarInBlock secpkMessage[%d] Value: %v", i, err)
 			}
 			v, err := strconv.ParseFloat(string(value), 64)
 			if err != nil {
-				return nil, fmt.Errorf("secpkMessage[%d] ParseFloat: %v", i, err)
+				return nil, fmt.Errorf("PayeeRadarInBlock secpkMessage[%d] ParseFloat: %v", i, err)
 			}
 			vBig := big.NewFloat(v)
 			vBig.Quo(vBig, big.NewFloat(1e18))
 			from, err := secpkTxsJson.GetIndex(i).GetPath("Message", "From").String()
 			if err != nil {
-				return nil, fmt.Errorf("secpkMessage[%d] From: %v", i, err)
+				return nil, fmt.Errorf("PayeeRadarInBlock secpkMessage[%d] From: %v", i, err)
 			}
 			targets = append(targets, MsgInfo{Cid: txhash, From: from, To: to, Value: vBig})
 		}

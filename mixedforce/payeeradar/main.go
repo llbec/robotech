@@ -71,11 +71,13 @@ func main() {
 	}
 	if fGet != math.MaxInt64 {
 		LoadConfig(wd)
+		initEnv()
 		getTipSet()
 		return
 	}
 	if fCheck != math.MaxInt64 {
 		LoadConfig(wd)
+		initEnv()
 		checkTipSet(fCheck)
 		return
 	}
@@ -164,11 +166,9 @@ func watchHeight(newHeight chan int64) {
 }
 
 func getTipSet() {
-	rpc := filecoinsquadron.NewRpc(Server, "/rpc/v0", "http", Token)
-	filecoinAPI = filecoinsquadron.NewFileCoinAPI(rpc, nil)
 	tipsetBytes, err := filecoinAPI.GetTipsetByHeight(fGet)
 	if err != nil {
-		fmt.Printf("GetTipsetByHeight(%v): %v\n", fGet, err)
+		fmt.Printf("getTipSet(%v): %v\n", fGet, err)
 		return
 	}
 
@@ -176,7 +176,7 @@ func getTipSet() {
 
 	tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
 	if err != nil {
-		fmt.Printf("ReadTipSet Height(%v): %v\n", fGet, err)
+		fmt.Printf("getTipSet Height(%v): %v\n", fGet, err)
 		return
 	}
 
@@ -249,25 +249,23 @@ func tipSetRadar(start, current int64) error {
 }
 
 func checkTipSet(height int64) {
-	rpc := filecoinsquadron.NewRpc(Server, "/rpc/v0", "http", Token)
-	filecoinAPI = filecoinsquadron.NewFileCoinAPI(rpc, nil)
 	targets := make(map[string]filecoinsquadron.MsgInfo)
 	tipsetBytes, err := filecoinAPI.GetTipsetByHeight(height)
 	if err != nil {
-		fmt.Printf("GetTipsetByHeight Height(%v): %v", height, err)
+		fmt.Printf("checkTipSet Height(%v): %v", height, err)
 		return
 	}
 
 	tipset, err := filecoinAPI.ReadTipSet(tipsetBytes)
 	if err != nil {
-		fmt.Printf("ReadTipSet Height(%v): %v", height, err)
+		fmt.Printf("checkTipSet Height(%v): %v", height, err)
 		return
 	}
 
 	for _, b := range tipset.Blocks {
 		msgs, err := filecoinAPI.PayeeRadarInBlock(payeeMap, b)
 		if err != nil {
-			fmt.Printf("PayeeRadarInBlock Height(%v-%s): %v", height, b, err)
+			fmt.Printf("checkTipSet Height(%v-%s): %v", height, b, err)
 			return
 		}
 		for _, m := range msgs {
