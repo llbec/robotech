@@ -17,9 +17,11 @@ const (
 	PAYEE    = "target"
 	TOKEN    = "token"
 	RECLIMIT = "maxtry"
+	DELAY    = "delay"
 )
 
 var (
+	blkDelay int64
 	recLimit int
 	Payee    string
 	Token    string
@@ -72,6 +74,7 @@ func readConfig() {
 	Token = strings.Replace(string(content), "\n", "", -1)
 	recLimit = cfg.GetInt(RECLIMIT)
 	targets = cfg.GetStringMapString(PAYEE)
+	blkDelay = cfg.GetInt64(DELAY)
 }
 
 func GeneratConfig(cfgpath string) error {

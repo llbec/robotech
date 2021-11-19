@@ -118,11 +118,14 @@ func radar(chSig, chExit chan int) {
 	for {
 		select {
 		case current := <-blocknotify:
-			err := tipSetRadar(fHeight, current)
-			if err != nil {
-				log.Println(err)
-			} else {
-				fHeight = current + 1
+			ready := current - blkDelay
+			if ready >= fHeight {
+				err := tipSetRadar(fHeight, ready)
+				if err != nil {
+					log.Println(err)
+				} else {
+					fHeight = ready + 1
+				}
 			}
 		case <-chSig:
 			goto EXIT
@@ -277,6 +280,12 @@ func checkTipSet(height int64) {
 		xland := xlandMap[tx.To]
 		if xland == nil {
 			fmt.Printf("Target(%v) no xland serve address", tx.To)
+			continue
+		}
+		fmt.Printf("Input yes or no ... \n")
+		var confirm string
+		fmt.Scanln(&confirm)
+		if confirm != "yes" {
 			continue
 		}
 		err := xland.XlandSaveValue(tipset.Timestamp, tx.Value.String())
