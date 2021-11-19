@@ -249,6 +249,8 @@ func tipSetRadar(start, current int64) error {
 }
 
 func checkTipSet(height int64) {
+	rpc := filecoinsquadron.NewRpc(Server, "/rpc/v0", "http", Token)
+	filecoinAPI = filecoinsquadron.NewFileCoinAPI(rpc, nil)
 	targets := make(map[string]filecoinsquadron.MsgInfo)
 	tipsetBytes, err := filecoinAPI.GetTipsetByHeight(height)
 	if err != nil {
