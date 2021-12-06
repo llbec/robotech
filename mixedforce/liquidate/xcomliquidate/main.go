@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/llbec/robotech/armory/contract"
 	"github.com/llbec/robotech/armory/flashloan"
 	"github.com/llbec/robotech/logistics/daemon"
+	"github.com/llbec/robotech/utils"
 )
 
 var (
@@ -20,6 +22,7 @@ var (
 	fList      bool
 	fRun       bool
 	fTerminate bool
+	sAccount   string
 )
 
 func init() {
@@ -27,6 +30,7 @@ func init() {
 	flag.BoolVar(&fList, "l", false, "list all assets price. default false")
 	flag.BoolVar(&fRun, "r", false, "Running fallback process. default false")
 	flag.BoolVar(&fTerminate, "t", false, "Terminate fallback process. default false")
+	flag.StringVar(&sAccount, "a", "", "read account reserves data")
 }
 
 func main() {
@@ -49,10 +53,17 @@ func main() {
 	}
 
 	if fList {
-		//InitEnv(workDir)
-		//initAccounts()
-		d := daemon.NewDaemon(DmPort, nil)
-		d.Input(1)
+		InitEnv(workDir)
+		initReserves()
+		showReserves()
+		return
+	}
+
+	if sAccount != "" {
+		InitEnv(workDir)
+		initReserves()
+		updatePrice()
+		showAccount(sAccount)
 		return
 	}
 
@@ -74,6 +85,66 @@ func showDebtors() {
 	for account, amount := range debtors {
 		count += 1
 		fmt.Printf("****** %v: %v - %v\n", count, account, amount)
+	}
+}
+
+func getAssetSymbol(asset string) string {
+	erc20, _ := contract.NewContract(asset, rpcURL, "erc20.abi")
+	var out []interface{}
+	erc20.ContractCaller.Contract.Call(nil, &out, "symbol")
+	return fmt.Sprintf("%v", out[0])
+}
+
+func showReserves() {
+	updatePrice()
+	for asset, price := range Reserves {
+		fmt.Printf(
+			"%v\t%7v: %v\n",
+			asset,
+			getAssetSymbol(asset.String()),
+			utils.BigToRecognizable(price, 8))
+	}
+}
+
+func showAccount(account string) {
+	usr := common.HexToAddress(account)
+	aData, err := LendingPool.GetUserAccountData(nil, usr)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf(
+		"%v status:\n\tHealth: %v\n\tCollateral(%v)-Debt(%v)\n\tAvailable borrow: %v\n",
+		account,
+		utils.BigToRecognizable(aData.HealthFactor, 18),
+		utils.BigToRecognizable(aData.TotalCollateralETH, 8),
+		utils.BigToRecognizable(aData.TotalDebtETH, 8),
+		utils.BigToRecognizable(aData.AvailableBorrowsETH, 8),
+	)
+	for asset, price := range Reserves {
+		accountReserve, err := ProtocaldataProvider.GetUserReserveData(nil, asset, usr)
+		if err != nil {
+			fmt.Printf("GetUserReserveData(%v,%v) %v\n", asset, usr, err)
+			continue
+		}
+		if accountReserve.CurrentATokenBalance.Cmp(big.NewInt(0)) == 0 &&
+			accountReserve.CurrentStableDebt.Cmp(big.NewInt(0)) == 0 &&
+			accountReserve.CurrentVariableDebt.Cmp(big.NewInt(0)) == 0 {
+			continue
+		}
+		balance := big.NewInt(1).Mul(accountReserve.CurrentATokenBalance, price)
+		sDebt := big.NewInt(1).Mul(accountReserve.CurrentStableDebt, price)
+		vDebt := big.NewInt(1).Mul(accountReserve.CurrentVariableDebt, price)
+		fmt.Printf(
+			"%7v:Deposit: %10v(%v)\tDebt: Stable%10v(%v)\tVariab%10v(%v)\n",
+			getAssetSymbol(asset.String()),
+			utils.BigToRecognizable(accountReserve.CurrentATokenBalance, 18),
+			utils.BigToRecognizable(balance, 8+18),
+			utils.BigToRecognizable(accountReserve.CurrentStableDebt, 18),
+			utils.BigToRecognizable(sDebt, 8+18),
+			utils.BigToRecognizable(accountReserve.CurrentVariableDebt, 18),
+			utils.BigToRecognizable(vDebt, 8+18),
+		)
 	}
 }
 
@@ -118,13 +189,23 @@ func initReserves() {
 }
 
 func updatePrice() {
-	for asset, lastPrice := range Reserves {
+	assets, err := LendingPool.GetReservesList(nil)
+	if err != nil {
+		log.Printf("GetReservesList: %v", err)
+	} else {
+		for _, asset := range assets {
+			if _, ok := Reserves[asset]; !ok {
+				Reserves[asset] = common.Big0
+			}
+		}
+	}
+	for asset, price := range Reserves {
 		newPrice, err := AaveOracle.GetAssetPrice(nil, asset)
 		if err != nil {
 			log.Printf("GetAssetPrice(%v) error: %v\n", asset, err)
 			continue
 		}
-		if newPrice.Cmp(lastPrice) != 0 {
+		if newPrice.Cmp(price) != 0 {
 			Reserves[asset] = newPrice
 		}
 	}

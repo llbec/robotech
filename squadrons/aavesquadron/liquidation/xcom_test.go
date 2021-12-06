@@ -65,13 +65,20 @@ func Test_AccountStatus(t *testing.T) {
 	debtBalance := big.NewInt(0)
 	debtWorth := big.NewInt(0)
 
-	usr := common.HexToAddress("0x1ae3211e249fEBFE34359c885e8c4127b86b2324")
+	usr := common.HexToAddress("0x3d095f92152a37c6b0e84707d48080c807126a2c")
 	initEnv()
 	account, err := Contracts.LendingPool.GetUserAccountData(nil, usr)
 	if err != nil {
 		t.Error(err)
 	}
-	fmt.Println(account)
+	fmt.Printf(
+		"%v status:\n\tHealth: %v\n\tCollateral(%v)-Debt(%v)\n\tAvailable borrow: %v\n",
+		usr,
+		account.HealthFactor,
+		account.TotalCollateralETH,
+		account.TotalDebtETH,
+		account.AvailableBorrowsETH,
+	)
 
 	for s, reserve := range Reserves {
 		accountReserve, err := Contracts.ProtocaldataProvider.GetUserReserveData(nil, reserve, usr)

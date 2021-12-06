@@ -53,7 +53,8 @@ func InitEnv(dir string) {
 		panic(err)
 	}
 
-	Client, err = ethclient.Dial(viper.GetString(RPC))
+	rpcURL = viper.GetString(RPC)
+	Client, err = ethclient.Dial(rpcURL)
 	if err != nil {
 		panic(err)
 	}

@@ -24,6 +24,7 @@ var (
 	LiquidatePeroid      int64
 	BlockPeroid          int64
 	sKey                 string
+	rpcURL               string
 )
 
 var (
