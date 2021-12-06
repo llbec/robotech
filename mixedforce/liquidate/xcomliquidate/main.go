@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -88,20 +89,24 @@ func showDebtors() {
 	}
 }
 
-func getAssetSymbol(asset string) string {
+func getAsset(asset string) (string, int) {
 	erc20, _ := contract.NewContract(asset, rpcURL, "erc20.abi")
 	var out []interface{}
 	erc20.ContractCaller.Contract.Call(nil, &out, "symbol")
-	return fmt.Sprintf("%v", out[0])
+	var out1 []interface{}
+	erc20.ContractCaller.Contract.Call(nil, &out1, "decimals")
+	d, _ := strconv.Atoi(fmt.Sprintf("%v", out1[0]))
+	return fmt.Sprintf("%v", out[0]), d
 }
 
 func showReserves() {
 	updatePrice()
 	for asset, price := range Reserves {
+		symbol, _ := getAsset(asset.String())
 		fmt.Printf(
 			"%v\t%7v: %v\n",
 			asset,
-			getAssetSymbol(asset.String()),
+			symbol,
 			utils.BigToRecognizable(price, 8))
 	}
 }
@@ -114,7 +119,7 @@ func showAccount(account string) {
 		return
 	}
 	fmt.Printf(
-		"%v status:\n\tHealth: %v\n\tCollateral(%v)-Debt(%v)\n\tAvailable borrow: %v\n",
+		"%s status:\n\tHealth: %.6f\n\tCollateral(%.6f)-Debt(%.6f)\n\tAvailable borrow: %.6f\n",
 		account,
 		utils.BigToRecognizable(aData.HealthFactor, 18),
 		utils.BigToRecognizable(aData.TotalCollateralETH, 8),
@@ -122,6 +127,7 @@ func showAccount(account string) {
 		utils.BigToRecognizable(aData.AvailableBorrowsETH, 8),
 	)
 	for asset, price := range Reserves {
+		symbol, decimals := getAsset(asset.String())
 		accountReserve, err := ProtocaldataProvider.GetUserReserveData(nil, asset, usr)
 		if err != nil {
 			fmt.Printf("GetUserReserveData(%v,%v) %v\n", asset, usr, err)
@@ -136,14 +142,14 @@ func showAccount(account string) {
 		sDebt := big.NewInt(1).Mul(accountReserve.CurrentStableDebt, price)
 		vDebt := big.NewInt(1).Mul(accountReserve.CurrentVariableDebt, price)
 		fmt.Printf(
-			"%7v:Deposit: %10v(%v)\tDebt: Stable%10v(%v)\tVariab%10v(%v)\n",
-			getAssetSymbol(asset.String()),
-			utils.BigToRecognizable(accountReserve.CurrentATokenBalance, 18),
-			utils.BigToRecognizable(balance, 8+18),
-			utils.BigToRecognizable(accountReserve.CurrentStableDebt, 18),
-			utils.BigToRecognizable(sDebt, 8+18),
-			utils.BigToRecognizable(accountReserve.CurrentVariableDebt, 18),
-			utils.BigToRecognizable(vDebt, 8+18),
+			"%9s:Deposit: %10.6f(%f)\tDebt: Stable%10.6f(%f)\tVariab%10f(%f)\n",
+			symbol,
+			utils.BigToRecognizable(accountReserve.CurrentATokenBalance, decimals),
+			utils.BigToRecognizable(balance, 8+decimals),
+			utils.BigToRecognizable(accountReserve.CurrentStableDebt, decimals),
+			utils.BigToRecognizable(sDebt, 8+decimals),
+			utils.BigToRecognizable(accountReserve.CurrentVariableDebt, decimals),
+			utils.BigToRecognizable(vDebt, 8+decimals),
 		)
 	}
 }
