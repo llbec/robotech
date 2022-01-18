@@ -107,7 +107,7 @@ func startInfo() uint64 {
 	if err != nil {
 		panic(fmt.Errorf("usrBalance: %v", err.Error()))
 	}
-	fmt.Printf("Thread(%v) start at Chain(%v) from height %v\n%v balance is %.6f",
+	fmt.Printf("Thread(%v) start at Chain(%v) from height %v\n%v balance is %.6f\n",
 		os.Getpid(),
 		chainID.Uint64(),
 		height,
