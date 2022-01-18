@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path/filepath"
 	"time"
@@ -65,6 +66,13 @@ func thread(chSig, chExit chan int) {
 		select {
 		//new block, handle lending pool event
 		case <-tcBlk.C:
+			balance, err := usrBalance()
+			if err == nil {
+				log.Printf("%v balance is %.6f", usrAddress, utils.BigToRecognizable(balance, 18))
+				if balance.Cmp(big.NewInt(0)) <= 0 {
+					goto EXIT
+				}
+			}
 			tcBlk.Stop()
 			height, err := rpcClient.GetHTTPClient().BlockNumber(context.Background())
 			if err == nil && curHeight < height {

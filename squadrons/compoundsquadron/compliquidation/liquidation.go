@@ -16,8 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/llbec/robotech/armory/client"
 	"github.com/llbec/robotech/armory/compound"
-	"github.com/llbec/robotech/armory/ethchain"
 	"github.com/llbec/robotech/armory/flashloan"
 	"github.com/llbec/robotech/logistics/db"
 	"github.com/llbec/robotech/squadrons/compoundsquadron/ctokenevent"
@@ -43,7 +43,7 @@ func (p HealthList) Len() int           { return len(p) }
 func (p HealthList) Less(i, j int) bool { return p[i].Health.Cmp(p[j].Health) < 0 }
 
 type CompLiquidation struct {
-	Chain *ethchain.EthChain
+	Chain client.Client
 	//CTokens   map[string]*compound.CToken
 	CStroller *compound.CompTroller
 	FlashLoan *flashloan.CompoundLiquidation
@@ -82,7 +82,7 @@ func NewReadOnce(rpc, troller, flash string, tsd *big.Float) *CompLiquidation {
 	}
 
 	return &CompLiquidation{
-		Chain:     &ethchain.EthChain{ReadClient: rpcclient},
+		Chain:     client.NewEthChain(rpc, rpc),
 		CStroller: tc,
 		FlashLoan: flc,
 		Oracle:    oc,
@@ -92,10 +92,6 @@ func NewReadOnce(rpc, troller, flash string, tsd *big.Float) *CompLiquidation {
 
 func NewLiquidation(rpc, ws, troller, flash string, tsd *big.Float) *CompLiquidation {
 	rpcclient, err := ethclient.Dial(rpc)
-	if err != nil {
-		log.Panic(err)
-	}
-	wsclient, err := ethclient.Dial(ws)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -117,7 +113,7 @@ func NewLiquidation(rpc, ws, troller, flash string, tsd *big.Float) *CompLiquida
 	}
 
 	return &CompLiquidation{
-		Chain:     &ethchain.EthChain{ReadClient: rpcclient, SubsClient: wsclient},
+		Chain:     client.NewEthChain(rpc, ws),
 		CStroller: tc,
 		FlashLoan: flc,
 		Oracle:    oc,
@@ -156,7 +152,7 @@ func (l *CompLiquidation) CheckAccount(address common.Address) int {
 }
 
 func (l *CompLiquidation) GetAccountSnapshot(account, ctoken common.Address) (*Asset, *Asset, error) {
-	c, err := compound.NewCToken(ctoken, l.Chain.ReadClient)
+	c, err := compound.NewCToken(ctoken, l.Chain.GetHTTPClient())
 	if err != nil {
 		return nil, nil, fmt.Errorf("NewCToken(%v):%v", ctoken, err)
 	}
@@ -299,7 +295,7 @@ func (l *CompLiquidation) LiquidationDebtor(address common.Address) error {
 
 func (l *CompLiquidation) loadDebtors(ch chan uint64, markets []common.Address) {
 	//get currunt height
-	height, err := l.Chain.ReadClient.BlockNumber(context.Background())
+	height, err := l.Chain.GetHTTPClient().BlockNumber(context.Background())
 	if err != nil {
 		log.Fatal("BlockNumber ", err)
 	}
@@ -319,7 +315,7 @@ func (l *CompLiquidation) loadDebtors(ch chan uint64, markets []common.Address) 
 			ToBlock:   end,
 		}
 		log.Printf("%v@%v\n", start, end)
-		logs, err := l.Chain.ReadClient.FilterLogs(context.Background(), query)
+		logs, err := l.Chain.GetHTTPClient().FilterLogs(context.Background(), query)
 		if err != nil {
 			log.Println("FilterLogs ", err)
 			continue
@@ -362,7 +358,7 @@ func (l *CompLiquidation) watchDebtor(markets []common.Address, start uint64, re
 		FromBlock: big.NewInt(int64(currentblock)),
 	}
 	logs := make(chan types.Log)
-	sub, err := l.Chain.SubsClient.SubscribeFilterLogs(context.Background(), query, logs)
+	sub, err := l.Chain.GetWSClient().SubscribeFilterLogs(context.Background(), query, logs)
 	if err != nil {
 		log.Printf("SubscribeFilterLogs: %v", err)
 		res <- currentblock
@@ -504,11 +500,11 @@ func (l *CompLiquidation) SetAuther(secretkey string) {
 	}
 
 	fromAddress := crypto.PubkeyToAddress(*publicKeyECDSA)
-	nonce, err := l.Chain.ReadClient.PendingNonceAt(context.Background(), fromAddress)
+	nonce, err := l.Chain.GetHTTPClient().PendingNonceAt(context.Background(), fromAddress)
 	if err != nil {
 		log.Fatal("InitEnv-PendingNonceAt ", err)
 	}
-	chainid, err := l.Chain.ReadClient.ChainID(context.Background())
+	chainid, err := l.Chain.GetHTTPClient().ChainID(context.Background())
 	if err != nil {
 		log.Fatal("InitEnv-ChainID ", err)
 	}
@@ -516,7 +512,7 @@ func (l *CompLiquidation) SetAuther(secretkey string) {
 	if err != nil {
 		log.Fatal("InitEnv-NewKeyedTransactorWithChainID ", err)
 	}
-	gasPrice, err := l.Chain.ReadClient.SuggestGasPrice(context.Background())
+	gasPrice, err := l.Chain.GetHTTPClient().SuggestGasPrice(context.Background())
 	if err != nil {
 		log.Fatal("InitEnv-SuggestGasPrice ", err)
 	}

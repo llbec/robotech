@@ -17,7 +17,7 @@ func handleBlock(from, to int64) {
 		if end > to {
 			end = to
 		}
-		log.Printf("sync block from %v to %v\n", start, end)
+		log.Printf("block from %v to %v\n", start, end)
 		query := ethereum.FilterQuery{
 			Addresses: []common.Address{common.HexToAddress(contract)},
 			FromBlock: big.NewInt(int64(start)),

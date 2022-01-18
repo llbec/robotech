@@ -125,7 +125,7 @@ func Test_LiquidationAccount(t *testing.T) {
 
 func Test_GetZero(t *testing.T) {
 	ld := testEnv()
-	ctoken, err := compound.NewCToken(common.HexToAddress("0x5545153ccfca01fbd7dd11c0b23ba694d9509a6f"), ld.Chain.ReadClient)
+	ctoken, err := compound.NewCToken(common.HexToAddress("0x5545153ccfca01fbd7dd11c0b23ba694d9509a6f"), ld.Chain.GetHTTPClient())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func Test_Prices(t *testing.T) {
 		fmt.Printf("%v: %v\n", name, p)
 	}
 	str := "fHT"
-	ctoken, err := compound.NewCToken(common.HexToAddress(tokens[str]), ld.Chain.ReadClient)
+	ctoken, err := compound.NewCToken(common.HexToAddress(tokens[str]), ld.Chain.GetHTTPClient())
 	if err != nil {
 		t.Fatalf("NewCToken(%v):%v\n", str, err)
 	}
