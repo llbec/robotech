@@ -1,1 +1,2 @@
-.abi
+*.abi
+temp_test.go

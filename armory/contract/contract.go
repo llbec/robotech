@@ -52,8 +52,29 @@ func bindContract(address common.Address, caller bind.ContractCaller, transactor
 	return bind.NewBoundContract(address, parsed, caller, transactor, filterer), nil
 }
 
-func NewContract(address, url, abiFile string) (*Contract, error) {
+func ConnectByABI(address, url, abiFile string) (*Contract, error) {
 	err := loadABI(abiFile)
+	if err != nil {
+		return nil, err
+	}
+	client, err := ethclient.Dial(url)
+	if err != nil {
+		return nil, err
+	}
+	backend := bind.ContractBackend(client)
+	contract, err := bindContract(common.HexToAddress(address), backend, backend, backend)
+	if err != nil {
+		return nil, err
+	}
+	return &Contract{
+		ContractCaller:     ContractCaller{Contract: contract},
+		ContractTransactor: ContractTransactor{Contract: contract},
+		ContractFilterer:   ContractFilterer{Contract: contract},
+	}, nil
+}
+
+func ConnectByInterface(address, url, ifFile string) (*Contract, error) {
+	err := ReadInterfaces(ifFile)
 	if err != nil {
 		return nil, err
 	}

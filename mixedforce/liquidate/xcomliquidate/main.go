@@ -90,7 +90,7 @@ func showDebtors() {
 }
 
 func getAsset(asset string) (string, int) {
-	erc20, _ := contract.NewContract(asset, rpcURL, "erc20.abi")
+	erc20, _ := contract.ConnectByABI(asset, rpcURL, "erc20.abi")
 	var out []interface{}
 	erc20.ContractCaller.Contract.Call(nil, &out, "symbol")
 	var out1 []interface{}
