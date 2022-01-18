@@ -36,6 +36,7 @@ var (
 	lendingPool *aave.LendingPool
 	atoken      *aave.AToken
 	rpcClient   client.Client
+	skey        string
 )
 
 func readConfig() {
@@ -69,7 +70,7 @@ func envInit() (err error) {
 	return
 }
 
-func GeneratConfig(cfgpath string) error {
+func generatConfig(cfgpath string) error {
 	viper.Set(RPC, "192.168.11.51:1235")
 	viper.Set(CONTRACT, "wallet.token")
 	viper.Set(ASSET, "")

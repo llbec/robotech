@@ -32,7 +32,7 @@ func depositLog(height uint64, logIndex uint, eventData interface{}) {
 }
 
 func withdraw(amount *big.Int) {
-	balance, err := atoken.BalanceOf(nil, common.HexToAddress(usrAddress))
+	balance, err := usrBalance()
 	if err != nil {
 		log.Printf("get balance failed: %v", err.Error())
 		return
@@ -41,7 +41,7 @@ func withdraw(amount *big.Int) {
 		amount = balance
 	}
 	if amount.Cmp(common.Big0) > 1 {
-		auth, err := rpcClient.GetAuther("", gasLimit)
+		auth, err := rpcClient.GetAuther(skey, gasLimit)
 		if err != nil {
 			log.Printf("getAuther failed: %v", err.Error())
 			return
@@ -53,4 +53,8 @@ func withdraw(amount *big.Int) {
 			log.Printf("withdraw %v @ %v\n", amount, tx.Hash())
 		}
 	}
+}
+
+func usrBalance() (*big.Int, error) {
+	return atoken.BalanceOf(nil, common.HexToAddress(usrAddress))
 }

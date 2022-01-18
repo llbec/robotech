@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/llbec/robotech/logistics/daemon"
+	"github.com/llbec/robotech/utils"
 )
 
 func init() {
@@ -24,9 +25,15 @@ func main() {
 		return
 	}
 
+	if fInit {
+		generatConfig(workDir)
+		return
+	}
+
 	if fRun {
 		loadConfig(workDir)
 		prepare()
+		inputKey()
 		d := daemon.NewDaemon(6960, thread)
 		d.Run(filepath.Join(workDir, "run.log"))
 		return
@@ -48,19 +55,6 @@ func prepare() {
 		fmt.Println(err.Error())
 		os.Exit(0)
 	}
-}
-
-func startInfo() uint64 {
-	height, err := rpcClient.GetHTTPClient().BlockNumber(context.Background())
-	if err != nil {
-		panic(fmt.Errorf("BlockNumber: %v", err.Error()))
-	}
-	chainID, err := rpcClient.GetHTTPClient().ChainID(context.Background())
-	if err != nil {
-		panic(fmt.Errorf("ChainID: %v", err.Error()))
-	}
-	fmt.Printf("Thread(%v) start at Chain(%v) from height %v\n", os.Getpid(), chainID.Uint64(), height)
-	return height
 }
 
 func thread(chSig, chExit chan int) {
@@ -90,4 +84,32 @@ func thread(chSig, chExit chan int) {
 	}
 EXIT:
 	chExit <- 1
+}
+
+func startInfo() uint64 {
+	height, err := rpcClient.GetHTTPClient().BlockNumber(context.Background())
+	if err != nil {
+		panic(fmt.Errorf("BlockNumber: %v", err.Error()))
+	}
+	chainID, err := rpcClient.GetHTTPClient().ChainID(context.Background())
+	if err != nil {
+		panic(fmt.Errorf("ChainID: %v", err.Error()))
+	}
+	balance, err := usrBalance()
+	if err != nil {
+		panic(fmt.Errorf("usrBalance: %v", err.Error()))
+	}
+	fmt.Printf("Thread(%v) start at Chain(%v) from height %v\n%v balance is %.6f",
+		os.Getpid(),
+		chainID.Uint64(),
+		height,
+		usrAddress,
+		utils.BigToRecognizable(balance, 18),
+	)
+	return height
+}
+
+func inputKey() {
+	fmt.Printf("Enter key...\n")
+	fmt.Scan(&skey)
 }

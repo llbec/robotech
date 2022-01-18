@@ -4,3 +4,5 @@ balaprice
 #running file
 key
 .lock
+
+*.yaml
