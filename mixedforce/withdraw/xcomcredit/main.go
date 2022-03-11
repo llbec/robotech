@@ -58,8 +58,47 @@ func prepare() {
 	}
 }
 
+func checkThread(chSig, chExit chan int) {
+	curHeight, balance := startInfo()
+	tcBlk := time.NewTicker(time.Duration(blockPeroid) * time.Second)
+	defer tcBlk.Stop()
+	if balance.Cmp(big.NewInt(0)) <= 0 {
+		goto EXIT
+	}
+	for {
+		select {
+		//timeout,check pool balance
+		case <-tcBlk.C:
+			tcBlk.Stop()
+			amount, err := poolBalance()
+			if err == nil {
+				log.Printf("%v balance is %.6f", usrAddress, utils.BigToRecognizable(amount, 18))
+				if balance.Cmp(big.NewInt(0)) <= 0 {
+					goto EXIT
+				}
+			}
+			height, err := rpcClient.GetHTTPClient().BlockNumber(context.Background())
+			if err == nil && curHeight < height {
+				handleBlock(int64(curHeight), int64(height))
+				curHeight = height
+			} else {
+				log.Printf("BlockNumber %v (%v): %v", curHeight, height, err)
+			}
+			tcBlk.Reset(time.Duration(blockPeroid) * time.Second)
+		//quit signal
+		case sig := <-chSig:
+			switch sig {
+			default:
+				goto EXIT
+			}
+		}
+	}
+EXIT:
+	chExit <- 1
+}
+
 func thread(chSig, chExit chan int) {
-	curHeight := startInfo()
+	curHeight, _ := startInfo()
 	tcBlk := time.NewTicker(time.Duration(blockPeroid) * time.Second)
 	defer tcBlk.Stop()
 	for {
@@ -94,7 +133,7 @@ EXIT:
 	chExit <- 1
 }
 
-func startInfo() uint64 {
+func startInfo() (uint64, *big.Int) {
 	height, err := rpcClient.GetHTTPClient().BlockNumber(context.Background())
 	if err != nil {
 		panic(fmt.Errorf("BlockNumber: %v", err.Error()))
@@ -114,7 +153,7 @@ func startInfo() uint64 {
 		usrAddress,
 		utils.BigToRecognizable(balance, 18),
 	)
-	return height
+	return height, balance
 }
 
 func inputKey() {

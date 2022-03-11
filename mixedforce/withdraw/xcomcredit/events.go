@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/llbec/robotech/armory/aave"
 	"github.com/llbec/robotech/squadrons/aavesquadron/lendingpoolevent"
 )
 
@@ -57,4 +58,12 @@ func withdraw(amount *big.Int) {
 
 func usrBalance() (*big.Int, error) {
 	return atoken.BalanceOf(nil, common.HexToAddress(usrAddress))
+}
+
+func poolBalance() (*big.Int, error) {
+	token, err := aave.NewAToken(common.HexToAddress(asset), rpcClient.GetHTTPClient())
+	if err != nil {
+		return common.Big0, err
+	}
+	return token.BalanceOf(nil, atAddr)
 }

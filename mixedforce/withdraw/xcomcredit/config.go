@@ -37,6 +37,7 @@ var (
 	atoken      *aave.AToken
 	rpcClient   client.Client
 	skey        string
+	atAddr      common.Address
 )
 
 func readConfig() {
@@ -63,7 +64,8 @@ func envInit() (err error) {
 		rpcClient.GetHTTPClient(),
 	); err == nil {
 		if data, err := lendingPool.GetReserveData(nil, common.HexToAddress(asset)); err == nil {
-			atoken, err = aave.NewAToken(data.ATokenAddress, rpcClient.GetHTTPClient())
+			atAddr = data.ATokenAddress
+			atoken, err = aave.NewAToken(atAddr, rpcClient.GetHTTPClient())
 			return err
 		}
 	}
