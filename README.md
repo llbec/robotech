@@ -16,13 +16,21 @@ if [ -d "/usr/local/go" ] ; then
         GOROOT="/usr/local/go"
         PATH="$GOROOT/bin:$PATH"
 fi
-# go proxy
-export GOPROXY=https://goproxy.io,direct
+
 ```
 
 ```
 go env -w GOPATH=$HOME/go
+go env -w GO111MODULE=on
+go env -w GOPROXY=https://goproxy.cn,direct
+go env -w GOPRIVATE=*.gitlab.com,*.gitee.com,*.coding.net
 ```
+
+unknown
+```
+go env -w GOSUMDB=“sum.golang.google.cn”
+```
+
 # install protoc
 
 [protoc](https://github.com/protocolbuffers/protobuf.git)

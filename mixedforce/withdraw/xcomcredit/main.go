@@ -40,6 +40,19 @@ func main() {
 		return
 	}
 
+	if fSimple {
+		loadConfig(workDir)
+		err := envInit()
+		if err != nil {
+			fmt.Println(err.Error())
+			os.Exit(0)
+		}
+		inputKey()
+		d := daemon.NewDaemon(6960, simpleThd)
+		d.Run(filepath.Join(workDir, "run.log"))
+		return
+	}
+
 	if fTerminate {
 		loadConfig(workDir)
 		d := daemon.NewDaemon(6960, nil)
@@ -58,7 +71,7 @@ func prepare() {
 	}
 }
 
-func checkThread(chSig, chExit chan int) {
+/*func checkThread(chSig, chExit chan int) {
 	curHeight, balance := startInfo()
 	tcBlk := time.NewTicker(time.Duration(blockPeroid) * time.Second)
 	defer tcBlk.Stop()
@@ -95,7 +108,7 @@ func checkThread(chSig, chExit chan int) {
 	}
 EXIT:
 	chExit <- 1
-}
+}*/
 
 func thread(chSig, chExit chan int) {
 	curHeight, _ := startInfo()
@@ -105,6 +118,7 @@ func thread(chSig, chExit chan int) {
 		select {
 		//new block, handle lending pool event
 		case <-tcBlk.C:
+			tcBlk.Stop()
 			balance, err := usrBalance()
 			if err == nil {
 				log.Printf("%v balance is %.6f", usrAddress, utils.BigToRecognizable(balance, 18))
@@ -112,13 +126,50 @@ func thread(chSig, chExit chan int) {
 					goto EXIT
 				}
 			}
-			tcBlk.Stop()
 			height, err := rpcClient.GetHTTPClient().BlockNumber(context.Background())
 			if err == nil && curHeight < height {
 				handleBlock(int64(curHeight), int64(height))
 				curHeight = height
 			} else {
 				log.Printf("BlockNumber %v (%v): %v", curHeight, height, err)
+			}
+			tcBlk.Reset(time.Duration(blockPeroid) * time.Second)
+		//quit signal
+		case sig := <-chSig:
+			switch sig {
+			default:
+				goto EXIT
+			}
+		}
+	}
+EXIT:
+	chExit <- 1
+}
+
+func simpleThd(chSig, chExit chan int) {
+	startInfo()
+	tcBlk := time.NewTicker(time.Duration(blockPeroid) * time.Second)
+	defer tcBlk.Stop()
+	for {
+		select {
+		//new block, handle lending pool event
+		case <-tcBlk.C:
+			tcBlk.Stop()
+			height, _ := rpcClient.GetHTTPClient().BlockNumber(context.Background())
+			amount, err := poolBalance()
+			if err != nil {
+				log.Printf("Block@ %v read pool balance failed: %v", height, err)
+			} else {
+				if amount.Cmp(big.NewInt(5e17)) > 0 {
+					balance, err := usrBalance()
+					if err == nil {
+						log.Printf("%v balance is %.6f", usrAddress, utils.BigToRecognizable(balance, 18))
+						if balance.Cmp(big.NewInt(0)) <= 0 {
+							goto EXIT
+						}
+						simpleWithdraw(amount, balance)
+					}
+				}
 			}
 			tcBlk.Reset(time.Duration(blockPeroid) * time.Second)
 		//quit signal

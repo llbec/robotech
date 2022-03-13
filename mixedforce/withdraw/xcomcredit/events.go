@@ -41,7 +41,7 @@ func withdraw(amount *big.Int) {
 	if amount.Cmp(balance) > 0 {
 		amount = balance
 	}
-	if amount.Cmp(common.Big0) > 1 {
+	if amount.Cmp(big.NewInt(5e17)) > 0 {
 		auth, err := rpcClient.GetAuther(skey, gasLimit)
 		if err != nil {
 			log.Printf("getAuther failed: %v", err.Error())
@@ -53,6 +53,23 @@ func withdraw(amount *big.Int) {
 		} else {
 			log.Printf("withdraw %v @ %v\n", amount, tx.Hash())
 		}
+	}
+}
+
+func simpleWithdraw(amount, balance *big.Int) {
+	if amount.Cmp(balance) > 0 {
+		amount = balance
+	}
+	auth, err := rpcClient.GetAuther(skey, gasLimit)
+	if err != nil {
+		log.Printf("getAuther failed: %v", err.Error())
+		return
+	}
+	tx, err := lendingPool.Withdraw(auth, common.HexToAddress(asset), amount, common.HexToAddress(usrAddress))
+	if err != nil {
+		log.Printf("withdraw %v failed: %v\n", amount, err)
+	} else {
+		log.Printf("withdraw %v @ %v\n", amount, tx.Hash())
 	}
 }
 
