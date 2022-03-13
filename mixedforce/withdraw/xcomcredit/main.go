@@ -169,6 +169,8 @@ func simpleThd(chSig, chExit chan int) {
 						}
 						simpleWithdraw(amount, balance)
 					}
+				} else {
+					log.Printf("@%v pool have no balance %v\n", height, utils.BigToRecognizable(amount, 18))
 				}
 			}
 			tcBlk.Reset(time.Duration(blockPeroid) * time.Second)
