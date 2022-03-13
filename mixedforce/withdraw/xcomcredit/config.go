@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"path/filepath"
 	"sync"
@@ -83,11 +84,12 @@ func generatConfig(cfgpath string) error {
 	return viper.WriteConfigAs(path)
 }
 
-/*func showCfg() {
-	fmt.Printf("Running:\n\tRPC:%v\n\tContract address:%v\n",
+func showCfg() {
+	fmt.Printf("Running:\n\tRPC:%v\n\tContract address:%v\n\tusr address:%v\n\n",
 		rpcURL,
-		contract)
-}*/
+		contract,
+		usrAddress)
+}
 
 func loadConfig(cfgpath string) {
 	cfg = viper.New()
@@ -99,5 +101,5 @@ func loadConfig(cfgpath string) {
 	//cfg.SetDefault(rpcURL, "")
 
 	readConfig()
-	//showCfg()
+	showCfg()
 }
