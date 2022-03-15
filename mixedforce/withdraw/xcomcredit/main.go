@@ -40,16 +40,11 @@ func main() {
 		return
 	}
 
-	if fSimple {
+	if fLoad {
 		loadConfig(workDir)
-		err := envInit()
-		if err != nil {
-			fmt.Println(err.Error())
-			os.Exit(0)
-		}
 		inputKey()
-		d := daemon.NewDaemon(6960, simpleThd)
-		d.Run(filepath.Join(workDir, "run.log"))
+		d := daemon.NewDaemon(6960, nil)
+		d.Input(1)
 		return
 	}
 
@@ -63,7 +58,9 @@ func main() {
 }
 
 func prepare() {
-	registerEvent()
+	if fDrop {
+		registerEvent()
+	}
 	err := envInit()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -111,7 +108,7 @@ EXIT:
 }*/
 
 func thread(chSig, chExit chan int) {
-	curHeight, _ := startInfo()
+	currentHeight, _ = startInfo()
 	tcBlk := time.NewTicker(time.Duration(blockPeroid) * time.Second)
 	defer tcBlk.Stop()
 	for {
@@ -119,24 +116,23 @@ func thread(chSig, chExit chan int) {
 		//new block, handle lending pool event
 		case <-tcBlk.C:
 			tcBlk.Stop()
-			balance, err := usrBalance()
-			if err == nil {
-				log.Printf("%v balance is %.6f", usrAddress, utils.BigToRecognizable(balance, 18))
-				if balance.Cmp(big.NewInt(0)) <= 0 {
+			if fDrop {
+				if !checkBlock() {
 					goto EXIT
 				}
 			}
-			height, err := rpcClient.GetHTTPClient().BlockNumber(context.Background())
-			if err == nil && curHeight < height {
-				handleBlock(int64(curHeight), int64(height))
-				curHeight = height
-			} else {
-				log.Printf("BlockNumber %v (%v): %v", curHeight, height, err)
+			if fRun {
+				if !getProcess() {
+					goto EXIT
+				}
 			}
 			tcBlk.Reset(time.Duration(blockPeroid) * time.Second)
-		//quit signal
+		//signal handle
 		case sig := <-chSig:
 			switch sig {
+			case 1: //set internal
+				tcBlk.Stop()
+				tcBlk.Reset(time.Duration(blockPeroid) * time.Second)
 			default:
 				goto EXIT
 			}
@@ -146,44 +142,48 @@ EXIT:
 	chExit <- 1
 }
 
-func simpleThd(chSig, chExit chan int) {
-	startInfo()
-	tcBlk := time.NewTicker(time.Duration(blockPeroid) * time.Second)
-	defer tcBlk.Stop()
-	for {
-		select {
-		//new block, handle lending pool event
-		case <-tcBlk.C:
-			tcBlk.Stop()
-			height, _ := rpcClient.GetHTTPClient().BlockNumber(context.Background())
-			amount, err := poolBalance()
-			if err != nil {
-				log.Printf("Block@ %v read pool balance failed: %v", height, err)
-			} else {
-				if amount.Cmp(big.NewInt(5e17)) > 0 {
-					balance, err := usrBalance()
-					if err == nil {
-						log.Printf("%v balance is %.6f", usrAddress, utils.BigToRecognizable(balance, 18))
-						if balance.Cmp(big.NewInt(0)) <= 0 {
-							goto EXIT
-						}
-						simpleWithdraw(amount, balance)
-					}
-				} else {
-					log.Printf("@%v pool have no balance %.6f\n", height, utils.BigToRecognizable(amount, 18))
-				}
-			}
-			tcBlk.Reset(time.Duration(blockPeroid) * time.Second)
-		//quit signal
-		case sig := <-chSig:
-			switch sig {
-			default:
-				goto EXIT
-			}
+func checkBlock() bool {
+	balance, err := usrBalance()
+	if err == nil {
+		log.Printf("%v balance is %.6f", usrAddress, utils.BigToRecognizable(balance, 18))
+		if balance.Cmp(big.NewInt(0)) <= 0 {
+			return false
 		}
 	}
-EXIT:
-	chExit <- 1
+	height, err := rpcClient.GetHTTPClient().BlockNumber(context.Background())
+	if err == nil && currentHeight < height {
+		handleBlock(int64(currentHeight), int64(height))
+		currentHeight = height
+	} else {
+		log.Printf("BlockNumber %v (%v): %v", currentHeight, height, err)
+	}
+	return true
+}
+
+func getProcess() bool {
+	height, _ := rpcClient.GetHTTPClient().BlockNumber(context.Background())
+	amount, err := poolBalance()
+	if err != nil {
+		log.Printf("Block@ %v read pool balance failed: %v", height, err)
+	} else {
+		if amount.Cmp(big.NewInt(1e18)) > 0 {
+			balance, err := usrBalance()
+			if err == nil {
+				log.Printf("%v balance is %.6f", usrAddress, utils.BigToRecognizable(balance, 18))
+				if balance.Cmp(big.NewInt(0)) <= 0 {
+					return false
+				}
+				simpleWithdraw(amount, balance)
+				balance, err = usrBalance()
+				if err == nil && balance.Cmp(big.NewInt(1e17)) < 0 {
+					return false
+				}
+			}
+		} else {
+			log.Printf("@%v pool have no balance %.6f\n", height, utils.BigToRecognizable(amount, 18))
+		}
+	}
+	return true
 }
 
 func startInfo() (uint64, *big.Int) {
@@ -210,6 +210,12 @@ func startInfo() (uint64, *big.Int) {
 }
 
 func inputKey() {
+	var skip string
+	fmt.Printf("Input y to set key\n")
+	fmt.Scan(&skip)
+	if skip != "y" {
+		return
+	}
 	fmt.Printf("Enter key...\n")
 	fmt.Scan(&skey)
 }

@@ -33,12 +33,13 @@ const (
 
 //state variable
 var (
-	cfg         *viper.Viper
-	lendingPool *aave.LendingPool
-	atoken      *aave.AToken
-	rpcClient   client.Client
-	skey        string
-	atAddr      common.Address
+	cfg           *viper.Viper
+	lendingPool   *aave.LendingPool
+	atoken        *aave.AToken
+	rpcClient     client.Client
+	skey          string
+	atAddr        common.Address
+	currentHeight uint64
 )
 
 func readConfig() {
@@ -85,10 +86,11 @@ func generatConfig(cfgpath string) error {
 }
 
 func showCfg() {
-	fmt.Printf("Running:\n\tRPC:%v\n\tContract address:%v\n\tusr address:%v\n\n",
+	fmt.Printf("Running:\n\tRPC:%v\n\tContract address:%v\n\tusr address:%v\n\tcheck period:%v\n",
 		rpcURL,
 		contract,
-		usrAddress)
+		usrAddress,
+		blockPeroid)
 }
 
 func loadConfig(cfgpath string) {
