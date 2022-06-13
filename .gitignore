@@ -28,6 +28,7 @@ vendor/
 #config file
 #*.yaml
 *.token
+.env
 
 #log file
 *.log

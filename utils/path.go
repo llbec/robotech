@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/joho/godotenv"
 )
 
 // Home returns the home directory for the executing user.
@@ -107,4 +109,15 @@ func LockPid(pid int, dir string) error {
 
 func UnLockPid(pid int, dir string) error {
 	return os.Remove(filepath.Join(dir, fmt.Sprintf("%d.lock", pid)))
+}
+
+func LocalEnv() error {
+	workDir, e := os.Getwd()
+	if e != nil {
+		return e
+	}
+	if err := godotenv.Load(filepath.Join(workDir, ".env")); err != nil {
+		return err
+	}
+	return nil
 }
