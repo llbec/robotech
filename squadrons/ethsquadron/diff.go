@@ -57,3 +57,54 @@ func (eth *EthSquadron) MakeDiffHeader(time, height uint64, diff *big.Int) *type
 func (eth *EthSquadron) CalcDifficulty(time uint64, parent *types.Header) *big.Int {
 	return ethash.CalcDifficulty(EthConfig, time, parent)
 }
+
+var (
+	expDiffPeriod = big.NewInt(100000)
+	big1          = big.NewInt(1)
+	big2          = big.NewInt(2)
+	big9          = big.NewInt(9)
+	bigMinus99    = big.NewInt(-99)
+)
+
+func (eth *EthSquadron) BombDiff(height *big.Int) *big.Int {
+	bombDiff := new(big.Int)
+	bombDelayFromParent := new(big.Int).Sub(big.NewInt(10_700_000), big1)
+
+	fakeBlockNumber := new(big.Int)
+	if height.Cmp(bombDelayFromParent) >= 0 {
+		fakeBlockNumber = fakeBlockNumber.Sub(height, bombDelayFromParent)
+	}
+	// for the exponential factor
+	periodCount := fakeBlockNumber
+	periodCount.Div(periodCount, expDiffPeriod)
+
+	// the exponential factor, commonly referred to as "the bomb"
+	// diff = diff + 2^(periodCount - 2)
+	if periodCount.Cmp(big1) > 0 {
+		bombDiff.Sub(periodCount, big2)
+		bombDiff.Exp(big2, bombDiff, nil)
+	}
+
+	return bombDiff
+}
+
+func (eth *EthSquadron) OffsetDiff(time uint64, parent *types.Header) *big.Int {
+	bigTime := new(big.Int).SetUint64(time)
+	bigParentTime := new(big.Int).SetUint64(parent.Time)
+	x := new(big.Int)
+
+	// (2 if len(parent_uncles) else 1) - (block_timestamp - parent_timestamp) // 9
+	x.Sub(bigTime, bigParentTime)
+	x.Div(x, big9)
+	if parent.UncleHash == types.EmptyUncleHash {
+		x.Sub(big1, x)
+	} else {
+		x.Sub(big2, x)
+	}
+
+	// max((2 if len(parent_uncles) else 1) - (block_timestamp - parent_timestamp) // 9, -99)
+	if x.Cmp(bigMinus99) < 0 {
+		x.Set(bigMinus99)
+	}
+	return x
+}
