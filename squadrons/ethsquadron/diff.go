@@ -68,6 +68,7 @@ var (
 
 func (eth *EthSquadron) BombDiff(height *big.Int) *big.Int {
 	bombDiff := new(big.Int)
+	//10-799-999
 	bombDelayFromParent := new(big.Int).Sub(big.NewInt(10_700_000), big1)
 
 	fakeBlockNumber := new(big.Int)

@@ -213,7 +213,7 @@ func schedule(height uint64) int {
 	step := uint64(10000)
 	vDiff := big.NewInt(0)
 	vCount := big.NewInt(0)
-	vDelta := big.NewInt(0)
+	vTime := big.NewFloat(0)
 	vBomb := big.NewInt(0)
 
 	preBlk, err := gEth.HeaderByNumber(curH - 1)
@@ -232,7 +232,7 @@ func schedule(height uint64) int {
 			vBomb.Add(vBomb, gEth.BombDiff(new(big.Int).SetUint64(curH)))
 			vDiff.Add(vDiff, block.Difficulty)
 			vCount.Add(vCount, big.NewInt(1))
-			vDelta.Add(vDelta, new(big.Int).Mul(new(big.Int).SetUint64(block.Time-preTime), big.NewInt(1000)))
+			vTime.Add(vTime, new(big.Float).Mul(new(big.Float).SetUint64(block.Time-preTime), big.NewFloat(1000)))
 			preTime = block.Time
 			curH += 1
 			if curH > height {
@@ -240,16 +240,16 @@ func schedule(height uint64) int {
 			}
 		}
 		vDiff.Div(vDiff, vCount)
-		vDelta.Div(vDelta, vCount)
+		vTime.Quo(vTime, new(big.Float).SetInt(vCount))
 		vBomb.Div(vBomb, vCount)
 		log.Printf(
-			"from %v total %v blocks, average difficulty is %v, average period is %v\n",
-			height,
+			"from %v total %v blocks, average difficulty is %v, average period is %v s\n",
+			curH-step,
 			vCount,
 			vDiff,
-			new(big.Int).Div(vDelta, big.NewInt(1000)),
+			new(big.Float).Quo(vTime, big.NewFloat(1000)),
 		)
-		log.Printf("average %v diff per mille second\n", new(big.Int).Div(vDiff, vDelta))
+		log.Printf("average %v diff per mille second\n", new(big.Float).Quo(new(big.Float).SetInt(vDiff), vTime))
 		log.Printf("average bomb is %v\n", vBomb)
 	}
 	return 0
