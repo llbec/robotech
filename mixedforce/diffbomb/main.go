@@ -1,16 +1,15 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"math/big"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
-	"github.com/llbec/robotech/logistics/daemon"
 	"github.com/llbec/robotech/squadrons/ethsquadron"
 	"github.com/llbec/robotech/utils"
+	"github.com/xuri/excelize/v2"
 )
 
 func init() {
@@ -25,23 +24,24 @@ func main() {
 	parseCmd()
 
 	if err := utils.LocalEnv(); err != nil {
-		log.Printf("env file error: %v\n", err)
+		fmt.Printf("env file error: %v\n", err)
 		os.Exit(-1)
 	}
 
-	workDir, e := os.Getwd()
+	/*workDir, e := os.Getwd()
 	if e != nil {
-		log.Printf("os.Getwd failed: %v\n", e)
+		fmt.Printf("os.Getwd failed: %v\n", e)
 		os.Exit(-2)
 	}
 
 	d := daemon.NewDaemon(6960, thread)
-	d.Run(filepath.Join(workDir, "run.log"))
+	d.Run(filepath.Join(workDir, "run.fmt"))*/
+	thread()
 }
 
-func thread(chSig, chExit chan int) {
+func thread( /*chSig, chExit chan int*/ ) {
 	gEth, _ = ethsquadron.NewEthSquadron(os.Getenv("RPC"))
-	log.Printf("new rpc at: %v\n", os.Getenv("RPC"))
+	fmt.Printf("new rpc at: %v\n", os.Getenv("RPC"))
 
 	if iHeight > 0 {
 		os.Exit(avrDiffs(iHeight))
@@ -52,7 +52,7 @@ func thread(chSig, chExit chan int) {
 
 	height, err := gEth.BlockNumber()
 	if err != nil {
-		log.Printf("BlockNumber: %v\n", err)
+		fmt.Printf("BlockNumber: %v\n", err)
 		os.Exit(-3)
 	}
 
@@ -68,6 +68,9 @@ func thread(chSig, chExit chan int) {
 	if fShedule {
 		os.Exit(schedule(height))
 	}
+	if fBomb {
+		os.Exit(bombDiff())
+	}
 
 	help()
 }
@@ -76,18 +79,18 @@ func thread(chSig, chExit chan int) {
 func presageDiff(height uint64) int {
 	block, err := gEth.HeaderByNumber(height)
 	if err != nil {
-		log.Printf("Block(%v): %v\n", height, err)
+		fmt.Printf("Block(%v): %v\n", height, err)
 		return -21
 	}
 	speed, ok := new(big.Int).SetString(os.Getenv("speed"), 10)
 	if !ok {
-		log.Printf("read speed error\n")
+		fmt.Printf("read speed error\n")
 		return -22
 	}
 	//target, err := strconv.ParseUint(os.Getenv("target"), 10, 64)
 	target, ok := new(big.Int).SetString(os.Getenv("target"), 10)
 	if !ok {
-		log.Printf("read target error\n")
+		fmt.Printf("read target error\n")
 		return -23
 	}
 	cur := gEth.MakeDiffHeader(block.Time, height, block.Difficulty)
@@ -107,10 +110,10 @@ func presageDiff(height uint64) int {
 		blockPeriod = new(big.Int).Div(diff, speed)
 		if blockPeriod.Cmp(max) > 0 {
 			max = blockPeriod
-			log.Printf("block %v at %v,next period %v\n", cur.Number, formatTime(int64(now)), blockPeriod)
+			fmt.Printf("block %v at %v,next period %v\n", cur.Number, formatTime(int64(now)), blockPeriod)
 		}
 	}
-	log.Printf("block %v at %v, next period is %v\n", cur.Number, formatTime(int64(now)), blockPeriod)
+	fmt.Printf("block %v at %v, next period is %v\n", cur.Number, formatTime(int64(now)), blockPeriod)
 	return 0
 }
 
@@ -126,30 +129,30 @@ func avrDiffs(height uint64) int {
 	vDelta := big.NewInt(0)
 	period, err := strconv.ParseUint(os.Getenv("Days"), 10, 64)
 	if err != nil {
-		log.Printf("read Days error: %v", err)
+		fmt.Printf("read Days error: %v", err)
 		return -11
 	}
 	blockPeriod, err := strconv.ParseUint(os.Getenv("blockPeriod"), 10, 64)
 	if err != nil {
-		log.Printf("read blockPeriod error: %v", err)
+		fmt.Printf("read blockPeriod error: %v", err)
 		return -12
 	}
 	period = period * 24 * 60 * 60
 	if height < (period / blockPeriod) {
-		log.Printf("height %v is too small\n", height)
+		fmt.Printf("height %v is too small\n", height)
 		return -13
 	}
 	start := height - (period / blockPeriod)
 	preBlk, err := gEth.HeaderByNumber(start - 1)
 	if err != nil {
-		log.Printf("Block(%v): %v\n", start-1, err)
+		fmt.Printf("Block(%v): %v\n", start-1, err)
 		return -14
 	}
 	preTime := preBlk.Time
 	for i := start; i <= height; i++ {
 		block, err := gEth.HeaderByNumber(i)
 		if err != nil {
-			log.Printf("Block(%v): %v\n", i, err)
+			fmt.Printf("Block(%v): %v\n", i, err)
 			continue
 		}
 		vDiff.Add(vDiff, block.Difficulty)
@@ -160,12 +163,12 @@ func avrDiffs(height uint64) int {
 	}
 	vDiff.Div(vDiff, vCount)
 	vDelta.Div(vDelta, vCount)
-	log.Printf("from %v total %v blocks, average difficulty is %v, average period is %v\n", height, vCount, vDiff, vDelta)
+	fmt.Printf("from %v total %v blocks, average difficulty is %v, average period is %v\n", height, vCount, vDiff, vDelta)
 	bp, ok := new(big.Int).SetString(os.Getenv("blockPeriod"), 10)
 	if ok {
-		log.Printf("%v diff per second at %v\n", new(big.Int).Div(vDiff, bp), bp)
+		fmt.Printf("%v diff per second at %v\n", new(big.Int).Div(vDiff, bp), bp)
 	}
-	log.Printf("average %v diff per second\n", new(big.Int).Div(vDiff, vDelta))
+	fmt.Printf("average %v diff per second\n", new(big.Int).Div(vDiff, vDelta))
 	return 0
 }
 
@@ -173,33 +176,33 @@ func avrDiffs(height uint64) int {
 func outTime(height, line uint64) int {
 	period, err := strconv.ParseUint(os.Getenv("Days"), 10, 64)
 	if err != nil {
-		log.Printf("read Days error: %v", err)
+		fmt.Printf("read Days error: %v", err)
 		return -31
 	}
 	blockPeriod, err := strconv.ParseUint(os.Getenv("blockPeriod"), 10, 64)
 	if err != nil {
-		log.Printf("read blockPeriod error: %v", err)
+		fmt.Printf("read blockPeriod error: %v", err)
 		return -32
 	}
 	period = period * 24 * 60 * 60
 	if height < (period / blockPeriod) {
-		log.Printf("height %v is too small\n", height)
+		fmt.Printf("height %v is too small\n", height)
 		return -33
 	}
 	start := height - (period / blockPeriod)
 	preBlk, err := gEth.HeaderByNumber(start - 1)
 	if err != nil {
-		log.Printf("Block(%v): %v\n", start-1, err)
+		fmt.Printf("Block(%v): %v\n", start-1, err)
 		return -34
 	}
 	for i := start; i <= height; i++ {
 		block, err := gEth.HeaderByNumber(i)
 		if err != nil {
-			log.Printf("Block(%v): %v\n", i, err)
+			fmt.Printf("Block(%v): %v\n", i, err)
 			return -35
 		}
 		if delta := block.Time - preBlk.Time; delta >= line {
-			log.Printf("block %v %v, use %v s\n", i, formatTime(int64(block.Time)), delta)
+			fmt.Printf("block %v %v, use %v s\n", i, formatTime(int64(block.Time)), delta)
 		}
 		preBlk = block
 	}
@@ -218,7 +221,7 @@ func schedule(height uint64) int {
 
 	preBlk, err := gEth.HeaderByNumber(curH - 1)
 	if err != nil {
-		log.Printf("Block(%v): %v\n", curH-1, err)
+		fmt.Printf("Block(%v): %v\n", curH-1, err)
 		return -41
 	}
 	preTime := preBlk.Time
@@ -226,7 +229,7 @@ func schedule(height uint64) int {
 		for i := uint64(0); i < step; i++ {
 			block, err := gEth.HeaderByNumber(curH)
 			if err != nil {
-				log.Printf("Block(%v): %v\n", curH, err)
+				fmt.Printf("Block(%v): %v\n", curH, err)
 				return -42
 			}
 			vBomb.Add(vBomb, gEth.BombDiff(new(big.Int).SetUint64(curH)))
@@ -242,15 +245,52 @@ func schedule(height uint64) int {
 		vDiff.Div(vDiff, vCount)
 		vTime.Quo(vTime, new(big.Float).SetInt(vCount))
 		vBomb.Div(vBomb, vCount)
-		log.Printf(
+		fmt.Printf(
 			"from %v total %v blocks, average difficulty is %v, average period is %v s\n",
 			curH-step,
 			vCount,
 			vDiff,
 			new(big.Float).Quo(vTime, big.NewFloat(1000)),
 		)
-		log.Printf("average %v diff per mille second\n", new(big.Float).Quo(new(big.Float).SetInt(vDiff), vTime))
-		log.Printf("average bomb is %v\n", vBomb)
+		fmt.Printf("average %v diff per mille second\n", new(big.Float).Quo(new(big.Float).SetInt(vDiff), vTime))
+		fmt.Printf("average bomb is %v\n", vBomb)
 	}
+	return 0
+}
+
+//5
+func bombDiff() int {
+	start := big.NewInt(13_773_000)
+	end, ok := new(big.Int).SetString(os.Getenv("end"), 10)
+	if !ok {
+		fmt.Printf("read end error\n")
+		return -51
+	}
+
+	maxDiff := big.NewInt(0)
+	f := excelize.NewFile()
+
+	// 创建一个工作表
+	//index := f.NewSheet("Sheet2")
+	// 设定单元格的值
+	f.SetCellValue("Sheet1", "B1", "Difficulty")
+	index := 2
+
+	for i := start; i.Cmp(end) < 0; i.Add(i, big.NewInt(1)) {
+		diff := gEth.BombDiff(i)
+		if diff.Cmp(maxDiff) > 0 {
+			maxDiff = diff
+			fmt.Printf("block %v, bomb difficulty is %v\n", i, diff)
+			f.SetCellValue("Sheet1", fmt.Sprintf("A%d", index), fmt.Sprintf("%v", i))
+			f.SetCellValue("Sheet1", fmt.Sprintf("B%d", index), fmt.Sprintf("%v", diff))
+			index++
+		}
+	}
+
+	if err := f.SaveAs("BombDifficulty.xlsx"); err != nil {
+		fmt.Println(err)
+		return -52
+	}
+
 	return 0
 }

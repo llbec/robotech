@@ -67,8 +67,11 @@ var (
 )
 
 func (eth *EthSquadron) BombDiff(height *big.Int) *big.Int {
+	if height.Cmp(big.NewInt(13_773_000)) < 0 {
+		return big.NewInt(0)
+	}
 	bombDiff := new(big.Int)
-	//10-799-999
+	//10-699-999
 	bombDelayFromParent := new(big.Int).Sub(big.NewInt(10_700_000), big1)
 
 	fakeBlockNumber := new(big.Int)
