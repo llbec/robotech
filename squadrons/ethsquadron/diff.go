@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -92,7 +93,7 @@ func (eth *EthSquadron) BombDiff(height *big.Int) *big.Int {
 	return bombDiff
 }
 
-func (eth *EthSquadron) OffsetDiff(time uint64, parent *types.Header) *big.Int {
+func (eth *EthSquadron) DifficultyIndex(time uint64, parent *types.Header) *big.Int {
 	bigTime := new(big.Int).SetUint64(time)
 	bigParentTime := new(big.Int).SetUint64(parent.Time)
 	x := new(big.Int)
@@ -111,4 +112,11 @@ func (eth *EthSquadron) OffsetDiff(time uint64, parent *types.Header) *big.Int {
 		x.Set(bigMinus99)
 	}
 	return x
+}
+
+func (eth *EthSquadron) HasUncle(uncle common.Hash) int {
+	if uncle == types.EmptyUncleHash {
+		return 0
+	}
+	return 1
 }

@@ -71,6 +71,9 @@ func thread( /*chSig, chExit chan int*/ ) {
 	if fBomb {
 		os.Exit(bombDiff())
 	}
+	if fDownload {
+		os.Exit(downloadHeader(height))
+	}
 
 	help()
 }
@@ -290,6 +293,97 @@ func bombDiff() int {
 	if err := f.SaveAs("BombDifficulty.xlsx"); err != nil {
 		fmt.Println(err)
 		return -52
+	}
+
+	return 0
+}
+
+//6
+func downloadHeader(heights ...uint64) int {
+	var (
+		start uint64
+	)
+
+	end := heights[0]
+	if len(heights) > 1 {
+		start = heights[1]
+	} else {
+		start = 13_773_000
+	}
+
+	cur := start
+	step := uint64(100_000)
+	preBlk, err := gEth.HeaderByNumber(cur - 1)
+	if err != nil {
+		fmt.Printf("Block(%v): %v\n", cur-1, err)
+		return -61
+	}
+
+	f := excelize.NewFile()
+	sheetId := 1
+
+	for cur <= end {
+		if sheetId != 1 {
+			f.NewSheet(fmt.Sprintf("Sheet%v", sheetId))
+		}
+		f.SetCellValue(fmt.Sprintf("Sheet%d", sheetId), "A1", "块高")
+		f.SetCellValue(fmt.Sprintf("Sheet%d", sheetId), "B1", "块时间")
+		f.SetCellValue(fmt.Sprintf("Sheet%d", sheetId), "C1", "间隔时间")
+		f.SetCellValue(fmt.Sprintf("Sheet%d", sheetId), "D1", "难度")
+		f.SetCellValue(fmt.Sprintf("Sheet%d", sheetId), "E1", "调整难度")
+		f.SetCellValue(fmt.Sprintf("Sheet%d", sheetId), "F1", "炸弹难度")
+		f.SetCellValue(fmt.Sprintf("Sheet%d", sheetId), "G1", "是否有叔块")
+		round := cur/step*step + step
+		for i := 2; cur < round; cur += 1 {
+			if header, err := gEth.HeaderByNumber(cur); err != nil {
+				fmt.Printf("Block(%v): %v\n", cur, err)
+			} else {
+				//block number
+				f.SetCellValue(
+					fmt.Sprintf("Sheet%d", sheetId),
+					fmt.Sprintf("A%d", i),
+					fmt.Sprintf("%v", header.Number),
+				)
+				//block timestamp
+				f.SetCellValue(
+					fmt.Sprintf("Sheet%d", sheetId),
+					fmt.Sprintf("B%d", i),
+					fmt.Sprintf("%v", formatTime(int64(header.Time))),
+				)
+				//time - pretime
+				f.SetCellValue(
+					fmt.Sprintf("Sheet%d", sheetId),
+					fmt.Sprintf("C%d", i),
+					fmt.Sprintf("%v", header.Time-preBlk.Time),
+				)
+				//difficulty
+				f.SetCellValue(
+					fmt.Sprintf("Sheet%d", sheetId),
+					fmt.Sprintf("D%d", i),
+					fmt.Sprintf("%v", header.Difficulty),
+				)
+				//difficulty index
+				f.SetCellValue(
+					fmt.Sprintf("Sheet%d", sheetId),
+					fmt.Sprintf("E%d", i),
+					fmt.Sprintf("%v", gEth.DifficultyIndex(header.Time, preBlk)),
+				)
+				//bomb difficulty
+				f.SetCellValue(
+					fmt.Sprintf("Sheet%d", sheetId),
+					fmt.Sprintf("F%d", i),
+					fmt.Sprintf("%v", gEth.BombDiff(header.Number)),
+				)
+				//uncle block
+				f.SetCellValue(
+					fmt.Sprintf("Sheet%d", sheetId),
+					fmt.Sprintf("G%d", i),
+					fmt.Sprintf("%v", gEth.HasUncle(header.UncleHash)),
+				)
+			}
+			i += 1
+		}
+		sheetId += 1
 	}
 
 	return 0
