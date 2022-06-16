@@ -302,6 +302,8 @@ func bombDiff() int {
 func downloadHeader(heights ...uint64) int {
 	var (
 		start uint64
+		f     *excelize.File
+		save  bool
 	)
 
 	end := heights[0]
@@ -319,10 +321,21 @@ func downloadHeader(heights ...uint64) int {
 		return -61
 	}
 
-	f := excelize.NewFile()
 	sheetId := 1
+	filename := fmt.Sprintf("header%d.xlsx", end)
 
 	for cur <= end {
+		if !utils.Exists(filename) {
+			f = excelize.NewFile()
+			save = false
+		} else {
+			f, err = excelize.OpenFile(filename)
+			if err != nil {
+				fmt.Println(err)
+				return -62
+			}
+			save = true
+		}
 		if sheetId != 1 {
 			f.NewSheet(fmt.Sprintf("Sheet%v", sheetId))
 		}
@@ -380,7 +393,18 @@ func downloadHeader(heights ...uint64) int {
 					fmt.Sprintf("G%d", i),
 					fmt.Sprintf("%v", gEth.HasUncle(header.UncleHash)),
 				)
+				preBlk = header
 			}
+			if save {
+				err = f.Save()
+			} else {
+				err = f.SaveAs(filename)
+			}
+			if err != nil {
+				fmt.Println(err)
+				return -63
+			}
+			fmt.Printf("height: %v\r", cur)
 			i += 1
 		}
 		sheetId += 1
