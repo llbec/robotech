@@ -62,8 +62,8 @@ func thread( /*chSig, chExit chan int*/ ) {
 	if fOracle {
 		os.Exit(presageDiff(height))
 	}
-	if iLine > 0 {
-		os.Exit(outTime(height, iLine))
+	if fLine {
+		os.Exit(outTime(height))
 	}
 	if fShedule {
 		os.Exit(schedule(height))
@@ -176,7 +176,7 @@ func avrDiffs(height uint64) int {
 }
 
 //3
-func outTime(height, line uint64) int {
+func outTime(height uint64) int {
 	period, err := strconv.ParseUint(os.Getenv("Days"), 10, 64)
 	if err != nil {
 		fmt.Printf("read Days error: %v", err)
@@ -185,6 +185,11 @@ func outTime(height, line uint64) int {
 	blockPeriod, err := strconv.ParseUint(os.Getenv("blockPeriod"), 10, 64)
 	if err != nil {
 		fmt.Printf("read blockPeriod error: %v", err)
+		return -32
+	}
+	line, err := strconv.ParseUint(os.Getenv("end"), 10, 64)
+	if err != nil {
+		fmt.Printf("read end error: %v", err)
 		return -32
 	}
 	period = period * 24 * 60 * 60
