@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/llbec/robotech/utils/eth/ethUtis"
+	"github.com/llbec/robotech/utils/ethUtis"
 	"github.com/spf13/viper"
 )
 

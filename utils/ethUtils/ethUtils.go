@@ -1,4 +1,4 @@
-package ethUtis
+package ethUtils
 
 import (
 	"context"
