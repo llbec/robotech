@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"crypto/ecdsa"
@@ -6,21 +6,25 @@ import (
 	"os"
 	"path/filepath"
 
+	"robotech/utils/ethUtils"
+
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/llbec/robotech/utils/ethUtis"
 	"github.com/spf13/viper"
 )
 
 const (
-	RPC  = "rpc"
-	SKEY = "secret"
+	RPC          = "rpc"
+	SKey         = "secret"
+	EventEmitter = "eventEmitter"
 )
 
 var (
-	sKey *ecdsa.PrivateKey
+	sKey             *ecdsa.PrivateKey
+	eventEmitterAddr common.Address
 )
 
-func GeneratConfig() error {
+func GenerateConfig() error {
 	wd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -28,13 +32,14 @@ func GeneratConfig() error {
 	log.Printf("os.Getwd: %v\n", wd)
 
 	viper.Set(RPC, "https://chain-rpc.com")
-	viper.Set(SKEY, "")
+	viper.Set(SKey, "")
+	viper.Set(EventEmitter, "")
 
 	path := filepath.Join(wd, "config.yaml")
 	return viper.WriteConfigAs(path)
 }
 
-func InitEnv() {
+func init() {
 	wd, err := os.Getwd()
 	if err != nil {
 		panic(err)
@@ -48,9 +53,15 @@ func InitEnv() {
 		panic(err)
 	}
 
-	ethUtis.SetClient(viper.GetString(RPC))
-	sKey, err = crypto.HexToECDSA(viper.GetString(SKEY))
+	ethUtils.SetClient(viper.GetString(RPC))
+	sKey, err = crypto.HexToECDSA(viper.GetString(SKey))
 	if err != nil {
 		panic(err)
 	}
+
+	eventEmitterAddr = common.HexToAddress(viper.GetString(EventEmitter))
+}
+
+func GetEventEmitterAddr() common.Address {
+	return eventEmitterAddr
 }
