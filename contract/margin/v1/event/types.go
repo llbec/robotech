@@ -10,6 +10,7 @@ var (
 	DepositEvent  = crypto.Keccak256Hash([]byte("Deposit(address,address,address,uint256,uint256,uint256,uint256,uint256,uint256)"))
 	WithdrawEvent = crypto.Keccak256Hash([]byte("Withdraw(address,address,address,uint256,uint256,address,uint256,uint256,uint256,uint256)"))
 	PositionEvent = crypto.Keccak256Hash([]byte("Position(address,uint256,address,address,uint256,uint256,uint256,uint256,uint256)"))
+	SwapEvent     = crypto.Keccak256Hash([]byte("Swap(address,address,address,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256)"))
 )
 
 const (

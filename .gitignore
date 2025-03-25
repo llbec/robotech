@@ -6,6 +6,7 @@
 *.dylib
 walle
 .key/
+.lock
 
 # Test binary, build with `go test -c`
 *.test
@@ -29,6 +30,7 @@ vendor/
 #*.yaml
 *.token
 .env
+config.yaml
 
 #log file
 *.log
@@ -38,3 +40,6 @@ vendor/
 
 #build file
 *.build
+
+#db file
+.storage/

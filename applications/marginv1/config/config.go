@@ -3,65 +3,111 @@ package config
 import (
 	"crypto/ecdsa"
 	"log"
-	"os"
-	"path/filepath"
 
+	"robotech/utils"
 	"robotech/utils/ethUtils"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/spf13/viper"
 )
 
 const (
-	RPC          = "rpc"
-	SKey         = "secret"
-	EventEmitter = "eventEmitter"
+	rpc               = "rpc"
+	secret            = "secret"
+	eventEmitter      = "eventEmitter"
+	reader            = "reader"
+	dataStore         = "dataStore"
+	exchangeRouter    = "exchangeRouter"
+	baseToken         = "baseToken"
+	daemon            = "daemonPort"
+	last_block_number = "lastBlockNumber"
+	read_block_period = "readBlockPeriod"
 )
 
 var (
-	sKey             *ecdsa.PrivateKey
-	eventEmitterAddr common.Address
+	sKey               *ecdsa.PrivateKey
+	eventEmitterAddr   common.Address
+	readerAddr         common.Address
+	dataStoreAddr      common.Address
+	exchangeRouterAddr common.Address
+	baseTokenAddr      common.Address
+	daemonPort         int
+	workDir            string
+	blockNumber        uint64
+	readBlockPeriod    int
 )
 
-func GenerateConfig() error {
-	wd, err := os.Getwd()
+func init() {
+	cfgMap, err := utils.ReadConfig(map[string]string{
+		rpc:               "string",
+		secret:            "string",
+		eventEmitter:      "string",
+		reader:            "string",
+		dataStore:         "string",
+		exchangeRouter:    "string",
+		baseToken:         "string",
+		daemon:            "int",
+		last_block_number: "uint64",
+		read_block_period: "int",
+	})
 	if err != nil {
-		return err
+		panic(err)
 	}
-	log.Printf("os.Getwd: %v\n", wd)
 
-	viper.Set(RPC, "https://chain-rpc.com")
-	viper.Set(SKey, "")
-	viper.Set(EventEmitter, "")
+	ethUtils.SetClient(cfgMap[rpc].(string))
+	sKey, err = crypto.HexToECDSA(cfgMap[secret].(string))
+	if err != nil {
+		panic(err)
+	}
 
-	path := filepath.Join(wd, "config.yaml")
-	return viper.WriteConfigAs(path)
+	eventEmitterAddr = common.HexToAddress(cfgMap[eventEmitter].(string))
+	readerAddr = common.HexToAddress(cfgMap[reader].(string))
+	dataStoreAddr = common.HexToAddress(cfgMap[dataStore].(string))
+	exchangeRouterAddr = common.HexToAddress(cfgMap[exchangeRouter].(string))
+	baseTokenAddr = common.HexToAddress(cfgMap[baseToken].(string))
+	daemonPort = cfgMap[daemon].(int)
+	blockNumber = cfgMap[last_block_number].(uint64)
+	readBlockPeriod = cfgMap[read_block_period].(int)
+
+	log.Printf("config: %v\n", cfgMap)
 }
 
-func init() {
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("os.Getwd: %v\n", wd)
-	viper.AddConfigPath(wd)
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	err = viper.ReadInConfig()
-	if err != nil { // Handle errors reading the config file
-		panic(err)
-	}
-
-	ethUtils.SetClient(viper.GetString(RPC))
-	sKey, err = crypto.HexToECDSA(viper.GetString(SKey))
-	if err != nil {
-		panic(err)
-	}
-
-	eventEmitterAddr = common.HexToAddress(viper.GetString(EventEmitter))
+func GetSKey() *ecdsa.PrivateKey {
+	return sKey
 }
 
 func GetEventEmitterAddr() common.Address {
 	return eventEmitterAddr
+}
+
+func GetReaderAddr() common.Address {
+	return readerAddr
+}
+
+func GetDataStoreAddr() common.Address {
+	return dataStoreAddr
+}
+
+func GetExchangeRouterAddr() common.Address {
+	return exchangeRouterAddr
+}
+
+func GetBaseTokenAddr() common.Address {
+	return baseTokenAddr
+}
+
+func GetDaemonPort() int {
+	return daemonPort
+}
+
+func GetWorkDir() string {
+	return workDir
+}
+
+func GetBlockNumber() uint64 {
+	return blockNumber
+}
+
+func GetReadBlockPeriod() int {
+	return readBlockPeriod
 }
