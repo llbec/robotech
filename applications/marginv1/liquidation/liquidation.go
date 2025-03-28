@@ -44,7 +44,7 @@ func Liquidation(pools []common.Address) {
 	for _, pool := range pools {
 		err := liquidation(pool)
 		if err != nil {
-			log.Fatalf("Liquidation pool(%v) failed: %v", pool, err)
+			log.Printf("Liquidation pool(%v) failed: %v", pool, err)
 		}
 	}
 }
