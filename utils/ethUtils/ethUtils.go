@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -62,4 +63,8 @@ func GetOpt(secret *ecdsa.PrivateKey) (*bind.TransactOpts, error) {
 	opt.GasLimit = uint64(4400000) // in units
 	opt.GasPrice = gasPrice
 	return opt, nil
+}
+
+func WaitTransaction(tx *types.Transaction) (*types.Receipt, error) {
+	return bind.WaitMined(context.Background(), GetClient(), tx)
 }

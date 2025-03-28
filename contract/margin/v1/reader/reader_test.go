@@ -20,27 +20,25 @@ var (
 )
 
 func init() {
-	configMap := map[string]string{
+	cfgMap, err := utils.ReadConfig(map[string]string{
 		"rpc_url":        "string",
 		"reader_addr":    "string",
 		"dataStore_addr": "string",
 		"account_1":      "string",
 		"account_2":      "string",
-	}
-
-	envMap, err := utils.ReadConfig(configMap)
+	})
 	if err != nil {
 		panic(err)
 	}
 
-	ethUtils.SetClient(envMap["rpc_url"].(string))
-	readerContract, err = Reader.NewReader(common.HexToAddress(envMap["reader_addr"].(string)), ethUtils.GetClient())
+	ethUtils.SetClient(cfgMap["rpc_url"].(string))
+	readerContract, err = Reader.NewReader(common.HexToAddress(cfgMap["reader_addr"].(string)), ethUtils.GetClient())
 	if err != nil {
 		panic(err)
 	}
-	dataStoreAddr = common.HexToAddress(envMap["dataStore_addr"].(string))
-	account_1 = common.HexToAddress(envMap["account_1"].(string))
-	account_2 = common.HexToAddress(envMap["account_2"].(string))
+	dataStoreAddr = common.HexToAddress(cfgMap["dataStore_addr"].(string))
+	account_1 = common.HexToAddress(cfgMap["account_1"].(string))
+	account_2 = common.HexToAddress(cfgMap["account_2"].(string))
 
 	threshold, _ = big.NewInt(0).SetString("1100000000000000000000000000", 10)
 }
@@ -59,7 +57,7 @@ func Test_GetPosition(t *testing.T) {
 }
 
 func Test_GetPositions(t *testing.T) {
-	positions1, err := readerContract.GetPositions(nil, dataStoreAddr, account_1)
+	positions1, err := readerContract.GetPositions(nil, dataStoreAddr, account_2)
 	if err != nil {
 		t.Fatalf("GetPositions1 error: %v", err)
 	}

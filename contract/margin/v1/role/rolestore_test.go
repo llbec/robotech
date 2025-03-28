@@ -7,7 +7,6 @@ import (
 	"robotech/utils"
 	"robotech/utils/ethUtils"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -22,30 +21,28 @@ var (
 )
 
 func init() {
-	configMap := map[string]string{
+	cfgMap, err := utils.ReadConfig(map[string]string{
 		"rpc_url":        "string",
 		"roleStore_addr": "string",
 		"dataStore_addr": "string",
 		"account_1":      "string",
 		"roleName":       "string",
 		"secret":         "string",
-	}
-
-	envMap, err := utils.ReadConfig(configMap)
+	})
 	if err != nil {
 		panic(err)
 	}
 
-	ethUtils.SetClient(envMap["rpc_url"].(string))
-	roleStoreContract, err = role.NewRoleStore(common.HexToAddress(envMap["roleStore_addr"].(string)), ethUtils.GetClient())
+	ethUtils.SetClient(cfgMap["rpc_url"].(string))
+	roleStoreContract, err = role.NewRoleStore(common.HexToAddress(cfgMap["roleStore_addr"].(string)), ethUtils.GetClient())
 	if err != nil {
 		panic(err)
 	}
-	dataStoreAddr = common.HexToAddress(envMap["dataStore_addr"].(string))
-	account_1 = common.HexToAddress(envMap["account_1"].(string))
-	roleName = envMap["roleName"].(string)
+	dataStoreAddr = common.HexToAddress(cfgMap["dataStore_addr"].(string))
+	account_1 = common.HexToAddress(cfgMap["account_1"].(string))
+	roleName = cfgMap["roleName"].(string)
 
-	secret, err = crypto.HexToECDSA(envMap["secret"].(string))
+	secret, err = crypto.HexToECDSA(cfgMap["secret"].(string))
 	if err != nil {
 		panic(err)
 	}
@@ -74,7 +71,12 @@ func Test_grantRole(t *testing.T) {
 	}
 	t.Logf("tx hash: %s", tx.Hash().Hex())
 
-	time.Sleep(time.Second * 5)
+	/*time.Sleep(time.Second * 5)*/
+	receipt, err := ethUtils.WaitTransaction(tx)
+	if err != nil {
+		t.Error(err)
+	}
+	t.Logf("receipt: %+v", receipt)
 
 	ok, err := roleStoreContract.HasRole(nil, account_1, v1.ABIEncode(roleName))
 	if err != nil {
