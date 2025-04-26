@@ -2,7 +2,7 @@
 ```
 git clone https://github.com/ethereum/go-ethereum.git
 cd go-ethereum/cmd/abigen
-gobuild
+go build
 mv abigen $GOPATH/bin/.
 ```
 
