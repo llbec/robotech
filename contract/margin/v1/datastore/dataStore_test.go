@@ -2,6 +2,7 @@ package DataStore_test
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	v1 "robotech/contract/margin/v1"
 	DataStore "robotech/contract/margin/v1/datastore"
 	"robotech/utils"
@@ -39,6 +40,18 @@ func init() {
 	}
 }
 
+func Test_Bytes32(t *testing.T) {
+	t.Log("Test_Bytes32")
+
+	backend := v1.ABIEncode("BackendContract")
+	hex := utils.Bytes2Hex(backend[:])
+	fmt.Println(hex)
+
+	positionHandle := v1.ABIEncode("PositionHandleContract")
+	hex = utils.Bytes2Hex(positionHandle[:])
+	fmt.Println(hex)
+}
+
 // 测试获取地址函数
 func Test_getAddress(t *testing.T) {
 	t.Log("Test_getAddress")
@@ -66,4 +79,20 @@ func Test_getAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("price limit: %d", priceLimit)
+}
+
+func Test_getFunctions(t *testing.T) {
+	t.Log("Test_getFunctions")
+	// 测试获取函数
+	backend, err := dataStoreContract.GetBackend(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("backend: %s", backend.Hex())
+
+	positionHandle, err := dataStoreContract.GetPositionHandle(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("position handle: %s", positionHandle.Hex())
 }
