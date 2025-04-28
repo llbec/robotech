@@ -1,6 +1,7 @@
 package backend_test
 
 import (
+	"crypto/ecdsa"
 	"math/big"
 	"robotech/contract/margin/v2/backend"
 	"robotech/utils"
@@ -8,11 +9,12 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
 	backendContract *backend.Backend
-	//secret          *ecdsa.PrivateKey
+	secret          *ecdsa.PrivateKey
 )
 
 func init() {
@@ -28,6 +30,11 @@ func init() {
 		common.HexToAddress(cfgMap["backend_contract"].(string)),
 		ethUtils.GetClient(),
 	)
+	if err != nil {
+		panic(err)
+	}
+
+	secret, err = crypto.HexToECDSA(cfgMap["secret"].(string))
 	if err != nil {
 		panic(err)
 	}
