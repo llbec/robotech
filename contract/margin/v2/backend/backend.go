@@ -51,7 +51,7 @@ type PoolProps struct {
 
 // BackendMetaData contains all meta data concerning the Backend contract.
 var BackendMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"height\",\"type\":\"uint256\"}],\"name\":\"verifyHeight\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"borrowIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"borrowRate\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalCollateral\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalCollateralWithDebt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalDebtScaled\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"unclaimedFee\",\"type\":\"uint256\"}],\"internalType\":\"structPool.Asset[2]\",\"name\":\"assets\",\"type\":\"tuple[2]\"},{\"internalType\":\"address\",\"name\":\"bank\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"interestRateStrategy\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"configuration\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"lastUpdateTimestamp\",\"type\":\"uint256\"}],\"internalType\":\"structPool.Props\",\"name\":\"pool\",\"type\":\"tuple\"},{\"internalType\":\"uint256\",\"name\":\"price\",\"type\":\"uint256\"}],\"name\":\"verifyPrice\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"maxAmount0\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"height\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"price\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"signature\",\"type\":\"bytes\"}],\"name\":\"verifyRemoveSignature\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"badDebt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"price\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"height\",\"type\":\"uint256\"},{\"internalType\":\"bytes32[]\",\"name\":\"list\",\"type\":\"bytes32[]\"},{\"internalType\":\"bytes\",\"name\":\"signature\",\"type\":\"bytes\"}],\"name\":\"verifySwapSignature\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	ABI: "[{\"inputs\":[{\"internalType\":\"contractRoleStore\",\"name\":\"_roleStore\",\"type\":\"address\"},{\"internalType\":\"contractDataStore\",\"name\":\"_dataStore\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"InvalidSignature\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"currentHeight\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"specifyHeight\",\"type\":\"uint256\"}],\"name\":\"OutdatedHeight\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"currentPrice\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"expectedPrice\",\"type\":\"uint256\"}],\"name\":\"PriceNotMatched\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"dataStore\",\"outputs\":[{\"internalType\":\"contractDataStore\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"_messageHash\",\"type\":\"bytes32\"}],\"name\":\"getEthSignedMessageHash\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"maxAmount0\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"price\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"height\",\"type\":\"uint256\"}],\"name\":\"getRemoveHash\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32[]\",\"name\":\"list\",\"type\":\"bytes32[]\"},{\"internalType\":\"uint256\",\"name\":\"badDebt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"price\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"height\",\"type\":\"uint256\"}],\"name\":\"getSwapHash\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"_msgHash\",\"type\":\"bytes32\"},{\"internalType\":\"bytes\",\"name\":\"_signature\",\"type\":\"bytes\"}],\"name\":\"recoverSigner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"roleStore\",\"outputs\":[{\"internalType\":\"contractRoleStore\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"sig\",\"type\":\"bytes\"}],\"name\":\"splitSignature\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"r\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"s\",\"type\":\"bytes32\"},{\"internalType\":\"uint8\",\"name\":\"v\",\"type\":\"uint8\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"height\",\"type\":\"uint256\"}],\"name\":\"verifyHeight\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"borrowIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"borrowRate\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalCollateral\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalCollateralWithDebt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"totalDebtScaled\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"unclaimedFee\",\"type\":\"uint256\"}],\"internalType\":\"structPool.Asset[2]\",\"name\":\"assets\",\"type\":\"tuple[2]\"},{\"internalType\":\"address\",\"name\":\"bank\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"interestRateStrategy\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"configuration\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"lastUpdateTimestamp\",\"type\":\"uint256\"}],\"internalType\":\"structPool.Props\",\"name\":\"pool\",\"type\":\"tuple\"},{\"internalType\":\"uint256\",\"name\":\"price\",\"type\":\"uint256\"}],\"name\":\"verifyPrice\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"maxAmount0\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"height\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"price\",\"type\":\"uint256\"},{\"internalType\":\"bytes\",\"name\":\"signature\",\"type\":\"bytes\"}],\"name\":\"verifyRemoveSignature\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"badDebt\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"price\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"height\",\"type\":\"uint256\"},{\"internalType\":\"bytes32[]\",\"name\":\"list\",\"type\":\"bytes32[]\"},{\"internalType\":\"bytes\",\"name\":\"signature\",\"type\":\"bytes\"}],\"name\":\"verifySwapSignature\",\"outputs\":[],\"stateMutability\":\"view\",\"type\":\"function\"}]",
 }
 
 // BackendABI is the input ABI used to generate the binding from.
@@ -198,6 +198,242 @@ func (_Backend *BackendTransactorRaw) Transfer(opts *bind.TransactOpts) (*types.
 // Transact invokes the (paid) contract method with params as input values.
 func (_Backend *BackendTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
 	return _Backend.Contract.contract.Transact(opts, method, params...)
+}
+
+// DataStore is a free data retrieval call binding the contract method 0x660d0d67.
+//
+// Solidity: function dataStore() view returns(address)
+func (_Backend *BackendCaller) DataStore(opts *bind.CallOpts) (common.Address, error) {
+	var out []interface{}
+	err := _Backend.contract.Call(opts, &out, "dataStore")
+
+	if err != nil {
+		return *new(common.Address), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+
+	return out0, err
+
+}
+
+// DataStore is a free data retrieval call binding the contract method 0x660d0d67.
+//
+// Solidity: function dataStore() view returns(address)
+func (_Backend *BackendSession) DataStore() (common.Address, error) {
+	return _Backend.Contract.DataStore(&_Backend.CallOpts)
+}
+
+// DataStore is a free data retrieval call binding the contract method 0x660d0d67.
+//
+// Solidity: function dataStore() view returns(address)
+func (_Backend *BackendCallerSession) DataStore() (common.Address, error) {
+	return _Backend.Contract.DataStore(&_Backend.CallOpts)
+}
+
+// GetEthSignedMessageHash is a free data retrieval call binding the contract method 0xfa540801.
+//
+// Solidity: function getEthSignedMessageHash(bytes32 _messageHash) pure returns(bytes32)
+func (_Backend *BackendCaller) GetEthSignedMessageHash(opts *bind.CallOpts, _messageHash [32]byte) ([32]byte, error) {
+	var out []interface{}
+	err := _Backend.contract.Call(opts, &out, "getEthSignedMessageHash", _messageHash)
+
+	if err != nil {
+		return *new([32]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+
+	return out0, err
+
+}
+
+// GetEthSignedMessageHash is a free data retrieval call binding the contract method 0xfa540801.
+//
+// Solidity: function getEthSignedMessageHash(bytes32 _messageHash) pure returns(bytes32)
+func (_Backend *BackendSession) GetEthSignedMessageHash(_messageHash [32]byte) ([32]byte, error) {
+	return _Backend.Contract.GetEthSignedMessageHash(&_Backend.CallOpts, _messageHash)
+}
+
+// GetEthSignedMessageHash is a free data retrieval call binding the contract method 0xfa540801.
+//
+// Solidity: function getEthSignedMessageHash(bytes32 _messageHash) pure returns(bytes32)
+func (_Backend *BackendCallerSession) GetEthSignedMessageHash(_messageHash [32]byte) ([32]byte, error) {
+	return _Backend.Contract.GetEthSignedMessageHash(&_Backend.CallOpts, _messageHash)
+}
+
+// GetRemoveHash is a free data retrieval call binding the contract method 0x2831b038.
+//
+// Solidity: function getRemoveHash(uint256 maxAmount0, uint256 price, uint256 height) pure returns(bytes32)
+func (_Backend *BackendCaller) GetRemoveHash(opts *bind.CallOpts, maxAmount0 *big.Int, price *big.Int, height *big.Int) ([32]byte, error) {
+	var out []interface{}
+	err := _Backend.contract.Call(opts, &out, "getRemoveHash", maxAmount0, price, height)
+
+	if err != nil {
+		return *new([32]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+
+	return out0, err
+
+}
+
+// GetRemoveHash is a free data retrieval call binding the contract method 0x2831b038.
+//
+// Solidity: function getRemoveHash(uint256 maxAmount0, uint256 price, uint256 height) pure returns(bytes32)
+func (_Backend *BackendSession) GetRemoveHash(maxAmount0 *big.Int, price *big.Int, height *big.Int) ([32]byte, error) {
+	return _Backend.Contract.GetRemoveHash(&_Backend.CallOpts, maxAmount0, price, height)
+}
+
+// GetRemoveHash is a free data retrieval call binding the contract method 0x2831b038.
+//
+// Solidity: function getRemoveHash(uint256 maxAmount0, uint256 price, uint256 height) pure returns(bytes32)
+func (_Backend *BackendCallerSession) GetRemoveHash(maxAmount0 *big.Int, price *big.Int, height *big.Int) ([32]byte, error) {
+	return _Backend.Contract.GetRemoveHash(&_Backend.CallOpts, maxAmount0, price, height)
+}
+
+// GetSwapHash is a free data retrieval call binding the contract method 0x9fe14d4d.
+//
+// Solidity: function getSwapHash(bytes32[] list, uint256 badDebt, uint256 price, uint256 height) pure returns(bytes32)
+func (_Backend *BackendCaller) GetSwapHash(opts *bind.CallOpts, list [][32]byte, badDebt *big.Int, price *big.Int, height *big.Int) ([32]byte, error) {
+	var out []interface{}
+	err := _Backend.contract.Call(opts, &out, "getSwapHash", list, badDebt, price, height)
+
+	if err != nil {
+		return *new([32]byte), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+
+	return out0, err
+
+}
+
+// GetSwapHash is a free data retrieval call binding the contract method 0x9fe14d4d.
+//
+// Solidity: function getSwapHash(bytes32[] list, uint256 badDebt, uint256 price, uint256 height) pure returns(bytes32)
+func (_Backend *BackendSession) GetSwapHash(list [][32]byte, badDebt *big.Int, price *big.Int, height *big.Int) ([32]byte, error) {
+	return _Backend.Contract.GetSwapHash(&_Backend.CallOpts, list, badDebt, price, height)
+}
+
+// GetSwapHash is a free data retrieval call binding the contract method 0x9fe14d4d.
+//
+// Solidity: function getSwapHash(bytes32[] list, uint256 badDebt, uint256 price, uint256 height) pure returns(bytes32)
+func (_Backend *BackendCallerSession) GetSwapHash(list [][32]byte, badDebt *big.Int, price *big.Int, height *big.Int) ([32]byte, error) {
+	return _Backend.Contract.GetSwapHash(&_Backend.CallOpts, list, badDebt, price, height)
+}
+
+// RecoverSigner is a free data retrieval call binding the contract method 0x97aba7f9.
+//
+// Solidity: function recoverSigner(bytes32 _msgHash, bytes _signature) pure returns(address)
+func (_Backend *BackendCaller) RecoverSigner(opts *bind.CallOpts, _msgHash [32]byte, _signature []byte) (common.Address, error) {
+	var out []interface{}
+	err := _Backend.contract.Call(opts, &out, "recoverSigner", _msgHash, _signature)
+
+	if err != nil {
+		return *new(common.Address), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+
+	return out0, err
+
+}
+
+// RecoverSigner is a free data retrieval call binding the contract method 0x97aba7f9.
+//
+// Solidity: function recoverSigner(bytes32 _msgHash, bytes _signature) pure returns(address)
+func (_Backend *BackendSession) RecoverSigner(_msgHash [32]byte, _signature []byte) (common.Address, error) {
+	return _Backend.Contract.RecoverSigner(&_Backend.CallOpts, _msgHash, _signature)
+}
+
+// RecoverSigner is a free data retrieval call binding the contract method 0x97aba7f9.
+//
+// Solidity: function recoverSigner(bytes32 _msgHash, bytes _signature) pure returns(address)
+func (_Backend *BackendCallerSession) RecoverSigner(_msgHash [32]byte, _signature []byte) (common.Address, error) {
+	return _Backend.Contract.RecoverSigner(&_Backend.CallOpts, _msgHash, _signature)
+}
+
+// RoleStore is a free data retrieval call binding the contract method 0x4a4a7b04.
+//
+// Solidity: function roleStore() view returns(address)
+func (_Backend *BackendCaller) RoleStore(opts *bind.CallOpts) (common.Address, error) {
+	var out []interface{}
+	err := _Backend.contract.Call(opts, &out, "roleStore")
+
+	if err != nil {
+		return *new(common.Address), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new(common.Address)).(*common.Address)
+
+	return out0, err
+
+}
+
+// RoleStore is a free data retrieval call binding the contract method 0x4a4a7b04.
+//
+// Solidity: function roleStore() view returns(address)
+func (_Backend *BackendSession) RoleStore() (common.Address, error) {
+	return _Backend.Contract.RoleStore(&_Backend.CallOpts)
+}
+
+// RoleStore is a free data retrieval call binding the contract method 0x4a4a7b04.
+//
+// Solidity: function roleStore() view returns(address)
+func (_Backend *BackendCallerSession) RoleStore() (common.Address, error) {
+	return _Backend.Contract.RoleStore(&_Backend.CallOpts)
+}
+
+// SplitSignature is a free data retrieval call binding the contract method 0xa7bb5803.
+//
+// Solidity: function splitSignature(bytes sig) pure returns(bytes32 r, bytes32 s, uint8 v)
+func (_Backend *BackendCaller) SplitSignature(opts *bind.CallOpts, sig []byte) (struct {
+	R [32]byte
+	S [32]byte
+	V uint8
+}, error) {
+	var out []interface{}
+	err := _Backend.contract.Call(opts, &out, "splitSignature", sig)
+
+	outstruct := new(struct {
+		R [32]byte
+		S [32]byte
+		V uint8
+	})
+	if err != nil {
+		return *outstruct, err
+	}
+
+	outstruct.R = *abi.ConvertType(out[0], new([32]byte)).(*[32]byte)
+	outstruct.S = *abi.ConvertType(out[1], new([32]byte)).(*[32]byte)
+	outstruct.V = *abi.ConvertType(out[2], new(uint8)).(*uint8)
+
+	return *outstruct, err
+
+}
+
+// SplitSignature is a free data retrieval call binding the contract method 0xa7bb5803.
+//
+// Solidity: function splitSignature(bytes sig) pure returns(bytes32 r, bytes32 s, uint8 v)
+func (_Backend *BackendSession) SplitSignature(sig []byte) (struct {
+	R [32]byte
+	S [32]byte
+	V uint8
+}, error) {
+	return _Backend.Contract.SplitSignature(&_Backend.CallOpts, sig)
+}
+
+// SplitSignature is a free data retrieval call binding the contract method 0xa7bb5803.
+//
+// Solidity: function splitSignature(bytes sig) pure returns(bytes32 r, bytes32 s, uint8 v)
+func (_Backend *BackendCallerSession) SplitSignature(sig []byte) (struct {
+	R [32]byte
+	S [32]byte
+	V uint8
+}, error) {
+	return _Backend.Contract.SplitSignature(&_Backend.CallOpts, sig)
 }
 
 // VerifyHeight is a free data retrieval call binding the contract method 0x7db7ab1e.

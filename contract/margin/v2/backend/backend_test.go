@@ -2,6 +2,7 @@ package backend_test
 
 import (
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 	"robotech/contract/margin/v2/backend"
 	"robotech/utils"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
@@ -21,6 +23,7 @@ func init() {
 	cfgMap, err := utils.ReadConfig(map[string]string{
 		"rpc_url":          "string",
 		"backend_contract": "string",
+		"secret":           "string",
 	})
 	if err != nil {
 		panic(err)
@@ -40,27 +43,7 @@ func init() {
 	}
 }
 
-func Test_verifySwapSignature(t *testing.T) {
-	t.Log("Test_verifySwapSignature")
-	// 1. 获取签名
-	// 2. 调用 verifySwapSignature 函数验证签名
-	// 3. 打印结果
-
-	bedDebt := big.NewInt(0)
-	price := big.NewInt(1000000000000)
-	height := big.NewInt(24904376)
-	list := [][32]byte{}
-	sigStr := "0x6b4daf72ab9c99f13200fb725906b17d42244685410d2c4a33ded46bbc7949ae"
-	signature := common.Hex2Bytes(sigStr[2:])
-
-	err := backendContract.VerifySwapSignature(nil, bedDebt, price, height, list, signature)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Log(err)
-}
-
-func Test_verifyRemoveSignature(t *testing.T) {
+func Test_verifySignature(t *testing.T) {
 	t.Log("Test_verifyRemoveSignature")
 	// 1. 获取签名
 	// 2. 调用 verifyRemoveSignature 函数验证签名
@@ -68,13 +51,28 @@ func Test_verifyRemoveSignature(t *testing.T) {
 
 	maxAmount0 := big.NewInt(0)
 	price := big.NewInt(1000000000000)
-	height := big.NewInt(24904376)
-	sigStr := "0x6b4daf72ab9c99f13200fb725906b17d42244685410d2c4a33ded46bbc7949ae"
-	signature := common.Hex2Bytes(sigStr[2:])
+	height := big.NewInt(24999012)
 
-	err := backendContract.VerifyRemoveSignature(nil, maxAmount0, height, price, signature)
+	hashBytes, err := backendContract.GetRemoveHash(nil, maxAmount0, price, height)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(err)
+	msgHash := common.BytesToHash(hashBytes[:])
+	t.Log("msgHash:", msgHash.Hex())
+
+	eip191Msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(msgHash), msgHash)
+	eip191Hash := crypto.Keccak256Hash([]byte(eip191Msg))
+
+	signature, err := crypto.Sign(eip191Hash.Bytes(), secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature[crypto.RecoveryIDOffset] += 27
+	t.Log("signature:", hexutil.Encode(signature))
+	signer, err := backendContract.RecoverSigner(nil, hashBytes, signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("signer:", signer)
+	t.Log("wallet:", crypto.PubkeyToAddress(secret.PublicKey).Hex())
 }
