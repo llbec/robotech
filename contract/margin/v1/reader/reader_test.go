@@ -14,8 +14,9 @@ import (
 var (
 	readerContract *Reader.Reader
 	dataStoreAddr  common.Address
-	account_1      common.Address
-	account_2      common.Address
+	account        common.Address
+	usdt           common.Address
+	meme           common.Address
 	threshold      *big.Int
 )
 
@@ -24,8 +25,9 @@ func init() {
 		"rpc_url":        "string",
 		"reader_addr":    "string",
 		"dataStore_addr": "string",
-		"account_1":      "string",
-		"account_2":      "string",
+		"account":        "string",
+		"usdt":           "string",
+		"meme":           "string",
 	})
 	if err != nil {
 		panic(err)
@@ -37,14 +39,30 @@ func init() {
 		panic(err)
 	}
 	dataStoreAddr = common.HexToAddress(cfgMap["dataStore_addr"].(string))
-	account_1 = common.HexToAddress(cfgMap["account_1"].(string))
-	account_2 = common.HexToAddress(cfgMap["account_2"].(string))
+	account = common.HexToAddress(cfgMap["account"].(string))
+	usdt = common.HexToAddress(cfgMap["usdt"].(string))
+	meme = common.HexToAddress(cfgMap["meme"].(string))
 
 	threshold, _ = big.NewInt(0).SetString("1100000000000000000000000000", 10)
 }
 
+func Test_calcAmountOut(t *testing.T) {
+	amountOut, amountFee, priceImpact, err := readerContract.CalcAmountOut(
+		nil,
+		dataStoreAddr,
+		usdt,
+		meme,
+		big.NewInt(1000000000),
+		0,
+	)
+	if err != nil {
+		t.Fatalf("CalcAmountOut error: %v", err)
+	}
+	t.Logf("\tamountOut:%v\n\tamountFee:%v\npriceImpact:%v", amountOut, amountFee, priceImpact)
+}
+
 func Test_GetPosition(t *testing.T) {
-	positions, err := readerContract.GetPositions(nil, dataStoreAddr, account_2)
+	positions, err := readerContract.GetPositions(nil, dataStoreAddr, account)
 	if err != nil {
 		t.Fatalf("GetPositions error: %v", err)
 	}
@@ -57,7 +75,7 @@ func Test_GetPosition(t *testing.T) {
 }
 
 func Test_GetPositions(t *testing.T) {
-	positions1, err := readerContract.GetPositions(nil, dataStoreAddr, account_2)
+	positions1, err := readerContract.GetPositions(nil, dataStoreAddr, account)
 	if err != nil {
 		t.Fatalf("GetPositions1 error: %v", err)
 	}
