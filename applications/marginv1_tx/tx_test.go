@@ -74,6 +74,7 @@ func Test_logs(t *testing.T) {
 	}
 
 	for _, vLog := range logs {
+		t.Log("topic[0]:", vLog.Topics[0].Hex())
 		switch vLog.Topics[0] {
 		case contractAbi.Events["Add"].ID:
 			event, err := contractEventEmitter.ParseAdd(vLog)
@@ -104,19 +105,56 @@ func Test_logs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Log("\nPosition\n", event)
+			//t.Log("\nPosition\n", event)
+			t.Logf("\nPosition event:\n\taccount:%v\n\taction type:%v\n\tusdt:%v\n\tmeme:%v\n\tposition ID:%v\n\t{%v,%v}\n\t(%v,%v)\n",
+				event.Account,
+				event.ActionType,
+				event.BaseToken,
+				event.MemeToken,
+				event.PositionId,
+				event.BaseCollateral,
+				event.BaseDebtScaled,
+				event.MemeCollateral,
+				event.MemeDebtScaled,
+			)
 		case contractAbi.Events["Swap"].ID:
 			event, err := contractEventEmitter.ParseSwap(vLog)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Log("\nSwap\n", event)
+			//t.Log("\nSwap\n", event)
+			t.Logf("\nSwap event:\n\taccount:%v\n\tPosition ID:%v\n\tIn:{%v:%v}\n\tOut:{%v,%v}\n\tFee:%v\n\t{%v,%v}\n\t{%v,%v}\n",
+				event.Account,
+				event.PositionId,
+				event.TokenIn,
+				event.AmountIn,
+				event.TokenOut,
+				event.AmountOut,
+				event.Fee,
+				event.BaseCollateral,
+				event.BaseDebtScaled,
+				event.MemeCollateral,
+				event.MemeDebtScaled,
+			)
 		case contractAbi.Events["Borrow"].ID:
 			event, err := contractEventEmitter.ParseBorrow(vLog)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Log("\nBorrow\n", event)
+			//t.Log("\nBorrow\n", event)
+			t.Logf("\nBorrow event:\n\taccount:%v\n\tUSDT:%v\n\tMeMe:%v\n\tPosition ID:%v\n\tToken index:%v\n\tamount:%v\n\tRate:%v\n\t{%v,%v}\n\t{%v,%v}\n",
+				event.Borrower,
+				event.BaseToken,
+				event.MemeToken,
+				event.PositionId,
+				event.TokenIndex,
+				event.BorrowAmount,
+				event.BorrowRate,
+				event.BaseCollateral,
+				event.BaseDebtScaled,
+				event.MemeCollateral,
+				event.MemeDebtScaled,
+			)
 		case contractAbi.Events["Repay"].ID:
 			event, err := contractEventEmitter.ParseRepay(vLog)
 			if err != nil {
