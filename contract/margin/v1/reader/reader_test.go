@@ -47,12 +47,15 @@ func init() {
 }
 
 func Test_calcAmountOut(t *testing.T) {
+	t.Logf("calcAmountOut params:\n\tdataStore: %v\n\tusdt: %v\n\tmeme: %v\n\tamountIn: %v",
+		dataStoreAddr.Hex(), usdt.Hex(), meme.Hex(), big.NewInt(10000000000),
+	)
 	amountOut, amountFee, priceImpact, err := readerContract.CalcAmountOut(
 		nil,
 		dataStoreAddr,
 		usdt,
 		meme,
-		big.NewInt(1000000000),
+		big.NewInt(10000000000),
 		0,
 	)
 	if err != nil {
