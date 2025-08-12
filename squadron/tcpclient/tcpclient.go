@@ -18,6 +18,7 @@ func NewTCPClient(host string, logChan chan string) *TCPClient {
 	return &TCPClient{
 		host:    host,
 		logChan: logChan,
+		conn:    nil,
 	}
 }
 

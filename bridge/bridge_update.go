@@ -5,23 +5,39 @@ import (
 )
 
 func (m BridgeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	var cmds []tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
+		if _, ok := subModels[m.choice]; !ok {
+			switch msg.String() {
+			case "ctrl+c", "q":
+				AppendLog("Bridge quit" + m.choice)
+				return m, tea.Quit
+			case "up", "k":
+				if m.cursor > 0 {
+					m.cursor--
+				}
+			case "down", "j":
+				if m.cursor < len(m.choices)-1 {
+					m.cursor++
+				}
+			case "enter":
+				m.choice = m.choices[m.cursor]
+				cmds = append(cmds, subModels[m.choices[m.cursor]].Init())
 			}
-		case "down", "j":
-			if m.cursor < len(m.choices)-1 {
-				m.cursor++
+		}
+		if _, ok := subModels[m.choice]; ok {
+			subModels[m.choice], cmd = subModels[m.choice].Update(msg)
+			cmds = append(cmds, cmd)
+			if cmd != nil {
+				m.choice = ""
+				cmd = nil
+				AppendLog("Back to Bridge")
 			}
-		case "enter":
 		}
 	case string:
-		m.AppendLog(msg)
+		AppendLog(msg)
 	}
-	return m, nil
+	return m, tea.Batch(cmds...)
 }

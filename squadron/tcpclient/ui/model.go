@@ -19,9 +19,8 @@ const (
 
 type TcpClientModel struct {
 	// Add fields as needed for the model
-	parent    *tea.Model
 	state     State
-	tcpClient *tcpclient.TCPClient
+	client    *tcpclient.TCPClient
 	hostInput string
 }
 
@@ -29,8 +28,7 @@ func init() {
 	bridge.RegisterSubModel("TCP Client", TcpClientModel{
 		state:     StateInit,
 		hostInput: "",
-		parent:    nil,
-		tcpClient: nil,
+		client:    nil,
 	})
 }
 
@@ -41,7 +39,6 @@ func (m TcpClientModel) Init() tea.Cmd {
 
 func (m *TcpClientModel) Clear() {
 	m.hostInput = ""
-	m.tcpClient.Close()
+	m.client.Close()
 	m.state = StateInit
-	m.parent = nil
 }
