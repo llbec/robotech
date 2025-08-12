@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"robotech/tcp"
+	"robotech/src/tcp"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

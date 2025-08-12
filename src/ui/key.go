@@ -2,8 +2,8 @@ package ui
 
 import (
 	"fmt"
-	"robotech/tcp"
-	"robotech/utils"
+	"robotech/src/tcp"
+	"robotech/src/utils"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -66,11 +66,12 @@ func (m *Model) handleInputPort(msg tea.KeyMsg) {
 		m.state = StateRunning
 		m.AppendLog(fmt.Sprintf("启动 %s 于 %s:%s", m.modeString(), m.ipInput, m.portInput))
 		addr := m.ipInput + ":" + m.portInput
-		if m.mode == ModeTCPServer {
+		switch m.mode {
+		case ModeTCPServer:
 			server := tcp.NewTCPServer(addr, m.logChan)
 			m.tcpServer = server
 			go server.Start()
-		} else if m.mode == ModeTCPClient {
+		case ModeTCPClient:
 			client := tcp.NewTCPClient(addr, m.logChan)
 			m.tcpClient = client
 			go client.Start()
@@ -101,9 +102,10 @@ func (m *Model) handleRunningKeys(msg tea.KeyMsg) {
 			m.runningCursor++
 		}
 	case "enter":
-		if m.runningCursor == 0 {
+		switch m.runningCursor {
+		case 0:
 			m.state = StateSendDataModeSelection
-		} else if m.runningCursor == 1 {
+		case 1:
 			m.closeTCP()
 			m.state = StateMenu
 			m.mode = ModeNone
