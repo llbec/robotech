@@ -1,12 +1,10 @@
 package tcpclient
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"robotech/armory"
-	"strings"
-	"time"
 )
 
 type TCPClient struct {
@@ -33,7 +31,7 @@ func (c *TCPClient) Start() {
 	c.conn = conn
 	c.logChan <- fmt.Sprintf("[Client] 已连接服务器 %s", c.host)
 
-	reader := bufio.NewReader(conn)
+	/*reader := bufio.NewReader(conn)
 
 	for {
 		c.conn.SetReadDeadline(time.Now().Add(time.Minute * 10))
@@ -47,6 +45,25 @@ func (c *TCPClient) Start() {
 			continue
 		}
 		c.logChan <- "[Client 收到] " + line
+	}*/
+	buf := make([]byte, 1024*8)
+	for {
+		n, err := conn.Read(buf)
+		if n > 0 {
+			//fmt.Print(string(buf[:n]))
+			//fmt.Println(BytesToHex(buf[:n]))
+			c.logChan <- "[Client 收到] " + armory.BytesToHex(buf[:n])
+		}
+		if err != nil {
+			if err == io.EOF {
+				//log.Println("Server closed the connection")
+				c.logChan <- "[Client] Server closed the connection"
+			} else {
+				//log.Printf("Read error: %v\n", err)
+				c.logChan <- fmt.Sprintf("[Client] 读取失败: %v", err)
+			}
+			break
+		}
 	}
 	c.logChan <- "[Client] 连接关闭"
 	conn.Close()
