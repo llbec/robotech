@@ -52,7 +52,7 @@ func (c *TCPClient) Start() {
 		if n > 0 {
 			//fmt.Print(string(buf[:n]))
 			//fmt.Println(BytesToHex(buf[:n]))
-			c.logChan <- "[Client 收到] " + armory.BytesToHex(buf[:n])
+			c.logChan <- "[Client 收到]\n" + armory.BytesToHex(buf[:n])
 		}
 		if err != nil {
 			if err == io.EOF {

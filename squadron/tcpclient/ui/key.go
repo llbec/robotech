@@ -64,6 +64,7 @@ func (m *TcpClientModel) handleSendFile(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		m.client.SendHexString(string(data))
+		bridge.LogChan <- m.selectedFile + " sent: " + string(data)
 		m.state = StateRunning
 	default:
 		//bridge.LogChan <- fmt.Sprintf("File Picker Path(update): %v", m.filepicker.CurrentDirectory)
