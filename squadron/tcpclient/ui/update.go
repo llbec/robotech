@@ -13,12 +13,15 @@ func (m TcpClientModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.handleInitKeys(msg)
 		case StateInputHost:
 			cmd = m.handleInputHost(msg)
-		case StateEditMsg:
-			cmd = m.handleMenuKeys(msg)
 		case StateRunning:
 			cmd = m.handleMenuKeys(msg)
+		case StageSelectFile:
+			cmd = m.handleSendFile(msg)
+		case StageSendFile:
 		}
+	default:
+		//bridge.LogChan <- fmt.Sprintf("Unhandled message type: %v", msg)
+		m.filepicker, cmd = m.filepicker.Update(msg)
 	}
-	//bridge.AppendLog(fmt.Sprintf("TCP Client State: %v, Host Input: %s", m.state, m.hostInput))
 	return m, cmd
 }

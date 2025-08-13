@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"robotech/armory"
 	"strings"
 	"time"
 )
@@ -29,7 +30,6 @@ func (c *TCPClient) Start() {
 		c.logChan <- fmt.Sprintf("[Client] 连接失败: %v", err)
 		return
 	}
-	//defer conn.Close()
 	c.conn = conn
 	c.logChan <- fmt.Sprintf("[Client] 已连接服务器 %s", c.host)
 
@@ -51,7 +51,7 @@ func (c *TCPClient) Start() {
 	c.logChan <- "[Client] 连接关闭"
 	conn.Close()
 	c.conn = nil
-	c.logChan <- fmt.Sprintf("[Client] 连接到服务器 %s ", c.Host())
+	//c.logChan <- fmt.Sprintf("[Client] 连接到服务器 %s ", c.Host())
 }
 
 func (c *TCPClient) Send(data string) error {
@@ -59,6 +59,19 @@ func (c *TCPClient) Send(data string) error {
 		return fmt.Errorf("未连接服务器")
 	}
 	_, err := c.conn.Write([]byte(data + "\n"))
+	return err
+}
+
+func (c *TCPClient) SendHexString(hex string) error {
+	if c.conn == nil {
+		return fmt.Errorf("未连接服务器")
+	}
+
+	bytes, err := armory.HexToBytes(hex)
+	if err != nil {
+		return err
+	}
+	_, err = c.conn.Write(append(bytes, '\n'))
 	return err
 }
 

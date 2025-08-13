@@ -23,9 +23,25 @@ var (
 			Bold(true).
 			Foreground(lipgloss.Color("#7D56F4"))
 	HelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	viewporttitleStyle = func() lipgloss.Style {
+		b := lipgloss.RoundedBorder()
+		b.Right = "├"
+		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 1)
+	}()
+
+	viewportinfoStyle = func() lipgloss.Style {
+		b := lipgloss.RoundedBorder()
+		b.Left = "┤"
+		return viewporttitleStyle.BorderStyle(b)
+	}()
 )
 
 var (
 	subModels map[string]tea.Model = make(map[string]tea.Model)
 	LogChan   chan string
 )
+
+type BridgeMsg struct {
+	Cmd int
+}

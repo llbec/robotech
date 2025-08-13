@@ -11,11 +11,14 @@ func (m TcpClientModel) View() string {
 	case StateInputHost:
 		b.WriteString("\n请输入 IP:Port :\n")
 		b.WriteString(m.hostInput + "_\n")
-	case StateEditMsg:
+	//case StateEditMsg:
 	case StateRunning:
 		b.WriteString(bridge.OptionStyle.Render("\nTCP Server " + m.client.Host() + "\n"))
 		b.WriteString(bridge.HelpStyle.Render("\ns:edit message and send • q: exit\n"))
-	default:
+	case StageSelectFile:
+		//bridge.LogChan <- fmt.Sprintf("File Picker Path(view): %v", m.fp.CurrentDirectory)
+		b.WriteString("selected file: " + m.filepicker.Styles.Selected.Render(m.selectedFile) + "\n")
+		b.WriteString("\n" + m.filepicker.View())
 	}
 
 	return b.String()
