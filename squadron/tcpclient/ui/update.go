@@ -19,5 +19,6 @@ func (m TcpClientModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.handleMenuKeys(msg)
 		}
 	}
+	//bridge.AppendLog(fmt.Sprintf("TCP Client State: %v, Host Input: %s", m.state, m.hostInput))
 	return m, cmd
 }

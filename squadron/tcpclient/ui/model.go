@@ -39,6 +39,8 @@ func (m TcpClientModel) Init() tea.Cmd {
 
 func (m *TcpClientModel) Clear() {
 	m.hostInput = ""
-	m.client.Close()
+	if m.client != nil {
+		m.client.Close()
+	}
 	m.state = StateInit
 }

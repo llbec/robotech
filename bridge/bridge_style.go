@@ -26,13 +26,6 @@ var (
 )
 
 var (
-	BridgeLogs                      = []string{}
-	subModels  map[string]tea.Model = make(map[string]tea.Model)
+	subModels map[string]tea.Model = make(map[string]tea.Model)
+	LogChan   chan string
 )
-
-func AppendLog(s string) {
-	if len(BridgeLogs) >= 200 {
-		BridgeLogs = BridgeLogs[1:] // 保持日志长度不超过200
-	}
-	BridgeLogs = append(BridgeLogs, s)
-}

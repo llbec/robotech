@@ -7,9 +7,6 @@ import (
 
 func (m TcpClientModel) View() string {
 	var b strings.Builder
-
-	b.WriteString("\n------------------------------------------\n")
-
 	switch m.state {
 	case StateInputHost:
 		b.WriteString("\n请输入 IP:Port :\n")
@@ -17,7 +14,7 @@ func (m TcpClientModel) View() string {
 	case StateEditMsg:
 	case StateRunning:
 		b.WriteString(bridge.OptionStyle.Render("\nTCP Server " + m.client.Host() + "\n"))
-		b.WriteString(bridge.HelpStyle.Render("\ne:edit message and send • s:stop • q: exit\n"))
+		b.WriteString(bridge.HelpStyle.Render("\ns:edit message and send • q: exit\n"))
 	default:
 	}
 

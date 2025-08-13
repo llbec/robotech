@@ -23,12 +23,13 @@ func NewTCPClient(host string, logChan chan string) *TCPClient {
 }
 
 func (c *TCPClient) Start() {
+	c.logChan <- fmt.Sprintf("[Client] 尝试连接服务器 %s ...", c.host)
 	conn, err := net.Dial("tcp", c.host)
 	if err != nil {
 		c.logChan <- fmt.Sprintf("[Client] 连接失败: %v", err)
 		return
 	}
-	defer conn.Close()
+	//defer conn.Close()
 	c.conn = conn
 	c.logChan <- fmt.Sprintf("[Client] 已连接服务器 %s", c.host)
 
@@ -48,6 +49,9 @@ func (c *TCPClient) Start() {
 		c.logChan <- "[Client 收到] " + line
 	}
 	c.logChan <- "[Client] 连接关闭"
+	conn.Close()
+	c.conn = nil
+	c.logChan <- fmt.Sprintf("[Client] 连接到服务器 %s ", c.Host())
 }
 
 func (c *TCPClient) Send(data string) error {
@@ -66,7 +70,7 @@ func (c *TCPClient) Host() string {
 	if c.conn == nil {
 		return c.host + "(未连接)"
 	}
-	return c.conn.RemoteAddr().Network()
+	return c.conn.RemoteAddr().String()
 }
 
 func (c *TCPClient) Close() {

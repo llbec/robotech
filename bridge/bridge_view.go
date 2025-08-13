@@ -7,16 +7,17 @@ import (
 func (m BridgeModel) View() string {
 	var b strings.Builder
 	b.WriteString(TitleStyle.Render(" Robotech ") + "\n\n")
-	b.WriteString("\n日志区:\n")
-	logsLen := len(BridgeLogs)
+	b.WriteString("日志区:\n")
+	/*logsLen := len(BridgeLogs)
 	start := 0
 	if logsLen > 20 {
 		start = logsLen - 20
 	}
-	for _, line := range BridgeLogs[start:] {
+	for _, line := range BridgeLogs {
 		b.WriteString(LogStyle.Render(line) + "\n")
-	}
-	b.WriteString("\n")
+	}*/
+	b.WriteString(m.viewport.View())
+	b.WriteString("\n------------------------------\n")
 	if _, ok := subModels[m.choice]; ok {
 		b.WriteString(subModels[m.choice].View())
 	} else {
