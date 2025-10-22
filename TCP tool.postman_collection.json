@@ -1,0 +1,307 @@
+{
+	"info": {
+		"_postman_id": "e93dce7b-86ec-4960-916f-06d335eb41ca",
+		"name": "TCP tool",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "49473650",
+		"_collection_link": "https://libera-19526a22-4576223.postman.co/workspace/libera-19526a22's-Workspace~45155746-5269-458b-8653-f28d975283f2/collection/49473650-e93dce7b-86ec-4960-916f-06d335eb41ca?action=share&source=collection_link&creator=49473650"
+	},
+	"item": [
+		{
+			"name": "start TCP server",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ip\": \"0.0.0.0\",\r\n  \"port\": 9000\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseURL}}/api/tcp/server/open",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"api",
+						"tcp",
+						"server",
+						"open"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "start TCP client",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"ip\": \"127.0.0.1\",\r\n  \"port\": 2345\r\n}\r\n"
+				},
+				"url": {
+					"raw": "{{baseURL}}/api/tcp/client/open",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"api",
+						"tcp",
+						"client",
+						"open"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Sessions",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseURL}}/api/tcp/sessions",
+					"host": [
+						"{{baseURL}}"
+					],
+					"path": [
+						"api",
+						"tcp",
+						"sessions"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "add periodic action",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"type\": \"periodic\",\r\n  \"interval_sec\": 5,\r\n  \"message\": \"HELLO\",\r\n  \"description\": \"每5秒发送一次 HELLO\"\r\n}\r\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://127.0.0.1:8080/api/action/add",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"action",
+						"add"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "add  periodic until response",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"type\": \"periodic\",\r\n  \"interval_sec\": 5,\r\n  \"message\": \"HELLO\",\r\n  \"description\": \"每5秒发送一次 HELLO\"\r\n}\r\n"
+				},
+				"url": {
+					"raw": "http://127.0.0.1:8080/api/action/add",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"action",
+						"add"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "add respond on receive",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"type\": \"periodic\",\r\n  \"interval_sec\": 5,\r\n  \"message\": \"HELLO\",\r\n  \"description\": \"每5秒发送一次 HELLO\"\r\n}\r\n"
+				},
+				"url": {
+					"raw": "http://127.0.0.1:8080/api/action/add",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"action",
+						"add"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get actions",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://127.0.0.1:8080/api/action/list",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"action",
+						"list"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "action bind sessions",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"session_ids\": [\"127.0.0.1:50814\"],\r\n  \"action_ids\": [1, 2]\r\n}\r\n"
+				},
+				"url": {
+					"raw": "http://127.0.0.1:8080/api/action/bind",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"action",
+						"bind"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "close session",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"id\": \"127.0.0.1:50814\"\r\n}\r\n\r\n"
+				},
+				"url": {
+					"raw": "http://127.0.0.1:8080/api/session/close",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"session",
+						"close"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "close TCP server",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "http://127.0.0.1:8080/api/server/close",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"server",
+						"close"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "close TCP client",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "http://127.0.0.1:8080/api/client/close",
+					"protocol": "http",
+					"host": [
+						"127",
+						"0",
+						"0",
+						"1"
+					],
+					"port": "8080",
+					"path": [
+						"api",
+						"client",
+						"close"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "baseURL",
+			"value": "",
+			"type": "default"
+		}
+	]
+}

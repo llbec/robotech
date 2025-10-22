@@ -1,0 +1,9 @@
+{
+  "1": {
+    "id": 1,
+    "type": "periodic",
+    "message": "HELLO",
+    "description": "每5秒发送一次 HELLO",
+    "created_at": "0001-01-01T00:00:00Z"
+  }
+}
