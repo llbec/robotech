@@ -13,7 +13,7 @@ func main() {
 	// 定义命令行参数
 	ip := flag.String("ip", "0.0.0.0", "HTTP server listen IP address")
 	port := flag.Int("port", 8080, "HTTP server listen port")
-	logfile := flag.String("log", "app.log", "Log file path")
+	logfile := flag.String("log", "logs/app.log", "Log file path")
 
 	flag.Parse()
 

@@ -1,6 +1,7 @@
 package action
 
 import (
+	"robotech/session"
 	"sync"
 	"time"
 )
@@ -8,24 +9,30 @@ import (
 type ActionType string
 
 const (
-	ActionPeriodic              ActionType = "periodic"                // 5.1
-	ActionPeriodicUntilResponse ActionType = "periodic_until_response" // 5.2
-	ActionRespondOnReceive      ActionType = "respond_on_receive"      // 5.3
+	ActionPeriodic              ActionType = "periodic"
+	ActionPeriodicUntilResponse ActionType = "periodic_until_response"
+	ActionRespondOnReceive      ActionType = "respond_on_receive"
 )
 
 type Action struct {
-	ID          int        `json:"id"`
-	Type        ActionType `json:"type"`
-	PeriodMs    int        `json:"period_ms,omitempty"` // for periodic types
-	Message     string     `json:"message,omitempty"`
-	Expect      string     `json:"expect,omitempty"` // for until-response
-	Description string     `json:"description,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          int             `json:"id"`
+	Type        ActionType      `json:"type"`
+	PeriodMs    int             `json:"period_ms,omitempty"`
+	MsgType     session.MsgType `json:"msg_type,omitempty"`
+	Message     string          `json:"message,omitempty"`   // message to send (for periodic or reply)
+	Expect      string          `json:"expect,omitempty"`    // match string for until/auto
+	ReplyMsg    string          `json:"reply_msg,omitempty"` // reply message when match (for respond_on_receive)
+	Description string          `json:"description,omitempty"`
+	CreatedAt   time.Time       `json:"created_at,omitempty"`
 }
 
 var (
-	actions    = make(map[int]*Action)
-	actionsMu  sync.Mutex
-	nextID     = 1
-	configFile = "actions.json"
+	actionsMu sync.Mutex
+	actions   = make(map[int]*Action)
+	nextID    = 1
+	filePath  = "actions.json"
+
+	// runner management: key sessionID:actionID -> stop chan
+	runnersMu sync.Mutex
+	runners   = make(map[string]chan struct{})
 )

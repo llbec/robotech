@@ -35,12 +35,14 @@ actions.json
 
 #log file
 *.log
+logs/
 
 #ABI files
 *.abi
 
 #build file
 *.build
+build/
 
 #db file
 .storage/
