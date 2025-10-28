@@ -107,10 +107,17 @@ func handleSend(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 		return
 	}
 	msgType := session.GetSessionMsgType(id)
+	data := []byte(body.Msg)
 	if msgType == session.MsgTypeHex {
-		body.Msg = utils.BytesToHexString([]byte(body.Msg))
+		// convert hex string to bytes
+		d1, err := utils.HexStringToBytes(body.Msg)
+		if err != nil {
+			writeJSON(w, genericResp{Ok: false, Msg: err.Error()})
+			return
+		}
+		data = d1
 	}
-	if err := session.Send(id, []byte(body.Msg)); err != nil {
+	if err := session.Send(id, data); err != nil {
 		writeJSON(w, genericResp{Ok: false, Msg: err.Error()})
 		return
 	}
