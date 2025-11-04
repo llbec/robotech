@@ -1,7 +1,6 @@
 package action
 
 import (
-	"robotech/session"
 	"sync"
 	"time"
 )
@@ -15,15 +14,14 @@ const (
 )
 
 type Action struct {
-	ID          int             `json:"id"`
-	Type        ActionType      `json:"type"`
-	PeriodMs    int             `json:"period_ms,omitempty"`
-	MsgType     session.MsgType `json:"msg_type,omitempty"`
-	Message     string          `json:"message,omitempty"`   // message to send (for periodic or reply)
-	Expect      string          `json:"expect,omitempty"`    // match string for until/auto
-	ReplyMsg    string          `json:"reply_msg,omitempty"` // reply message when match (for respond_on_receive)
-	Description string          `json:"description,omitempty"`
-	CreatedAt   time.Time       `json:"created_at,omitempty"`
+	ID          int        `json:"id"`
+	Type        ActionType `json:"type"`
+	PeriodMs    int        `json:"period_ms,omitempty"`
+	Message     string     `json:"message,omitempty"`   // message to send (for periodic or reply)
+	Expect      string     `json:"expect,omitempty"`    // match string for until/auto
+	ReplyMsg    string     `json:"reply_msg,omitempty"` // reply message when match (for respond_on_receive)
+	Description string     `json:"description,omitempty"`
+	CreatedAt   time.Time  `json:"created_at,omitempty"`
 }
 
 var (

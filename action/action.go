@@ -22,11 +22,8 @@ func Add(a Action) int {
 	a.ID = nextID
 	nextID++
 	a.CreatedAt = time.Now()
-	if a.MsgType == "" {
-		a.MsgType = session.MsgTypeString
-	}
 	actions[a.ID] = &a
-	_ = SaveToFile()
+	_ = saveToFileUnlocked()
 	logger.Infof("action added id=%d type=%s desc=%s", a.ID, a.Type, a.Description)
 	return a.ID
 }
@@ -50,14 +47,20 @@ func Get(id int) *Action {
 func SaveToFile() error {
 	actionsMu.Lock()
 	defer actionsMu.Unlock()
+	return saveToFileUnlocked()
+}
+
+func saveToFileUnlocked() error {
 	list := make([]*Action, 0, len(actions))
 	for _, a := range actions {
 		list = append(list, a)
 	}
+
 	b, err := json.MarshalIndent(list, "", "  ")
 	if err != nil {
 		return err
 	}
+	logger.Infof("saving %d actions to file %s", len(list), filePath)
 	return os.WriteFile(filePath, b, 0644)
 }
 
@@ -98,10 +101,11 @@ func Bind(sessionIDs []string, actionIDs []int) error {
 				continue
 			}
 			// start runner (deduped)
+			logger.Infof("bind action %d to session %s", a.ID, sid)
 			go startRunner(sid, a)
 		}
 	}
-	return SaveToFile()
+	return nil
 }
 
 func Unbind(sessionID string, actionID int) {
@@ -182,7 +186,7 @@ func runPeriodic(sessionID string, a *Action, stop chan struct{}) {
 			if !session.IsActionAssigned(sessionID, a.ID) {
 				return
 			}
-			b, err := parseMessage(a.MsgType, a.Message)
+			b, err := parseMessage(session.GetSessionMsgType(sessionID), a.Message)
 			if err != nil {
 				logger.Error("parse message err:", err)
 				return
@@ -210,7 +214,7 @@ func runPeriodicUntilResponse(sessionID string, a *Action, stop chan struct{}) {
 			if !session.IsActionAssigned(sessionID, a.ID) {
 				return
 			}
-			b, err := parseMessage(a.MsgType, a.Message)
+			b, err := parseMessage(session.GetSessionMsgType(sessionID), a.Message)
 			if err != nil {
 				logger.Error("parse message err:", err)
 				return
@@ -253,7 +257,7 @@ func runRespondOnReceive(sessionID string, a *Action, stop chan struct{}) {
 			// match Expect substring
 			if a.Expect != "" && strings.Contains(msg, a.Expect) {
 				// send reply
-				b, err := parseMessage(a.MsgType, a.ReplyMsg)
+				b, err := parseMessage(session.GetSessionMsgType(sessionID), a.ReplyMsg)
 				if err != nil {
 					logger.Error("parse reply err:", err)
 					continue
