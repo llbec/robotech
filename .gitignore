@@ -34,6 +34,7 @@ config.yaml
 
 #log file
 *.log
+logs/
 
 #ABI files
 *.abi
