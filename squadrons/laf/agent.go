@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/big"
 	"os"
+	abiDepot "robotech/armory/abidepot"
 	"strings"
 
 	"github.com/ethereum/go-ethereum"
@@ -20,6 +21,7 @@ var (
 	StakingABI  abi.ABI
 	ReferralABI abi.ABI
 	SwapABI     abi.ABI
+	UsdtABI     abi.ABI
 )
 
 func init() {
@@ -39,6 +41,10 @@ func init() {
 	SwapABI, err = abi.JSON(strings.NewReader(SWAPABI))
 	if err != nil {
 		panic(fmt.Sprintf("failed to parse SwapABI: %v", err))
+	}
+	UsdtABI, err = abi.JSON(strings.NewReader(abiDepot.ERC20ABI))
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse UsdtABI: %v", err))
 	}
 }
 
