@@ -43,7 +43,7 @@ func NewLAFAgent(cfgFile string) *LafAgent {
 }
 
 // Filter transactions containing logs
-func (agent *LafAgent) FilterLogs(fromBlock, toBlock uint64) (txs []common.Hash, err error) {
+func (agent *LafAgent) FilterTxs(fromBlock, toBlock uint64) (txs []common.Hash, err error) {
 	if fromBlock > toBlock {
 		err = fmt.Errorf("fromBlock %d is greater than toBlock %d", fromBlock, toBlock)
 		return
@@ -57,11 +57,32 @@ func (agent *LafAgent) FilterLogs(fromBlock, toBlock uint64) (txs []common.Hash,
 		return
 	}
 	lafABI, err := abi.JSON(strings.NewReader(LAFABI))
+	if err != nil {
+		err = fmt.Errorf("failed to parse LAFABI: %v", err)
+		return
+	}
+	stakingABI, err := abi.JSON(strings.NewReader(STAKINGABI))
+	if err != nil {
+		err = fmt.Errorf("failed to parse StakingABI: %v", err)
+		return
+	}
+	referralABI, err := abi.JSON(strings.NewReader(REFERRALABI))
+	if err != nil {
+		err = fmt.Errorf("failed to parse ReferralABI: %v", err)
+		return
+	}
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(fromBlock)),
 		ToBlock:   big.NewInt(int64(toBlock)),
-		Addresses: []common.Address{agent.lafContract},
-		Topics:    [][]common.Hash{{lafABI.Events["Transfer"].ID}},
+		Addresses: []common.Address{
+			agent.lafContract,
+			agent.stakingContract,
+			agent.referralContract},
+		Topics: [][]common.Hash{{
+			lafABI.Events["Transfer"].ID,
+			lafABI.Events["OwnershipTransferred"].ID,
+			stakingABI.Events["OwnershipTransferred"].ID,
+			referralABI.Events["SetOperator"].ID}},
 	}
 
 	logs, err := agent.client.FilterLogs(context.Background(), query)
@@ -69,6 +90,7 @@ func (agent *LafAgent) FilterLogs(fromBlock, toBlock uint64) (txs []common.Hash,
 		err = fmt.Errorf("failed to filter logs[%v-%v]: %v", fromBlock, toBlock, err)
 		return
 	}
+
 	txRecords := make(map[common.Hash]bool)
 	for _, v := range logs {
 		if txRecords[v.TxHash] {

@@ -5,6 +5,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// -------- LafAgent --------
 type LafAgent struct {
 	client           *ethclient.Client
 	lafContract      common.Address
@@ -14,11 +15,23 @@ type LafAgent struct {
 	swapContract     common.Address
 }
 
+// -------- LafAgentConfig --------
 type LafAgentConfig struct {
-	RpcUrl           string `json:"rpcUrl"`
-	LafContract      string `json:"lafContract"`
-	StakingContract  string `json:"stakingContract"`
-	ReferralContract string `json:"referralContract"`
-	USDTContract     string `json:"usdtContract"`
-	SwapContract     string `json:"swapContract"`
+	RpcUrl           string `json:"rpc_url"`
+	LafContract      string `json:"laf_contract"`
+	StakingContract  string `json:"staking_contract"`
+	ReferralContract string `json:"referral_contract"`
+	USDTContract     string `json:"usdt_contract"`
+	SwapContract     string `json:"swap_contract"`
 }
+
+// -------- LafAgent DB struct --------
+type LafAgentData struct {
+	Type        string `json:"type"`
+	Transaction string `json:"transaction"`
+}
+
+// -------- LafAgent transaction types --------
+const (
+	TransferEvent = "Transfer"
+)

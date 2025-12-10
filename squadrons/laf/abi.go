@@ -8,7 +8,9 @@ import (
 
 // -------- Referral events --------
 // event BindReferral(address indexed user,address parent);
-const referralABI = `
+// event SetOperator(address indexed operators, bool status);
+
+const REFERRALABI = `
 [
 	{
 		"anonymous":false,
@@ -18,6 +20,15 @@ const referralABI = `
 		],
 		"name":"BindReferral",
 		"type":"event"
+	},
+	{
+		"anonymous":false,
+		"inputs":[
+			{"indexed":true,"internalType":"address","name":"operators","type":"address"},
+			{"indexed":true,"internalType":"bool","name":"status","type":"bool"}
+		],
+		"name":"SetOperator",
+		"type":"event"
 	}
 ]`
 
@@ -25,12 +36,17 @@ type BindReferralEvent struct {
 	User   common.Address `json:"user"`
 	Parent common.Address `json:"parent"`
 }
+type SetOperatorEvent struct {
+	Operators common.Address `json:"operators"`
+	Status    bool           `json:"status"`
+}
 
 // -------- Staking events --------
 // event Staked(address indexed user, uint256 amount, uint256 timestamp, uint256 index, uint256 stakeTime);
 // event RewardPaid(address indexed user, uint256 reward, uint40 timestamp, uint256 index);
 // event Transfer(address indexed from, address indexed to, uint256 amount);
-const stakingABI = `
+// event OwnershipTransferred(address indexed user, address indexed newOwner);
+const STAKINGABI = `
 [
 	{
 		"anonymous":false,
@@ -63,6 +79,15 @@ const stakingABI = `
 			{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}
 		],
 		"name":"Transfer",
+		"type":"event"
+	},
+	{
+		"anonymous":false,
+		"inputs":[
+			{"indexed":true,"internalType":"address","name":"user","type":"address"},
+			{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}
+		],
+		"name":"OwnershipTransferred",
 		"type":"event"
 	}
 ]`
@@ -168,7 +193,7 @@ type LAFTransferEvent struct {
 
 // -------- Swap events --------
 // Sync (uint112 reserve0, uint112 reserve1)View Source
-const SwapABI = `
+const SWAPABI = `
 [
 	{
 		"anonymous":false,
