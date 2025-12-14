@@ -146,10 +146,13 @@ func (agent *LafAgent) ParseTx(tx common.Hash) (
 		data := make(map[string]any)
 		switch log.Address {
 		case agent.lafContract:
-			err = LafABI.UnpackIntoMap(data, log.Topics[0].String(), log.Data)
-			if err != nil {
-				err = fmt.Errorf("failed to unpack log: %v", err)
-				return
+			switch log.Topics[0].String() {
+			case LafABI.Events["Transfer"].ID.String():
+				err = LafABI.UnpackIntoMap(data, log.Topics[0].String(), log.Data)
+				if err != nil {
+					err = fmt.Errorf("failed to unpack log: %v", err)
+					return
+				}
 			}
 		}
 	}
