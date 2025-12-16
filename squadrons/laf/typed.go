@@ -25,6 +25,7 @@ type LafAgentConfig struct {
 	ReferralContract string `json:"referral_contract"`
 	USDTContract     string `json:"usdt_contract"`
 	SwapContract     string `json:"swap_contract"`
+	RouteContract    string `json:"route_contract"`
 }
 
 // -------- LafAgent DB struct --------

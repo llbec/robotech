@@ -7,7 +7,9 @@ import (
 	"log"
 	"math/big"
 	"os"
-	abilibs "robotech/armory/abilibs"
+	"robotech/armory/abilibs/erc20abi"
+	"robotech/armory/abilibs/lafabi"
+	"robotech/armory/abilibs/uniswapv2abi"
 	"strings"
 
 	"github.com/ethereum/go-ethereum"
@@ -22,31 +24,64 @@ var (
 	ReferralABI abi.ABI
 	SwapABI     abi.ABI
 	UsdtABI     abi.ABI
+
+	client           *ethclient.Client
+	lafContract      common.Address
+	stakingContract  common.Address
+	referralContract common.Address
+	usdtContract     common.Address
+	swapContract     common.Address
+	routeContract    common.Address
 )
 
 func init() {
 	var err error
-	LafABI, err = abi.JSON(strings.NewReader(LAFABI))
+	LafABI, err = abi.JSON(strings.NewReader(lafabi.LAFABI))
 	if err != nil {
 		panic(fmt.Sprintf("failed to parse LAFABI: %v", err))
 	}
-	StakingABI, err = abi.JSON(strings.NewReader(STAKINGABI))
+	StakingABI, err = abi.JSON(strings.NewReader(lafabi.STAKINGABI))
 	if err != nil {
 		panic(fmt.Sprintf("failed to parse StakingABI: %v", err))
 	}
-	ReferralABI, err = abi.JSON(strings.NewReader(REFERRALABI))
+	ReferralABI, err = abi.JSON(strings.NewReader(lafabi.REFERRALABI))
 	if err != nil {
 		panic(fmt.Sprintf("failed to parse ReferralABI: %v", err))
 	}
-	SwapABI, err = abi.JSON(strings.NewReader(SWAPABI))
+	SwapABI, err = abi.JSON(strings.NewReader(uniswapv2abi.SWAPABI))
 	if err != nil {
 		panic(fmt.Sprintf("failed to parse SwapABI: %v", err))
 	}
-	UsdtABI, err = abi.JSON(strings.NewReader(abilibs.ERC20ABI))
+	UsdtABI, err = abi.JSON(strings.NewReader(erc20abi.ERC20ABI))
 	if err != nil {
 		panic(fmt.Sprintf("failed to parse UsdtABI: %v", err))
 	}
 }
+
+func LoadConfig(cfgFile string) error {
+	cfg := &LafAgentConfig{}
+	data, err := os.ReadFile(cfgFile)
+	if err != nil {
+		return fmt.Errorf("read config file %s failed: %v", cfgFile, err)
+	}
+	err = json.Unmarshal(data, cfg)
+	if err != nil {
+		return fmt.Errorf("unmarshal config file %s failed: %v", cfgFile, err)
+	}
+	client, err = ethclient.Dial(cfg.RpcUrl)
+	if err != nil {
+		return fmt.Errorf("dial rpc url %s failed: %v", cfg.RpcUrl, err)
+	}
+	lafContract = common.HexToAddress(cfg.LafContract)
+	stakingContract = common.HexToAddress(cfg.StakingContract)
+	referralContract = common.HexToAddress(cfg.ReferralContract)
+	usdtContract = common.HexToAddress(cfg.USDTContract)
+	swapContract = common.HexToAddress(cfg.SwapContract)
+	routeContract = common.HexToAddress(cfg.RouteContract)
+	return nil
+}
+
+func FilterTxs(fromBlock, toBlock uint64) {}
 
 func NewLAFAgent(cfgFile string) *LafAgent {
 	cfg := &LafAgentConfig{}

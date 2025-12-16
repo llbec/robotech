@@ -1,4 +1,4 @@
-package abilibs
+package erc20abi
 
 /*
 event Transfer(address indexed from, address indexed to, uint256 value);
