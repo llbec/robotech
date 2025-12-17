@@ -15,6 +15,7 @@ type LafAgent struct {
 	referralContract common.Address
 	usdtContract     common.Address
 	swapContract     common.Address
+	routeContract    common.Address
 }
 
 // -------- LafAgentConfig --------

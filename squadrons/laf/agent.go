@@ -10,6 +10,7 @@ import (
 	"robotech/armory/abilibs/erc20abi"
 	"robotech/armory/abilibs/lafabi"
 	"robotech/armory/abilibs/uniswapv2abi"
+	"robotech/armory/txstore"
 	"strings"
 
 	"github.com/ethereum/go-ethereum"
@@ -24,14 +25,6 @@ var (
 	ReferralABI abi.ABI
 	SwapABI     abi.ABI
 	UsdtABI     abi.ABI
-
-	client           *ethclient.Client
-	lafContract      common.Address
-	stakingContract  common.Address
-	referralContract common.Address
-	usdtContract     common.Address
-	swapContract     common.Address
-	routeContract    common.Address
 )
 
 func init() {
@@ -58,31 +51,6 @@ func init() {
 	}
 }
 
-func LoadConfig(cfgFile string) error {
-	cfg := &LafAgentConfig{}
-	data, err := os.ReadFile(cfgFile)
-	if err != nil {
-		return fmt.Errorf("read config file %s failed: %v", cfgFile, err)
-	}
-	err = json.Unmarshal(data, cfg)
-	if err != nil {
-		return fmt.Errorf("unmarshal config file %s failed: %v", cfgFile, err)
-	}
-	client, err = ethclient.Dial(cfg.RpcUrl)
-	if err != nil {
-		return fmt.Errorf("dial rpc url %s failed: %v", cfg.RpcUrl, err)
-	}
-	lafContract = common.HexToAddress(cfg.LafContract)
-	stakingContract = common.HexToAddress(cfg.StakingContract)
-	referralContract = common.HexToAddress(cfg.ReferralContract)
-	usdtContract = common.HexToAddress(cfg.USDTContract)
-	swapContract = common.HexToAddress(cfg.SwapContract)
-	routeContract = common.HexToAddress(cfg.RouteContract)
-	return nil
-}
-
-func FilterTxs(fromBlock, toBlock uint64) {}
-
 func NewLAFAgent(cfgFile string) *LafAgent {
 	cfg := &LafAgentConfig{}
 	data, err := os.ReadFile(cfgFile)
@@ -107,6 +75,7 @@ func NewLAFAgent(cfgFile string) *LafAgent {
 		referralContract: common.HexToAddress(cfg.ReferralContract),
 		usdtContract:     common.HexToAddress(cfg.USDTContract),
 		swapContract:     common.HexToAddress(cfg.SwapContract),
+		routeContract:    common.HexToAddress(cfg.RouteContract),
 	}
 }
 
@@ -158,8 +127,7 @@ func (agent *LafAgent) FilterTxs(fromBlock, toBlock uint64) (txs []common.Hash, 
 
 // Parse transaction logs
 func (agent *LafAgent) ParseTx(tx common.Hash) (
-	key string,
-	txRecord LafTransaction,
+	txEvent txstore.TxEvent,
 	err error) {
 	if agent.client == nil {
 		err = fmt.Errorf("client is nil")
@@ -171,11 +139,17 @@ func (agent *LafAgent) ParseTx(tx common.Hash) (
 		err = fmt.Errorf("failed to get transaction receipt: %v", err)
 		return
 	}
-	key = fmt.Sprintf("%s-%v-%s",
-		receipt.BlockNumber.String(),
-		receipt.TransactionIndex,
-		receipt.TxHash.String(),
-	)
+	block, err := agent.client.BlockByNumber(context.Background(), receipt.BlockNumber)
+	if err != nil {
+		err = fmt.Errorf("failed to get block: %v", err)
+		return
+	}
+	txEvent = txstore.TxEvent{
+		BlockHeight: int64(receipt.BlockNumber.Int64()),
+		BlockTime:   int64(block.Time()),
+		TxIndex:     int64(receipt.TransactionIndex),
+		TxHash:      receipt.TxHash.String(),
+	}
 
 	for _, log := range receipt.Logs {
 		data := make(map[string]any)
