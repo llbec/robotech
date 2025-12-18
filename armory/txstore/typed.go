@@ -1,5 +1,9 @@
 package txstore
 
+import (
+	"github.com/ethereum/go-ethereum/core/types"
+)
+
 type TxEvent struct {
 	BlockHeight int64
 	BlockTime   int64
@@ -11,7 +15,7 @@ type TxEvent struct {
 	FromAddress string
 	ToAddress   string
 
-	ParsedTx string
+	Logs []*types.Log
 
 	Day    string // YYYY-MM-DD
 	Hour   int
