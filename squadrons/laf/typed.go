@@ -10,6 +10,7 @@ import (
 // -------- LafAgent --------
 type LafAgent struct {
 	client           *ethclient.Client
+	chainID          *big.Int
 	lafContract      common.Address
 	stakingContract  common.Address
 	referralContract common.Address

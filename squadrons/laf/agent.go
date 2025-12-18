@@ -12,10 +12,12 @@ import (
 	"robotech/armory/abilibs/uniswapv2abi"
 	"robotech/armory/txstore"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -68,8 +70,14 @@ func NewLAFAgent(cfgFile string) *LafAgent {
 		log.Printf("dial rpc url %s failed: %v", cfg.RpcUrl, err)
 		return nil
 	}
+	chainID, err := client.NetworkID(context.Background())
+	if err != nil {
+		log.Printf("get network id failed: %v", err)
+		return nil
+	}
 	return &LafAgent{
 		client:           client,
+		chainID:          chainID,
 		lafContract:      common.HexToAddress(cfg.LafContract),
 		stakingContract:  common.HexToAddress(cfg.StakingContract),
 		referralContract: common.HexToAddress(cfg.ReferralContract),
@@ -126,7 +134,7 @@ func (agent *LafAgent) FilterTxs(fromBlock, toBlock uint64) (txs []common.Hash, 
 }
 
 // Parse transaction logs
-func (agent *LafAgent) ParseTx(tx common.Hash) (
+func (agent *LafAgent) ParseTx(txHash common.Hash) (
 	txEvent txstore.TxEvent,
 	err error) {
 	if agent.client == nil {
@@ -134,7 +142,12 @@ func (agent *LafAgent) ParseTx(tx common.Hash) (
 		return
 	}
 
-	receipt, err := agent.client.TransactionReceipt(context.Background(), tx)
+	tx, _, err := agent.client.TransactionByHash(context.Background(), txHash)
+	if err != nil {
+		err = fmt.Errorf("failed to get transaction: %v", err)
+		return
+	}
+	receipt, err := agent.client.TransactionReceipt(context.Background(), txHash)
 	if err != nil {
 		err = fmt.Errorf("failed to get transaction receipt: %v", err)
 		return
@@ -144,11 +157,30 @@ func (agent *LafAgent) ParseTx(tx common.Hash) (
 		err = fmt.Errorf("failed to get block: %v", err)
 		return
 	}
+	from, err := types.Sender(types.NewLondonSigner(agent.chainID), tx)
+	if err != nil {
+		err = fmt.Errorf("failed to get sender: %v", err)
+		return
+	}
+	t := time.Unix(int64(block.Time()), 0)
+
 	txEvent = txstore.TxEvent{
 		BlockHeight: int64(receipt.BlockNumber.Int64()),
 		BlockTime:   int64(block.Time()),
 		TxIndex:     int64(receipt.TransactionIndex),
 		TxHash:      receipt.TxHash.String(),
+
+		TxType:      LAFTransfer,
+		FromAddress: from.Hex(),
+		ToAddress:   tx.To().Hex(),
+
+		Day: fmt.Sprintf("%d-%02d-%02d",
+			t.Year(),
+			t.Month(),
+			t.Day()),
+		Hour:   t.Hour(),
+		Minute: t.Minute(),
+		Second: t.Second(),
 	}
 
 	for _, log := range receipt.Logs {

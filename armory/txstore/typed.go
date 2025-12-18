@@ -11,7 +11,6 @@ type TxEvent struct {
 	FromAddress string
 	ToAddress   string
 
-	RawTx    string
 	ParsedTx string
 
 	Day    string // YYYY-MM-DD

@@ -7,12 +7,10 @@ CREATE TABLE IF NOT EXISTS tx_events (
     tx_hash      TEXT NOT NULL,
 
     tx_type      TEXT NOT NULL,
-    tx_action    TEXT NOT NULL,
 
     from_address TEXT,
     to_address   TEXT,
 
-    raw_tx       TEXT NOT NULL,
     parsed_tx    TEXT NOT NULL,
 
     day          TEXT NOT NULL,

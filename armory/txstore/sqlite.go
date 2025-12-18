@@ -57,7 +57,7 @@ func (s *SQLiteStore) InsertTx(tx *TxEvent) error {
 			block_height, block_time, tx_index, tx_hash,
 			tx_type,
 			from_address, to_address,
-			raw_tx, parsed_tx,
+			parsed_tx,
 			day, hour, minute, second
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
@@ -68,7 +68,6 @@ func (s *SQLiteStore) InsertTx(tx *TxEvent) error {
 		tx.TxType,
 		nullIfEmpty(tx.FromAddress),
 		nullIfEmpty(tx.ToAddress),
-		tx.RawTx,
 		tx.ParsedTx,
 		tx.Day,
 		tx.Hour,
@@ -89,7 +88,7 @@ func (s *SQLiteStore) InsertBatch(txs []*TxEvent) error {
 			block_height, block_time, tx_index, tx_hash,
 			tx_type,
 			from_address, to_address,
-			raw_tx, parsed_tx,
+			parsed_tx,
 			day, hour, minute, second
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
@@ -104,7 +103,7 @@ func (s *SQLiteStore) InsertBatch(txs []*TxEvent) error {
 			e.TxType,
 			nullIfEmpty(e.FromAddress),
 			nullIfEmpty(e.ToAddress),
-			e.RawTx, e.ParsedTx,
+			e.ParsedTx,
 			e.Day, e.Hour, e.Minute, e.Second,
 		); err != nil {
 			tx.Rollback()
@@ -123,7 +122,7 @@ func (s *SQLiteStore) ScanFrom(
 			block_height, block_time, tx_index, tx_hash,
 			tx_type,
 			from_address, to_address,
-			raw_tx, parsed_tx,
+			parsed_tx,
 			day, hour, minute, second
 		FROM tx_events
 		WHERE block_height >= ?
@@ -144,7 +143,6 @@ func (s *SQLiteStore) ScanFrom(
 			&tx.TxType,
 			&tx.FromAddress,
 			&tx.ToAddress,
-			&tx.RawTx,
 			&tx.ParsedTx,
 			&tx.Day,
 			&tx.Hour,
@@ -173,7 +171,7 @@ func (s *SQLiteStore) QueryByTimeAndType(
 			block_height, block_time, tx_index, tx_hash,
 			tx_type,
 			from_address, to_address,
-			raw_tx, parsed_tx,
+			parsed_tx,
 			day, hour, minute, second
 		FROM tx_events
 		WHERE block_time BETWEEN ?
@@ -196,7 +194,6 @@ func (s *SQLiteStore) QueryByTimeAndType(
 			&tx.TxType,
 			&tx.FromAddress,
 			&tx.ToAddress,
-			&tx.RawTx,
 			&tx.ParsedTx,
 			&tx.Day,
 			&tx.Hour,
