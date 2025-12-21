@@ -17,6 +17,7 @@ type LafAgent struct {
 	usdtContract     common.Address
 	swapContract     common.Address
 	routeContract    common.Address
+	storeURL         string
 }
 
 // -------- LafAgentConfig --------
@@ -28,6 +29,7 @@ type LafAgentConfig struct {
 	USDTContract     string `json:"usdt_contract"`
 	SwapContract     string `json:"swap_contract"`
 	RouteContract    string `json:"route_contract"`
+	StoreURL         string `json:"store_url"`
 }
 
 // -------- LafAgent DB struct --------

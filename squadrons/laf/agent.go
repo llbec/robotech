@@ -10,7 +10,6 @@ import (
 	"robotech/armory/abilibs/erc20abi"
 	"robotech/armory/abilibs/lafabi"
 	"robotech/armory/abilibs/uniswapv2abi"
-	"robotech/armory/txstore"
 	"strings"
 	"time"
 
@@ -84,6 +83,7 @@ func NewLAFAgent(cfgFile string) *LafAgent {
 		usdtContract:     common.HexToAddress(cfg.USDTContract),
 		swapContract:     common.HexToAddress(cfg.SwapContract),
 		routeContract:    common.HexToAddress(cfg.RouteContract),
+		storeURL:         cfg.StoreURL,
 	}
 }
 
@@ -134,9 +134,7 @@ func (agent *LafAgent) FilterTxs(fromBlock, toBlock uint64) (txs []common.Hash, 
 }
 
 // Parse transaction logs
-func (agent *LafAgent) ParseTx(txHash common.Hash) (
-	txEvent txstore.TxEvent,
-	err error) {
+func (agent *LafAgent) ParseTx(txHash common.Hash) (err error) {
 	if agent.client == nil {
 		err = fmt.Errorf("client is nil")
 		return
