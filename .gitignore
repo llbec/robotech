@@ -45,3 +45,8 @@ build/
 
 #db file
 .storage/
+
+# ssl file
+*.crt
+*.key
+*.srl
