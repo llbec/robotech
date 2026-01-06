@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -9,8 +8,6 @@ import (
 
 	"ether-indexer/internal/storage"
 	"ether-indexer/internal/syncer"
-
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 func main() {
@@ -23,7 +20,11 @@ func main() {
 	fmt.Println("Using DB:", dbPath)
 
 	proDB, _ := storage.OpenDB(dbPath)
-	defer proDB.Close()
+	defer func() {
+		if err := proDB.Close(); err != nil {
+			log.Printf("close db error: %v", err)
+		}
+	}()
 	_ = storage.ProjectMigrate(proDB)
 
 	repo := storage.NewProjectRepo(proDB)
@@ -32,22 +33,7 @@ func main() {
 		log.Fatal("list projects failed:", err)
 	}
 	for _, p := range projects {
-		fmt.Println(p)
+		//fmt.Println(p)
+		syncer.RegisterScheduler(&p)
 	}
-
-	shards := storage.NewShardManager(storage.ShardPolicy{
-		BlockRange: 5_000_000,
-		BasePath:   "./data",
-	})
-
-	metaDB, _ := storage.OpenDB("./meta.db")
-	_ = storage.Migrate(metaDB)
-
-	txRepo := storage.NewTxRepository(shards)
-	cpRepo := storage.NewCheckpointRepo(metaDB)
-
-	client, _ := ethclient.Dial("https://YOUR_RPC")
-
-	s := syncer.NewScheduler(client, txRepo, cpRepo)
-	s.Run(context.Background(), "demo-project")
 }

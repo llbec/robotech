@@ -12,6 +12,10 @@ var (
 	mapProjectIDToScheduler = map[string]*Scheduler{}
 )
 
+func init() {
+	mapProjectIDToScheduler = make(map[string]*Scheduler)
+}
+
 func GetScheduler(projectID string) *Scheduler {
 	return mapProjectIDToScheduler[projectID]
 }
