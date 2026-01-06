@@ -2,8 +2,39 @@ package storage
 
 import "database/sql"
 
+func dbExecArray(db *sql.DB, list []string) error {
+	for _, s := range list {
+		if _, err := db.Exec(s); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ProjectMigrate(db *sql.DB) error {
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS projects (
+			project_id    TEXT PRIMARY KEY,
+			active        BOOLEAN NOT NULL DEFAULT 1,
+			rpc_endpoint  TEXT NOT NULL,
+			description   TEXT,
+			created_at    INTEGER,
+			updated_at    INTEGER
+		);`,
+	}
+	return dbExecArray(db, stmts)
+}
+
 func Migrate(db *sql.DB) error {
 	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS projects (
+			project_id    TEXT PRIMARY KEY,
+			active        BOOLEAN NOT NULL DEFAULT 1,
+			rpc_endpoint  TEXT NOT NULL,
+			description   TEXT,
+			created_at    INTEGER,
+			updated_at    INTEGER
+		);`,
 		`CREATE TABLE IF NOT EXISTS checkpoints (
 			project_id TEXT PRIMARY KEY,
 			start_block INTEGER,
@@ -41,15 +72,10 @@ func Migrate(db *sql.DB) error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_scan
          ON transactions(project_id, block_number, tx_index);`,
-		`CREATE INDEX IF NOT EXISTS idx_project_block_number
+		`CREATE INDEX IF NOT EXISTS idx_tx_block
          ON transactions(project_id, block_number);`,
-		`CREATE INDEX IF NOT EXISTS idx_project_block_time
+		`CREATE INDEX IF NOT EXISTS idx_tx_time
          ON transactions(project_id, block_time);`,
 	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			return err
-		}
-	}
-	return nil
+	return dbExecArray(db, stmts)
 }

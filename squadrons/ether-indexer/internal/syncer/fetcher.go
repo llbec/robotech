@@ -34,7 +34,7 @@ func FetchTransactions(
 			ProjectID:   projectID,
 			TxHash:      h.Hex(),
 			BlockNumber: rcpt.BlockNumber.Uint64(),
-			BlockTime:   time.Unix(int64(blk.Time()), 0),
+			BlockTime:   int64(blk.Time()),
 			TxIndex:     rcpt.TransactionIndex,
 			FromAddress: from.Hex(),
 			ToAddress:   addr(tx.To()),
@@ -44,7 +44,7 @@ func FetchTransactions(
 			Nonce:       tx.Nonce(),
 			InputData:   tx.Data(),
 			Status:      int(rcpt.Status),
-			CreatedAt:   time.Now(),
+			CreatedAt:   time.Now().Unix(),
 		})
 
 		for _, l := range rcpt.Logs {

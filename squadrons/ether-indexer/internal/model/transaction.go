@@ -1,12 +1,10 @@
 package model
 
-import "time"
-
 type Transaction struct {
 	ProjectID   string
 	TxHash      string
 	BlockNumber uint64
-	BlockTime   time.Time
+	BlockTime   int64
 	TxIndex     uint
 
 	FromAddress string
@@ -19,5 +17,5 @@ type Transaction struct {
 
 	InputData []byte
 	Status    int
-	CreatedAt time.Time
+	CreatedAt int64
 }

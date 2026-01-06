@@ -1,11 +1,12 @@
 package model
 
-import "time"
-
 type Project struct {
 	ProjectID   string
-	Name        string
-	ChainID     int64
+	Active      bool
 	RPCEndpoint string
-	CreatedAt   time.Time
+	Description string
+	BlockRange  uint64
+	BasePath    string
+	CreatedAt   int64
+	UpdatedAt   int64
 }
