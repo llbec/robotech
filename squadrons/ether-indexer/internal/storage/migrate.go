@@ -15,9 +15,10 @@ func ProjectMigrate(db *sql.DB) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS projects (
 			project_id    TEXT PRIMARY KEY,
-			active        BOOLEAN NOT NULL DEFAULT 1,
+			active        BOOLEAN NOT NULL DEFAULT 0,
 			rpc_endpoint  TEXT NOT NULL,
 			description   TEXT,
+			block_range   INTEGER NOT NULL,
 			created_at    INTEGER,
 			updated_at    INTEGER
 		);`,
@@ -27,22 +28,14 @@ func ProjectMigrate(db *sql.DB) error {
 
 func Migrate(db *sql.DB) error {
 	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS projects (
-			project_id    TEXT PRIMARY KEY,
-			active        BOOLEAN NOT NULL DEFAULT 1,
-			rpc_endpoint  TEXT NOT NULL,
-			description   TEXT,
-			created_at    INTEGER,
-			updated_at    INTEGER
-		);`,
 		`CREATE TABLE IF NOT EXISTS checkpoints (
 			project_id TEXT PRIMARY KEY,
 			start_block INTEGER,
 			current_block INTEGER,
-			step INTEGER,
-			interval_sec INTEGER,
+			step INTEGER NOT NULL DEFAULT 9,
+			interval_sec INTEGER NOT NULL DEFAULT 3,
 			addresses JSON,
-			topics JSON
+			topics JSON,
 		);`,
 		`CREATE TABLE IF NOT EXISTS transactions (
 			project_id TEXT,

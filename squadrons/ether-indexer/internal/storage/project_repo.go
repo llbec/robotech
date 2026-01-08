@@ -10,28 +10,56 @@ type ProjectRepo struct {
 	db *sql.DB
 }
 
-func NewProjectRepo(db *sql.DB) *ProjectRepo {
+func NewProjectRepo(db *sql.DB, basePath string) *ProjectRepo {
 	return &ProjectRepo{db: db}
 }
 
-func (r *ProjectRepo) Create(id, rpc, desc string) error {
+func (r *ProjectRepo) Create(id, rpc, desc string, blockRange uint64) error {
 	_, err := r.db.Exec(`
 		INSERT INTO projects
-		(project_id, active, rpc_endpoint, description, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
+		(project_id, active, rpc_endpoint, description, block_range, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id,
-		true,
+		false,
 		rpc,
 		desc,
+		blockRange,
 		time.Now().Unix(),
 		time.Now().Unix(),
 	)
 	return err
 }
 
+func (r *ProjectRepo) Get(id string) (*model.Project, error) {
+	rows, err := r.db.Query(`
+		SELECT project_id, active, rpc_endpoint, description, block_range, created_at, updated_at
+		FROM projects
+		WHERE project_id = ?`,
+		id,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, nil
+	}
+	var p model.Project
+	rows.Scan(
+		&p.ProjectID,
+		&p.Active,
+		&p.RPCEndpoint,
+		&p.Description,
+		&p.BlockRange,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+	return &p, nil
+}
+
 func (r *ProjectRepo) ListAll() ([]model.Project, error) {
 	rows, err := r.db.Query(`
-		SELECT project_id, active, rpc_endpoint, description, created_at, updated_at
+		SELECT project_id, active, rpc_endpoint, description, block_range, created_at, updated_at
 		FROM projects`)
 	if err != nil {
 		return nil, err
@@ -46,6 +74,7 @@ func (r *ProjectRepo) ListAll() ([]model.Project, error) {
 			&p.Active,
 			&p.RPCEndpoint,
 			&p.Description,
+			&p.BlockRange,
 			&p.CreatedAt,
 			&p.UpdatedAt,
 		)

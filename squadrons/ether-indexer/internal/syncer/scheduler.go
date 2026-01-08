@@ -23,7 +23,11 @@ func NewScheduler(c *ethclient.Client, tx *storage.TxRepository, cp *storage.Che
 }
 
 func (s *Scheduler) Run(ctx context.Context, projectID string) {
-	ticker := time.NewTicker(5 * time.Second)
+	cp, err := s.cpRepo.Load(projectID)
+	if err != nil {
+		return
+	}
+	ticker := time.NewTicker(time.Duration(cp.IntervalSec) * time.Second)
 	for range ticker.C {
 		if err := s.tick(ctx, projectID); err != nil {
 			log.Println("sync error:", err)
@@ -32,13 +36,15 @@ func (s *Scheduler) Run(ctx context.Context, projectID string) {
 }
 
 func (s *Scheduler) tick(ctx context.Context, projectID string) error {
-
 	cp, err := s.cpRepo.Load(projectID)
 	if err != nil {
 		return err
 	}
 
-	head, _ := s.client.HeaderByNumber(ctx, nil)
+	head, err := s.client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return err
+	}
 	latest := head.Number.Uint64()
 
 	from := cp.CurrentBlock
@@ -71,5 +77,25 @@ func (s *Scheduler) tick(ctx context.Context, projectID string) error {
 		func(tx *sql.Tx) error {
 			return s.cpRepo.UpdateTx(tx, projectID, to+1)
 		},
+	)
+}
+
+func (s *Scheduler) AddCheckpoint(
+	projectID string,
+	startBlock uint64,
+	currentBlock uint64,
+	step uint64,
+	intervalSec int,
+	addressesJSON string,
+	topicsJSON string,
+) error {
+	return s.cpRepo.AddCheckpoint(
+		projectID,
+		startBlock,
+		currentBlock,
+		step,
+		intervalSec,
+		addressesJSON,
+		topicsJSON,
 	)
 }

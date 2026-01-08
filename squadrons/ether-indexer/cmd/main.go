@@ -32,7 +32,7 @@ func main() {
 	}()
 	_ = storage.ProjectMigrate(proDB)
 
-	repo := storage.NewProjectRepo(proDB)
+	repo := storage.NewProjectRepo(proDB, dataPath)
 	projects, err := repo.ListAll()
 	if err != nil {
 		log.Fatal("list projects failed:", err)
