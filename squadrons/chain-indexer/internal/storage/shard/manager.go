@@ -1,53 +1,43 @@
 package shard
 
 import (
+	"database/sql"
+	"os"
+	"path/filepath"
 	"sync"
+
+	_ "modernc.org/sqlite"
 )
 
-// ShardManager 管理多个项目 shardRouter
-type ShardManager struct {
-	mu      sync.Mutex
-	routers map[string]*ShardRouter // projectID -> router
+type Manager struct {
+	mu    sync.Mutex
+	cache map[string]*sql.DB
 }
 
-func NewShardManager() *ShardManager {
-	return &ShardManager{
-		routers: make(map[string]*ShardRouter),
+func NewManager() *Manager {
+	return &Manager{
+		cache: make(map[string]*sql.DB),
 	}
 }
 
-// 获取或创建项目 router
-func (m *ShardManager) GetRouter(projectID, basePath string) *ShardRouter {
+func (m *Manager) OpenShard(path string) (*sql.DB, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if router, ok := m.routers[projectID]; ok {
-		return router
+	if db, ok := m.cache[path]; ok {
+		return db, nil
 	}
 
-	router := NewRouter(basePath, projectID)
-	m.routers[projectID] = router
-	return router
-}
-
-// 关闭某个项目 shard
-func (m *ShardManager) CloseRouter(projectID string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if router, ok := m.routers[projectID]; ok {
-		_ = router.Close()
-		delete(m.routers, projectID)
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return nil, err
 	}
-}
 
-// 全部关闭
-func (m *ShardManager) CloseAll() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for pid, router := range m.routers {
-		_ = router.Close()
-		delete(m.routers, pid)
+	dbPath := filepath.Join(path, "shard.db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		return nil, err
 	}
+
+	m.cache[path] = db
+	return db, nil
 }

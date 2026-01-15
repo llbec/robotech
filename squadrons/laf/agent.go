@@ -11,10 +11,12 @@ import (
 	"robotech/armory/abilibs/lafabi"
 	"robotech/armory/abilibs/uniswapv2abi"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
@@ -132,7 +134,7 @@ func (agent *LafAgent) FilterTxs(fromBlock, toBlock uint64) (txs []common.Hash, 
 }
 
 // Parse transaction logs
-/*func (agent *LafAgent) ParseTx(txHash common.Hash) (err error) {
+func (agent *LafAgent) ParseTx(txHash common.Hash) (err error) {
 	if agent.client == nil {
 		err = fmt.Errorf("client is nil")
 		return
@@ -194,4 +196,4 @@ func (agent *LafAgent) FilterTxs(fromBlock, toBlock uint64) (txs []common.Hash, 
 		}
 	}
 	return
-}*/
+}
