@@ -1,0 +1,20 @@
+[package]
+name = "trade-log"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+account-facts = { path = "../../crates/account-facts" }
+async-trait.workspace = true
+chrono.workspace = true
+hex.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+

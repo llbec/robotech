@@ -50,3 +50,6 @@ build/
 *.crt
 *.key
 *.srl
+
+# Rust build output
+/target/
