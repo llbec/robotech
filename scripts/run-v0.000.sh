@@ -2,25 +2,10 @@
 
 set -euo pipefail
 
-usage() {
-  cat <<'EOF'
-用法：
-  scripts/run-v0.000.sh <address> <from> <to>
-
-示例：
-  scripts/run-v0.000.sh \
-    0x45d26f28196d226497130c4bac709d808fed4029 \
-    2026-09-01T00:00:00Z \
-    2026-09-02T00:00:00Z
-
-默认读取仓库根目录的 .env；可通过 ENV_FILE 指定其他文件。
-EOF
-}
-
-if [[ $# -ne 3 ]]; then
-  usage >&2
-  exit 2
-fi
+# 导入参数：按需修改这三个值。
+address="0x45d26f28196d226497130c4bac709d808fed4029"
+from_time="2026-09-01T00:00:00Z"
+to_time="2026-09-02T00:00:00Z"
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd -- "${script_dir}/.." && pwd)"
@@ -37,12 +22,13 @@ set -a
 source "${env_file}"
 set +a
 
-: "${DATABASE_URL:?DATABASE_URL 未设置}"
-: "${NANSEN_API_KEY:?NANSEN_API_KEY 未设置}"
+: "${DATABASE_URL:?DATABASE_URL 未在 ${env_file} 中设置}"
+: "${NANSEN_API_KEY:?NANSEN_API_KEY 未在 ${env_file} 中设置}"
 export RUST_LOG="${RUST_LOG:-info}"
 
 cd "${repo_dir}"
+
 exec cargo run -p trade-log-import -- \
-  --address "$1" \
-  --from "$2" \
-  --to "$3"
+  --address "${address}" \
+  --from "${from_time}" \
+  --to "${to_time}"
