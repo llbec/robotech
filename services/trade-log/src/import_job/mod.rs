@@ -4,8 +4,9 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::{
+    coverage::{unavailable, CoverageResult, CoverageStatus},
     normalization::{normalize_trade, raw_hash, FailedTrade},
-    raw_log::NansenPage,
+    raw_log::{NansenPage, NansenSnapshot},
     repository::{PageWrite, TradeRepository},
     validation::{validate_address, validate_range},
 };
@@ -25,10 +26,11 @@ pub struct ImportSummary {
     pub normalized: u64,
     pub failed: u64,
     pub facts: Vec<AccountFactEnvelope>,
+    pub coverage: Vec<CoverageResult>,
 }
 
 #[async_trait]
-pub trait TradeSource: Send + Sync {
+pub trait AccountDataSource: Send + Sync {
     async fn fetch_page(
         &self,
         address: &str,
@@ -36,6 +38,7 @@ pub trait TradeSource: Send + Sync {
         to: DateTime<Utc>,
         page: u32,
     ) -> Result<NansenPage, String>;
+    async fn fetch_positions(&self, address: &str) -> Result<NansenSnapshot, String>;
 }
 
 pub struct ImportJob<S, R> {
@@ -48,7 +51,7 @@ impl<S, R> ImportJob<S, R> {
     }
 }
 
-impl<S: TradeSource, R: TradeRepository> ImportJob<S, R> {
+impl<S: AccountDataSource, R: TradeRepository> ImportJob<S, R> {
     pub async fn run(&self, request: ImportRequest) -> Result<ImportSummary, String> {
         let address = validate_address(&request.address).map_err(|e| e.to_string())?;
         validate_range(request.from, request.to).map_err(|e| e.to_string())?;
@@ -76,6 +79,7 @@ impl<S: TradeSource, R: TradeRepository> ImportJob<S, R> {
             run_id,
             ..Default::default()
         };
+        let mut trade_parse_failed = false;
         for page_number in 1.. {
             let page = self
                 .source
@@ -110,11 +114,103 @@ impl<S: TradeSource, R: TradeRepository> ImportJob<S, R> {
             summary.raw += page.trades.len() as u64;
             summary.normalized += facts.len() as u64;
             summary.failed += failures.len() as u64;
+            trade_parse_failed |= !failures.is_empty();
             summary.facts.extend(saved);
             if page.is_last_page {
                 break;
             }
         }
+        summary.coverage.push(CoverageResult {
+            category: "PERPETUAL_TRADES".into(),
+            endpoint: Some("POST /api/v1/profiler/perp-trades".into()),
+            status: if trade_parse_failed {
+                CoverageStatus::Partial
+            } else {
+                CoverageStatus::Complete
+            },
+            record_count: summary.raw,
+            range_start: Some(from),
+            range_end: Some(to),
+            missing_fields: Vec::new(),
+            evidence: serde_json::json!({"pages": summary.pages, "conversion_failures": summary.failed}),
+        });
+
+        let positions = match self.source.fetch_positions(address).await {
+            Ok(positions) => {
+                self.repository.persist_snapshot(run_id, &positions).await?;
+                summary.coverage.push(CoverageResult {
+                    category: "CURRENT_PERPETUAL_POSITIONS".into(),
+                    endpoint: Some(positions.endpoint.clone()),
+                    status: if positions.missing_fields.is_empty() {
+                        CoverageStatus::Complete
+                    } else {
+                        CoverageStatus::Partial
+                    },
+                    record_count: positions.record_count,
+                    range_start: None,
+                    range_end: Some(positions.observed_at),
+                    missing_fields: positions.missing_fields.clone(),
+                    evidence: serde_json::json!({"observed_at": positions.observed_at}),
+                });
+                Some(positions)
+            }
+            Err(error)
+                if ["status=402", "status=403", "status=404", "status=422"]
+                    .iter()
+                    .any(|status| error.contains(status)) =>
+            {
+                let mut result = unavailable("CURRENT_PERPETUAL_POSITIONS", &error);
+                result.endpoint = Some("POST /api/v1/profiler/perp-positions".into());
+                summary.coverage.push(result);
+                None
+            }
+            Err(error) => return Err(error),
+        };
+        let position_count = positions.as_ref().map_or(0, |item| item.record_count);
+        let position_observed_at = positions.as_ref().map(|item| item.observed_at);
+        summary.coverage.push(CoverageResult {
+            category: "FUNDING_AND_FEES".into(),
+            endpoint: Some("perp-trades + perp-positions".into()),
+            status: CoverageStatus::Partial,
+            record_count: summary.raw + position_count,
+            range_start: Some(from),
+            range_end: position_observed_at.or(Some(to)),
+            missing_fields: vec!["event-level funding history".into()],
+            evidence: serde_json::json!({"reason":"fees and cumulative funding are available, but complete event history is not proven"}),
+        });
+        summary.coverage.push(CoverageResult {
+            category: "ACCOUNT_VALUE_SNAPSHOTS".into(),
+            endpoint: positions.as_ref().map(|item| item.endpoint.clone()),
+            status: if positions.is_some() {
+                CoverageStatus::Partial
+            } else {
+                CoverageStatus::Unavailable
+            },
+            record_count: u64::from(positions.is_some()),
+            range_start: None,
+            range_end: position_observed_at,
+            missing_fields: vec!["complete historical account-value snapshots".into()],
+            evidence: serde_json::json!({"reason":"current perp state is available, but historical account value is not proven"}),
+        });
+        for (category, reason) in [
+            (
+                "CAPITAL_TRANSFERS",
+                "no confirmed Nansen Hyperliquid Core address-activity endpoint",
+            ),
+            (
+                "LIQUIDATIONS_AND_REWARDS",
+                "no confirmed complete address event-history endpoint",
+            ),
+            (
+                "MANAGEMENT_ACTIVITIES",
+                "no confirmed endpoint for ApproveAgent-style activity",
+            ),
+        ] {
+            summary.coverage.push(unavailable(category, reason));
+        }
+        self.repository
+            .persist_coverage(run_id, &summary.coverage)
+            .await?;
         summary.facts.sort_by(|a, b| {
             (&a.occurred_at, &a.fact.ordering_key, a.fact.sub_index).cmp(&(
                 &b.occurred_at,
@@ -144,7 +240,7 @@ mod tests {
 
     struct FixtureSource;
     #[async_trait]
-    impl TradeSource for FixtureSource {
+    impl AccountDataSource for FixtureSource {
         async fn fetch_page(
             &self,
             address: &str,
@@ -173,6 +269,15 @@ mod tests {
                 trades,
             })
         }
+        async fn fetch_positions(&self, _: &str) -> Result<NansenSnapshot, String> {
+            Ok(NansenSnapshot {
+                endpoint: "POST /api/v1/profiler/perp-positions".into(),
+                observed_at: Utc::now(),
+                response: json!({"data":{"asset_positions":[]}}),
+                record_count: 0,
+                missing_fields: Vec::new(),
+            })
+        }
     }
 
     #[derive(Default)]
@@ -196,6 +301,12 @@ mod tests {
         ) -> Result<Vec<AccountFactEnvelope>, String> {
             self.writes.lock().unwrap().push(write.page);
             Ok(write.facts.to_vec())
+        }
+        async fn persist_snapshot(&self, _: Uuid, _: &NansenSnapshot) -> Result<(), String> {
+            Ok(())
+        }
+        async fn persist_coverage(&self, _: Uuid, _: &[CoverageResult]) -> Result<(), String> {
+            Ok(())
         }
         async fn complete_run(
             &self,
@@ -229,5 +340,7 @@ mod tests {
             (2, 3, 2, 1)
         );
         assert!(result.facts[0].occurred_at < result.facts[1].occurred_at);
+        assert_eq!(result.coverage.len(), 7);
+        assert_eq!(result.coverage[0].status, CoverageStatus::Partial);
     }
 }

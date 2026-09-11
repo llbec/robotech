@@ -1,3 +1,4 @@
+pub mod coverage;
 pub mod import_job;
 pub mod normalization;
 pub mod raw_log;

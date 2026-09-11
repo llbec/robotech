@@ -1,14 +1,17 @@
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use clap::Parser;
-use std::{env, io::Write, process::ExitCode};
+use std::{env, io::Write, path::PathBuf, process::ExitCode};
 use tracing::error;
 use tracing_subscriber::EnvFilter;
 use trade_log::{ImportJob, ImportRequest};
 use trade_log_adapters::{nansen::NansenClient, postgres::PostgresTradeRepository};
 
 #[derive(Parser)]
-#[command(version, about = "Import Hyperliquid perpetual trades from Nansen")]
+#[command(
+    version,
+    about = "Validate and import Hyperliquid account data from Nansen"
+)]
 struct Args {
     #[arg(long)]
     address: String,
@@ -16,6 +19,8 @@ struct Args {
     from: DateTime<Utc>,
     #[arg(long, value_parser = parse_time)]
     to: DateTime<Utc>,
+    #[arg(long, default_value = "nansen-coverage-report.json")]
+    coverage_output: PathBuf,
 }
 fn parse_time(value: &str) -> Result<DateTime<Utc>, String> {
     value
@@ -88,6 +93,20 @@ async fn execute(args: Args) -> Result<(), RunError> {
         .await
         .map_err(anyhow::Error::msg)
         .map_err(RunError::Runtime)?;
+    let coverage_report = serde_json::json!({
+        "run_id": summary.run_id,
+        "generated_at": Utc::now(),
+        "sufficient_for_account_analysis": summary.coverage.iter().all(|item| item.status == trade_log::coverage::CoverageStatus::Complete),
+        "results": summary.coverage,
+    });
+    std::fs::write(
+        &args.coverage_output,
+        serde_json::to_vec_pretty(&coverage_report)
+            .map_err(anyhow::Error::from)
+            .map_err(RunError::Runtime)?,
+    )
+    .map_err(anyhow::Error::from)
+    .map_err(RunError::Runtime)?;
     let stdout = std::io::stdout();
     let mut output = std::io::BufWriter::new(stdout.lock());
     for fact in summary.facts {

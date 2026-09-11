@@ -37,7 +37,48 @@ pub struct AccountFact {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AccountFactPayload {
-    Trade(TradeFact),
+    Trade(Box<TradeFact>),
+    Transfer(TransferFact),
+    Fee(MonetaryFact),
+    Funding(MonetaryFact),
+    Reward(MonetaryFact),
+    LiquidationFee(MonetaryFact),
+    AccountSnapshot(Box<AccountSnapshotFact>),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransferFact {
+    pub asset: String,
+    pub amount: String,
+    pub direction: String,
+    pub from_account: Option<String>,
+    pub to_account: Option<String>,
+    pub transfer_type: String,
+    pub transaction_hash: Option<String>,
+    pub extension: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MonetaryFact {
+    pub asset: String,
+    pub amount: String,
+    pub direction: String,
+    pub related_market: Option<String>,
+    pub transaction_hash: Option<String>,
+    pub extension: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AccountSnapshotFact {
+    pub snapshot_at: DateTime<Utc>,
+    pub valuation_currency: String,
+    pub account_value: Option<String>,
+    pub available_balance: Option<String>,
+    pub margin_used: Option<String>,
+    pub unrealized_pnl: Option<String>,
+    pub balances: Vec<Value>,
+    pub positions: Vec<Value>,
+    pub extension: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

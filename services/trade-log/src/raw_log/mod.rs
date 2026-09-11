@@ -10,6 +10,15 @@ pub struct NansenPage {
     pub trades: Vec<RawTrade>,
 }
 
+#[derive(Debug, Clone)]
+pub struct NansenSnapshot {
+    pub endpoint: String,
+    pub observed_at: DateTime<Utc>,
+    pub response: Value,
+    pub record_count: u64,
+    pub missing_fields: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawTrade {
     pub user: String,

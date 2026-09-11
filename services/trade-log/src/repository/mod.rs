@@ -4,7 +4,11 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{normalization::FailedTrade, raw_log::RawTrade};
+use crate::{
+    coverage::CoverageResult,
+    normalization::FailedTrade,
+    raw_log::{NansenSnapshot, RawTrade},
+};
 
 pub struct PageWrite<'a> {
     pub page: u32,
@@ -27,6 +31,13 @@ pub trait TradeRepository: Send + Sync {
         run_id: Uuid,
         write: PageWrite<'_>,
     ) -> Result<Vec<AccountFactEnvelope>, String>;
+    async fn persist_snapshot(&self, run_id: Uuid, snapshot: &NansenSnapshot)
+        -> Result<(), String>;
+    async fn persist_coverage(
+        &self,
+        run_id: Uuid,
+        coverage: &[CoverageResult],
+    ) -> Result<(), String>;
     async fn complete_run(
         &self,
         run_id: Uuid,

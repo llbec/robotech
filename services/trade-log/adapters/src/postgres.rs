@@ -2,7 +2,10 @@ use account_facts::AccountFactEnvelope;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::{PgPool, Postgres, Transaction};
-use trade_log::{normalization::raw_hash, PageWrite, TradeRepository};
+use trade_log::{
+    coverage::CoverageResult, normalization::raw_hash, raw_log::NansenSnapshot, PageWrite,
+    TradeRepository,
+};
 use uuid::Uuid;
 
 pub struct PostgresTradeRepository {
@@ -89,6 +92,39 @@ impl TradeRepository for PostgresTradeRepository {
         Ok(saved)
     }
 
+    async fn persist_snapshot(
+        &self,
+        run_id: Uuid,
+        snapshot: &NansenSnapshot,
+    ) -> Result<(), String> {
+        sqlx::query("INSERT INTO nansen_raw_responses (id,run_id,endpoint,response_kind,observed_at,response) VALUES ($1,$2,$3,'SNAPSHOT',$4,$5)")
+            .bind(Uuid::new_v4()).bind(run_id).bind(&snapshot.endpoint).bind(snapshot.observed_at).bind(&snapshot.response)
+            .execute(&self.pool).await.map_err(|e| format!("DATABASE_WRITE_ERROR: {e}"))?;
+        Ok(())
+    }
+
+    async fn persist_coverage(
+        &self,
+        run_id: Uuid,
+        coverage: &[CoverageResult],
+    ) -> Result<(), String> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| format!("DATABASE_WRITE_ERROR: {e}"))?;
+        for item in coverage {
+            sqlx::query("INSERT INTO nansen_coverage_results (run_id,category,endpoint,status,record_count,range_start,range_end,missing_fields,evidence) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (run_id,category) DO UPDATE SET endpoint=EXCLUDED.endpoint,status=EXCLUDED.status,record_count=EXCLUDED.record_count,range_start=EXCLUDED.range_start,range_end=EXCLUDED.range_end,missing_fields=EXCLUDED.missing_fields,evidence=EXCLUDED.evidence")
+                .bind(run_id).bind(&item.category).bind(&item.endpoint).bind(format!("{:?}", item.status).to_ascii_uppercase())
+                .bind(item.record_count as i64).bind(item.range_start).bind(item.range_end).bind(&item.missing_fields).bind(&item.evidence)
+                .execute(&mut *tx).await.map_err(|e| format!("DATABASE_WRITE_ERROR: {e}"))?;
+        }
+        tx.commit()
+            .await
+            .map_err(|e| format!("DATABASE_WRITE_ERROR: {e}"))?;
+        Ok(())
+    }
+
     async fn complete_run(
         &self,
         run_id: Uuid,
@@ -97,7 +133,7 @@ impl TradeRepository for PostgresTradeRepository {
         normalized: u64,
         failed: u64,
     ) -> Result<(), String> {
-        sqlx::query("UPDATE nansen_import_runs SET status='COMPLETED',pages_fetched=$2,raw_count=$3,normalized_count=$4,failed_count=$5,finished_at=now() WHERE id=$1")
+        sqlx::query("UPDATE nansen_import_runs SET status='COMPLETED',pages_fetched=$2,raw_count=$3,normalized_count=$4,failed_count=$5,endpoints_attempted=2,endpoints_succeeded=2,endpoints_failed=0,finished_at=now() WHERE id=$1")
             .bind(run_id).bind(pages as i32).bind(raw as i64).bind(normalized as i64).bind(failed as i64).execute(&self.pool).await.map_err(|e| format!("DATABASE_WRITE_ERROR: {e}"))?;
         Ok(())
     }

@@ -128,7 +128,7 @@ pub fn normalize_trade(
         source: "NANSEN".into(),
         source_ref: operation_id.clone(),
         raw_log_id: None,
-        payload: AccountFactPayload::Trade(TradeFact {
+        payload: AccountFactPayload::Trade(Box::new(TradeFact {
             market: format!("hyperliquid:{}-USDC", raw.token_symbol),
             instrument_type: "PERPETUAL".into(),
             base_asset: raw.token_symbol.clone(),
@@ -154,7 +154,7 @@ pub fn normalize_trade(
             reported_pnl_includes_funding: None,
             transaction_hash: raw.transaction_hash.clone(),
             extension: json!({}),
-        }),
+        })),
     };
     Ok(AccountFactEnvelope {
         event_id: format!("evt_{hash}"),
@@ -189,7 +189,9 @@ mod tests {
             first.fact.account,
             "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
         );
-        let AccountFactPayload::Trade(trade) = first.fact.payload;
+        let AccountFactPayload::Trade(trade) = first.fact.payload else {
+            panic!("expected trade payload")
+        };
         assert_eq!(trade.side, "BUY");
         assert_eq!(trade.position_effect, "OPEN");
         assert_eq!(trade.price, "3245.12");
@@ -210,7 +212,9 @@ mod tests {
         let mut raw = fixture();
         raw.action = "Close".into();
         let fact = normalize_trade(&raw, Utc::now(), "trace").unwrap();
-        let AccountFactPayload::Trade(trade) = fact.fact.payload;
+        let AccountFactPayload::Trade(trade) = fact.fact.payload else {
+            panic!("expected trade payload")
+        };
         assert_eq!(trade.side, "SELL");
         assert_eq!(trade.position_effect, "CLOSE");
     }
