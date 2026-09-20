@@ -1,6 +1,6 @@
 # 链上账户投资分析服务
 
-> 文档：[概要设计](docs/overview-design.md) · [详细设计](docs/detailed-design.md) · [版本开发记录](docs/version-development.md)
+> 文档：[概要设计](docs/overview-design.md) · [详细设计](docs/detailed-design.md) · [V0.000 版本开发记录](docs/version-0-000.md)
 
 ## 功能概述
 
