@@ -17,7 +17,7 @@
 系统的主要交付是：
 
 1. 账户分析数据。
-2. 实时标准交易事实；同一事实在跟单场景中直接作为跟单信号。
+2. 实时标准交易事实；其中已成交的主动投资操作在跟单场景中作为候选跟单信号。
 
 ### 1.3 适用范围
 
@@ -41,7 +41,7 @@
 | `account_key` | `chain_id + protocol + normalized_account` 组成的协议账户唯一键 |
 | 原始日志 | 数据源返回且尚未标准化的交易、资金或账户数据 |
 | 标准账户事实 | 账户分析的统一输入模型，包含交易、资金、费用和快照等事实 |
-| 标准交易事实 | 标准账户事实中的 `TRADE` 类型，同时作为跟单信号 |
+| 标准交易事实 | 标准账户事实中的 `TRADE` 类型；主动成交可作为候选跟单信号，强制事件默认不可跟单 |
 | `fact_id` | 一个业务事实跨修订保持稳定的唯一 ID |
 | `revision` | 同一事实的版本号，从 1 开始递增 |
 | 数据水位 | 已处理到账户事实流中的确定位置 |
@@ -57,6 +57,10 @@
 - [项目说明](../readme.md)
 - [概要设计](overview-design.md)
 - [8 维权重参考](8维权重.md)
+- [Hyperliquid Info endpoint](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint)
+- [Hyperliquid WebSocket subscriptions](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions)
+- [Hyperliquid API rate limits](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits)
+- [Nansen Hyperliquid API](https://docs.nansen.ai/api/hyperliquid)
 - 各接入链、协议、数据供应商和钱包的官方接口文档
 
 ## 2. 系统概述
@@ -144,7 +148,7 @@
            交易日志服务
        原始日志 → 标准账户事实 → account.fact.v1
                   │                    │
-                  │                    ├── TRADE → 跟单服务 → 钱包 → 链/协议
+                  │                    ├── copy_eligible TRADE → 跟单服务 → 钱包 → 链/协议
                   │                    │
                   │                    └── 全部事实 → 账户分析服务 → 查询结果
                   │
@@ -248,6 +252,8 @@
 | 链节点/协议接口 | 历史数据、实时数据、交易状态 | 重试、检查点恢复、备用源和审核 |
 | 第三方数据服务 | 交易和账户数据订阅 | 主流程按配置信任，异步对账 |
 | 市场数据服务 | 账户估值和统一计价 | 使用版本化价格证据，缺失时降级 |
+| Hyperliquid 官方 API | HyperCore 合约/现货成交、账本事件、账户状态和市场元数据 | HTTP 回补与补偿、WebSocket 实时订阅、状态快照校验 |
+| Nansen API | Hyperliquid 较早永续历史、加工字段和数据复核 | 不作为现货、完整资金账本或实时跟单的唯一来源 |
 | Kafka/Redpanda | 账户事实和内部事件 | outbox、消费幂等、重试和死信 |
 | PostgreSQL | 各服务业务状态 | 事务、约束、备份和迁移 |
 | 对象存储 | 原始日志长期归档 | 重试并保留数据库状态 |
@@ -308,6 +314,31 @@ outbox worker → account.fact.v1
 6. 在同一事务内写入事实版本、更新 current 指针并写 outbox。
 7. outbox worker 发布后记录结果；失败按有界退避重试。
 8. 修正沿用 `fact_id` 并递增 revision；替代事实使用新 `fact_id`。
+
+##### Hyperliquid 数据获取策略
+
+Hyperliquid 的生产采集采用“官方实时主源 + HTTP 补偿 + Nansen 补充复核”：
+
+| 数据类别 | 历史/补偿来源 | 实时来源 | 标准事实/用途 |
+| --- | --- | --- | --- |
+| 合约与现货成交 | 官方 `userFillsByTime` | WebSocket `userFills` | `TRADE`；主动成交可触发跟单 |
+| 资金费 | 官方 `userFunding` | WebSocket `userFundings` | `FUNDING`；只参与账户计算 |
+| 充值、提现、划转及其他账本变化 | 官方 `userNonFundingLedgerUpdates` | WebSocket `userNonFundingLedgerUpdates` | `TRANSFER/REWARD/LIQUIDATION_FEE` 等 |
+| 清算及强制变化 | 历史成交、账本事件和状态差异 | WebSocket `userEvents` 及相关成交 | 状态更新；默认不可跟单 |
+| 合约状态 | 官方 `clearinghouseState` 或跨 DEX 状态接口 | 周期查询/状态订阅 | `ACCOUNT_SNAPSHOT` 与对账证据 |
+| 现货余额 | 官方 `spotClearinghouseState` | 周期查询/`spotState` | `ACCOUNT_SNAPSHOT` 与对账证据 |
+| 市场与资产映射 | 官方 `meta`、`spotMeta` | 元数据刷新 | 区分合约、现货和 `@index` 市场 |
+| 估值价格 | 官方市场上下文、行情和自建价格快照 | WebSocket 行情 | 历史账户价值和未实现盈亏 |
+| 较早永续历史和加工字段 | Nansen | 不作为实时主源 | 历史补充、字段参考与异步复核 |
+
+处理要求：
+
+- `userFills` 同时包含合约和现货，必须通过版本化的 `meta/spotMeta` 映射识别 `instrument_type`，不得按字符串外观猜测。
+- 用户成交按原始 fill 保存；标准化可以建立逻辑操作关联，但实时发布不得等待整张订单结束。
+- WebSocket 首条快照和后续增量必须区分；重连后从持久化时间水位调用 HTTP 补取，重叠窗口依靠稳定事实 ID 去重。
+- 官方地址历史成交存在返回条数和可访问历史上限，采集开始后必须持续自有存储；超出官方范围的旧数据可由 Nansen 或节点历史补充并标记来源和覆盖质量。
+- 实际主账户、子账户和 vault 地址分别建账；不得使用 agent wallet 地址代替实际交易账户查询。
+- 官方用户级 WebSocket 可订阅地址数量受限，超过限额时使用地址分层、HTTP 增量轮询、节点数据流或第三方来源扩展，不能牺牲水位与缺口记录。
 
 #### 4.1.6 状态及状态转换
 
@@ -431,6 +462,10 @@ AccountFact Consumer → fact_ledger → calculation_engine
 - `total_net_pnl = realized_net_pnl + unrealized_pnl`。
 - `estimated_pnl` 是总盈亏的一部分，不重复相加。
 - 成交量保留原始计价，并使用版本化价格折算 USD；无法换算的成交不进入总值并降低质量状态。
+- 任意时点状态从目标时点之前最近的有效账户快照开始，按确定顺序重放至目标时间；没有完整事件覆盖时必须返回质量降级，不能声称精确状态。
+- 区间基础净收益为 `期末账户价值 - 期初账户价值 - 期间外部净流入`；充值和提现属于外部资金流，统计边界内部的账户划转不计入收益。
+- 主账户、子账户或 vault 单独分析时，跨越该统计边界的划转视为外部资金流；聚合分析时相互抵销。
+- 历史账户价值和未实现盈亏必须使用目标时点的版本化价格证据，并披露价格采样粒度；只有数量状态而没有可靠价格时不得输出伪精确估值。
 
 ##### 指标
 
@@ -575,11 +610,12 @@ Finding:  OPEN → REPAIRING → VERIFYING → CLOSED
 
 #### 4.4.1 模块概述
 
-跟单服务消费 `fact_type=TRADE` 的标准账户事实，根据用户配置执行规则判断，通过后构建交易，调用本地签名器或外部钱包服务完成签名，并发送至链或协议。外部钱包服务包括 MPC 钱包、第三方托管钱包和其他远程签名服务。
+跟单服务消费 `fact_type=TRADE && copy_eligible=true` 的标准账户事实，根据用户配置执行规则判断，通过后构建交易，调用本地签名器或外部钱包服务完成签名，并发送至链或协议。外部钱包服务包括 MPC 钱包、第三方托管钱包和其他远程签名服务。
 
 #### 4.4.2 功能说明
 
 - 交易事实订阅、过滤、时效和幂等检查。
+- 只将已完成的主动合约和现货成交送入跟单规则；强制事件和账户账本事件按语义隔离。
 - 跟单配置和版本管理。
 - 市场、方向、动作、金额、敞口和滑点规则。
 - 固定数量、固定金额或资金比例 sizing。
@@ -613,7 +649,7 @@ trade_intent → transaction → wallet → submission → execution_record
 #### 4.4.5 核心处理逻辑
 
 1. 使用 `fact_id + revision + copy_config_id` 幂等创建执行项。
-2. 检查事件年龄和确认状态。
+2. 检查 `copy_eligible`、`trigger_type`、事件年龄和确认状态；不可跟单事实只记录状态通知，不构建交易。
 3. 匹配市场、方向和动作范围。
 4. 计算目标数量并校验单笔和总敞口。
 5. 获取报价并校验滑点。
@@ -621,6 +657,13 @@ trade_intent → transaction → wallet → submission → execution_record
 7. 根据钱包能力调用 `sign`、`submit` 或 `signAndSubmit`。
 8. 保存提交引用并查询最终状态。
 9. 超时或响应丢失时先查询，不直接重签或重发。
+
+跟单资格固定语义：
+
+- 主动合约开仓、加仓、减仓、平仓、反转，以及现货买入、卖出：`copy_eligible=true`，进入用户规则判断。
+- 清算、ADL/强制减仓、交割、市场结算和状态差异修正：默认 `copy_eligible=false`，可通知但不得按普通成交自动执行。
+- 充值、提现、内部划转、资金费、手续费、奖励、账户快照和价格快照：不进入跟单消费路径。
+- 订单提交、撤销和拒绝只用于行为分析；首期跟单由实际成交触发。未来的订单意图跟随必须使用独立策略和事件类型。
 
 #### 4.4.6 状态及状态转换
 
@@ -801,7 +844,7 @@ RECEIVED → RULE_REJECTED
 
 | Topic | 分区键 | 生产方 | 消费方 | 保留策略 |
 | --- | --- | --- | --- | --- |
-| `account.fact.v1` | `account_key` | 交易日志 | 账户分析、审核；跟单过滤 `TRADE` | 不少于最长重放周期 |
+| `account.fact.v1` | `account_key` | 交易日志 | 账户分析、审核；跟单过滤 `TRADE && copy_eligible=true` | 不少于最长重放周期 |
 | `trade.repair.requested.v1` | `chain_id` | 审核 | 交易日志 | 30 天以上 |
 | `account.recalculation.requested.v1` | `account_key` | 交易日志/审核 | 账户分析 | 30 天以上 |
 
@@ -864,6 +907,7 @@ RECEIVED → RULE_REJECTED
   "quote_asset": "USDC",
   "action": "TRADE",
   "trigger_type": "USER",
+  "copy_eligible": true,
   "side": "BUY",
   "position_effect": "INCREASE",
   "order_id": "order-or-null",
@@ -882,7 +926,7 @@ RECEIVED → RULE_REJECTED
 }
 ```
 
-`trigger_type` 为 `USER`、`PROTOCOL` 或 `LIQUIDATION`；`position_effect` 为 `OPEN`、`INCREASE`、`DECREASE`、`CLOSE`、`REVERSE`、`NONE` 或 `UNKNOWN`。
+`trigger_type` 为 `USER`、`PROTOCOL` 或 `LIQUIDATION`；`position_effect` 为 `OPEN`、`INCREASE`、`DECREASE`、`CLOSE`、`REVERSE`、`NONE` 或 `UNKNOWN`。`copy_eligible` 只表达事件是否属于可进入跟单规则的主动成交，不包含仓位、风险或资金判断；实际是否执行仍由跟单服务决定。
 
 #### 资金与费用 payload
 
@@ -1318,6 +1362,24 @@ wallet_refs ──< copy_executions ──< wallet_requests ──< transaction_
 → 发布 account.fact.v1
 ```
 
+Hyperliquid 实时链路：
+
+```text
+官方 WebSocket userFills/userFundings/userNonFundingLedgerUpdates
+→ 原始消息落库
+→ 市场元数据解析与事实标准化
+→ 主动成交立即发布可跟单 TRADE
+→ 其他事实发布给账户分析
+
+后台 HTTP userFillsByTime/userFunding/userNonFundingLedgerUpdates
+→ 从持久化水位重叠补取
+→ 幂等去重并修补 WebSocket 缺口
+
+周期账户状态 + 现货余额 + 价格快照
+→ 与事件回放状态对账
+→ 保存历史状态检查点和估值证据
+```
+
 #### 账户分析主流程
 
 ```text
@@ -1334,7 +1396,7 @@ wallet_refs ──< copy_executions ──< wallet_requests ──< transaction_
 #### 跟单主流程
 
 ```text
-消费 TRADE
+消费 copy_eligible TRADE
 → 时效与幂等
 → 规则判断
 → sizing
