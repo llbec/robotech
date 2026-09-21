@@ -6,11 +6,11 @@
 
 V0.000 已实现 Hyperliquid 合约与现货成交监控的最小闭环。它使用官方 HTTP 接口回补成交、使用 WebSocket 持续接收成交，并保存原始记录、标准成交事实及 webhook 投递状态。
 
-运行要求：Docker Engine 及 Docker Compose v2；主机能够访问 Hyperliquid 官方 API，并准备一个可接收 HTTP POST 的 webhook 地址。
+运行要求：Docker Engine 及 Docker Compose v2；已经独立部署且容器可访问的 PostgreSQL；主机能够访问 Hyperliquid 官方 API，并准备一个可接收 HTTP POST 的 webhook 地址。
 
 ```bash
 cp .env.example .env
-# 编辑 .env，设置 EVENT_WEBHOOK_URL 和 EVENT_WEBHOOK_SECRET
+# 编辑 .env，设置 DATABASE_URL、EVENT_WEBHOOK_URL 和 EVENT_WEBHOOK_SECRET
 docker compose up -d --build
 curl --fail http://localhost:8080/health/ready
 ```
@@ -32,7 +32,7 @@ curl http://localhost:8080/api/v1/monitored-addresses/0x000000000000000000000000
 curl http://localhost:8080/api/v1/webhook-deliveries
 ```
 
-停止服务使用 `docker compose down`；数据库数据保存在命名卷中。接口契约见 [OpenAPI V0.000](docs/openapi-v0.000.yaml)。
+停止服务使用 `docker compose down`。该命令只停止交易日志服务，不会停止或删除独立部署的 PostgreSQL。接口契约见 [OpenAPI V0.000](docs/openapi-v0.000.yaml)。
 
 查看服务日志：
 
@@ -40,7 +40,13 @@ curl http://localhost:8080/api/v1/webhook-deliveries
 docker compose logs -f trade-log-server
 ```
 
-仅在明确要删除本地测试数据时，使用 `docker compose down --volumes`。该命令会删除 Compose 管理的 PostgreSQL 数据卷，无法通过重新启动恢复。
+服务启动时会自动执行幂等数据库迁移。也可以在启动服务前单独执行迁移：
+
+```bash
+docker compose run --rm --entrypoint trade-log-migrate trade-log-server
+```
+
+数据库的备份、恢复、可用性及数据删除均由独立 PostgreSQL 的运维流程负责，本项目的 Compose 不管理数据库生命周期。
 
 V0.000 的范围限于成交日志：它不采集资金费、充值、提现或余额快照，因此尚不能计算完整账户资金状态或收益。历史范围还受 Hyperliquid 官方最近成交保留上限约束；任务接口会通过 `coverage_start` 和 `history_complete` 暴露实际覆盖情况。
 

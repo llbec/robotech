@@ -21,7 +21,7 @@ V0.000 遵循敏捷迭代原则：版本完成后必须能够独立启动并交�
 完整业务闭环：
 
 ```text
-Docker Compose 启动服务和数据库
+确认独立 PostgreSQL 可用并由 Docker Compose 启动服务
 → HTTP API 添加监控地址
 → 回补该地址近期合约/现货成交
 → 建立 WebSocket 实时成交订阅
@@ -52,7 +52,7 @@ Docker Compose 启动服务和数据库
 - WebSocket 断线自动重连，并通过 HTTP 重叠补取缺口。
 - 提供原始成交、标准成交和 webhook 投递记录查询接口。
 - 提供存活和就绪检查。
-- 提供 Docker Compose 一条路线的本地及单机部署方式。
+- 提供 Docker Compose 启动交易日志服务的单一部署路线，连接独立部署的 PostgreSQL。
 
 ### 3.2 本版本明确不包含
 
@@ -306,9 +306,9 @@ V0.000 完成时必须同时交付以下内容，缺少任一必需项都不能�
 ### 10.5 部署与配置
 
 - `Dockerfile`。
-- `compose.yaml`，包含 `trade-log-server` 和 PostgreSQL。
+- `compose.yaml`，只包含 `trade-log-server`；PostgreSQL 独立部署。
 - `.env.example`，只包含字段说明和非敏感示例。
-- 数据卷、端口和健康检查配置。
+- 外部数据库连接、服务端口和健康检查配置。
 - 启动、停止、查看日志和清理测试数据的操作说明。
 
 ### 10.6 测试与说明
@@ -326,7 +326,8 @@ V0.000 的唯一部署路线为 Docker Compose：
 
 ```text
 复制 .env.example 为本地配置
-→ 填写 webhook 地址和密钥
+→ 填写独立 PostgreSQL 连接地址、webhook 地址和密钥
+→ 确认数据库可从容器网络访问
 → docker compose up -d
 → 等待 /health/ready 返回 200
 → 调用 API 添加监控地址
@@ -336,7 +337,7 @@ V0.000 的唯一部署路线为 Docker Compose：
 
 | 配置 | 默认值/要求 |
 | --- | --- |
-| `DATABASE_URL` | Compose 提供，必须有效 |
+| `DATABASE_URL` | 必填，指向独立部署且容器可访问的 PostgreSQL |
 | `HTTP_LISTEN_ADDR` | `0.0.0.0:8080` |
 | `HYPERLIQUID_HTTP_URL` | `https://api.hyperliquid.xyz/info` |
 | `HYPERLIQUID_WS_URL` | `wss://api.hyperliquid.xyz/ws` |
@@ -352,7 +353,7 @@ V0.000 的唯一部署路线为 Docker Compose：
 
 ### 12.1 可以安装并持续运行
 
-执行 `docker compose up -d` 后，PostgreSQL 和 `trade-log-server` 均成功启动。等待初始化完成后，`/health/live` 和 `/health/ready` 返回 HTTP 200；服务连续运行，不出现反复退出和重启。
+独立 PostgreSQL 可用时，执行 `docker compose up -d` 后 `trade-log-server` 成功启动并自动执行数据库迁移。等待初始化完成后，`/health/live` 和 `/health/ready` 返回 HTTP 200；服务连续运行，不出现反复退出和重启。数据库不可连接或权限不足时，服务启动失败并给出明确错误。
 
 这证明交付件不是只能运行测试的代码，而是一个可部署服务。
 
@@ -412,7 +413,7 @@ Webhook 密钥不出现在 Git、API 响应、普通数据库字段和日志中�
 
 ### 12.11 范围外功能确实未混入
 
-运行环境只启动 PostgreSQL 和交易日志服务，不启动账户分析、审核、钱包或跟单执行进程，也不宣称已经能够计算收益或任意时点账户状态。
+本版本的 Compose 只启动交易日志服务，并连接独立 PostgreSQL；不启动账户分析、审核、钱包或跟单执行进程，也不宣称已经能够计算收益或任意时点账户状态。
 
 这证明版本边界清楚，后续能力通过新版本迭代，而不是在 V0.000 内无限扩张。
 
