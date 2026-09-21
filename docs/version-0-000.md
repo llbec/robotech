@@ -349,6 +349,8 @@ V0.000 的唯一部署路线为 Docker Compose：
 | `EVENT_WEBHOOK_SECRET` | 必填，不写入日志或数据库普通字段 |
 | `RUST_LOG` | `info` |
 
+当独立 PostgreSQL 通过 Docker 宿主机映射端口访问时，连接主机使用 `host.docker.internal`；`compose.yaml` 通过 `host-gateway` 为 Linux 提供该名称。若两个服务加入同一用户定义网络，也可以使用 PostgreSQL 的容器名作为连接主机。
+
 ## 12. 验收标准及解释
 
 ### 12.1 可以安装并持续运行

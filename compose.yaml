@@ -15,6 +15,11 @@ services:
       MAX_MONITORED_ADDRESSES: ${MAX_MONITORED_ADDRESSES:-10}
     ports:
       - "${HTTP_PORT:-8080}:8080"
+    # Linux Docker does not create host.docker.internal automatically.
+    # This lets DATABASE_URL reach an independently deployed PostgreSQL
+    # through its host-published port (for example port 5432).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health/ready"]
       interval: 10s

@@ -8,6 +8,8 @@ V0.000 已实现 Hyperliquid 合约与现货成交监控的最小闭环。它使
 
 运行要求：Docker Engine 及 Docker Compose v2；已经独立部署且容器可访问的 PostgreSQL；主机能够访问 Hyperliquid 官方 API，并准备一个可接收 HTTP POST 的 webhook 地址。
 
+如果 PostgreSQL 通过宿主机端口提供服务，`DATABASE_URL` 使用 `host.docker.internal`。Compose 已为 Linux 配置 `host-gateway` 映射，不要在连接串中使用 `localhost` 或 `127.0.0.1`，因为它们在容器内指向交易日志容器自身。
+
 ```bash
 cp .env.example .env
 # 编辑 .env，设置 DATABASE_URL、EVENT_WEBHOOK_URL 和 EVENT_WEBHOOK_SECRET
