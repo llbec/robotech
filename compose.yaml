@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: robotech
+      POSTGRES_USER: robotech
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-robotech-local}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U robotech -d robotech"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  trade-log-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://robotech:${POSTGRES_PASSWORD:-robotech-local}@postgres:5432/robotech
+      EVENT_WEBHOOK_URL: ${EVENT_WEBHOOK_URL:?set EVENT_WEBHOOK_URL in .env}
+      EVENT_WEBHOOK_SECRET: ${EVENT_WEBHOOK_SECRET:?set EVENT_WEBHOOK_SECRET in .env}
+      HTTP_LISTEN_ADDR: 0.0.0.0:8080
+      RUST_LOG: ${RUST_LOG:-info}
+      DEFAULT_HISTORY_LOOKBACK_SECONDS: ${DEFAULT_HISTORY_LOOKBACK_SECONDS:-604800}
+      HTTP_OVERLAP_SECONDS: ${HTTP_OVERLAP_SECONDS:-120}
+      HTTP_RECONCILE_INTERVAL_SECONDS: ${HTTP_RECONCILE_INTERVAL_SECONDS:-30}
+      MAX_MONITORED_ADDRESSES: ${MAX_MONITORED_ADDRESSES:-10}
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

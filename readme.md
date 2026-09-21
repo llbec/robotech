@@ -2,6 +2,48 @@
 
 > 文档：[概要设计](docs/overview-design.md) · [详细设计](docs/detailed-design.md) · [V0.000 版本开发记录](docs/version-0-000.md)
 
+## V0.000 快速开始
+
+V0.000 已实现 Hyperliquid 合约与现货成交监控的最小闭环。它使用官方 HTTP 接口回补成交、使用 WebSocket 持续接收成交，并保存原始记录、标准成交事实及 webhook 投递状态。
+
+运行要求：Docker Engine 及 Docker Compose v2；主机能够访问 Hyperliquid 官方 API，并准备一个可接收 HTTP POST 的 webhook 地址。
+
+```bash
+cp .env.example .env
+# 编辑 .env，设置 EVENT_WEBHOOK_URL 和 EVENT_WEBHOOK_SECRET
+docker compose up -d --build
+curl --fail http://localhost:8080/health/ready
+```
+
+添加要监控的地址；省略 `start_time` 时默认回补最近 7 天：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/monitored-addresses \
+  -H 'Content-Type: application/json' \
+  -d '{"address":"0x0000000000000000000000000000000000000000"}'
+```
+
+查询任务、原始成交、标准成交和投递结果：
+
+```bash
+curl http://localhost:8080/api/v1/monitored-addresses
+curl http://localhost:8080/api/v1/monitored-addresses/0x0000000000000000000000000000000000000000/raw-trades
+curl http://localhost:8080/api/v1/monitored-addresses/0x0000000000000000000000000000000000000000/trades
+curl http://localhost:8080/api/v1/webhook-deliveries
+```
+
+停止服务使用 `docker compose down`；数据库数据保存在命名卷中。接口契约见 [OpenAPI V0.000](docs/openapi-v0.000.yaml)。
+
+查看服务日志：
+
+```bash
+docker compose logs -f trade-log-server
+```
+
+仅在明确要删除本地测试数据时，使用 `docker compose down --volumes`。该命令会删除 Compose 管理的 PostgreSQL 数据卷，无法通过重新启动恢复。
+
+V0.000 的范围限于成交日志：它不采集资金费、充值、提现或余额快照，因此尚不能计算完整账户资金状态或收益。历史范围还受 Hyperliquid 官方最近成交保留上限约束；任务接口会通过 `coverage_start` 和 `history_complete` 暴露实际覆盖情况。
+
 ## 功能概述
 
 本系统的核心是根据链上账户的完整交易记录，计算账户状态、盈亏和交易指标，并评估其投资策略。

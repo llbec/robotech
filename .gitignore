@@ -53,8 +53,3 @@ build/
 
 # Rust build output
 /target/
-
-# Local V0.000 import parameters
-/.run-v0.000.env
-/nansen-coverage-report.json
-/*.jsonl

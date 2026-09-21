@@ -5,9 +5,9 @@
 | 项目 | 内容 |
 | --- | --- |
 | 版本号 | V0.000 |
-| 版本状态 | PLANNED |
+| 版本状态 | IN DEVELOPMENT |
 | 设计日期 | 2026-09-21 |
-| 开发状态 | 未开始 |
+| 开发状态 | 已完成代码实现，等待实际地址端到端验收 |
 | 版本性质 | 可独立运行、可实际使用的最小业务版本 |
 | 功能模块 | 交易日志服务 |
 | 数据范围 | Hyperliquid 合约成交与现货成交 |
@@ -254,27 +254,23 @@ V0.000 交付数据库迁移，建立：
 ```text
 services/trade-log/
 ├── src/
-│   ├── monitoring/          # 地址任务、状态和水位
-│   ├── acquisition/         # 历史、实时和断线补偿
-│   ├── raw_trade/           # 原始成交模型
-│   ├── normalization/       # Hyperliquid 成交标准化
-│   ├── market_metadata/     # 合约与现货市场映射
-│   ├── publishing/          # outbox 和 webhook
-│   ├── query/               # HTTP 查询用例
-│   └── repository/          # 存储端口
-├── adapters/
-│   └── src/
-│       ├── hyperliquid_http/
-│       ├── hyperliquid_ws/
-│       ├── http_api/
-│       ├── postgres/
-│       └── webhook/
-├── bins/
-│   └── trade-log-server/
+│   ├── main.rs              # 服务装配、后台任务和退出信号
+│   ├── config.rs            # 环境配置及启动校验
+│   ├── domain.rs            # 地址、来源 fill 和标准事实模型
+│   ├── acquisition.rs       # Hyperliquid HTTP/WS 接入
+│   ├── monitoring.rs        # 地址任务、回补、重连和补偿
+│   ├── market_metadata.rs   # 合约与现货市场映射
+│   ├── normalization.rs     # 成交标准化及稳定身份
+│   ├── repository.rs        # PostgreSQL 持久化和查询
+│   ├── publishing.rs        # outbox、HMAC 和 webhook
+│   ├── api.rs               # HTTP 管理与查询接口
+│   └── bin/
+│       └── trade-log-migrate.rs
 └── migrations/
+    └── 0001_v0_000.sql
 ```
 
-业务模块只依赖领域类型和端口，不直接依赖 HTTP、WebSocket 或 SQLx 具体实现。
+V0.000 采用单服务目录内聚结构；采集、标准化、存储、发布和 API 仍以独立模块隔离，后续复杂度上升时可以在不改变模块职责的前提下拆分子目录或 crate。
 
 ## 10. 交付件
 
@@ -344,8 +340,9 @@ V0.000 的唯一部署路线为 Docker Compose：
 | `HTTP_LISTEN_ADDR` | `0.0.0.0:8080` |
 | `HYPERLIQUID_HTTP_URL` | `https://api.hyperliquid.xyz/info` |
 | `HYPERLIQUID_WS_URL` | `wss://api.hyperliquid.xyz/ws` |
-| `DEFAULT_HISTORY_LOOKBACK` | `7d` |
-| `HTTP_OVERLAP_WINDOW` | `2m` |
+| `DEFAULT_HISTORY_LOOKBACK_SECONDS` | `604800`（7 天） |
+| `HTTP_OVERLAP_SECONDS` | `120`（2 分钟） |
+| `HTTP_RECONCILE_INTERVAL_SECONDS` | `30` |
 | `MAX_MONITORED_ADDRESSES` | `10`，V0.000 不允许配置为更大值 |
 | `EVENT_WEBHOOK_URL` | 必填 |
 | `EVENT_WEBHOOK_SECRET` | 必填，不写入日志或数据库普通字段 |
@@ -421,7 +418,7 @@ Webhook 密钥不出现在 Git、API 响应、普通数据库字段和日志中�
 
 ## 13. 完成定义
 
-只有同时满足以下条件，V0.000 才能从 `PLANNED` 改为 `RELEASED`：
+只有同时满足以下条件，V0.000 才能从 `IN DEVELOPMENT` 改为 `RELEASED`：
 
 1. 第 10 节全部交付件存在且文档可执行。
 2. 第 12 节全部验收标准通过。
@@ -448,3 +445,4 @@ Webhook 密钥不出现在 Git、API 响应、普通数据库字段和日志中�
 | 2026-09-11 | SUPERSEDED | Nansen 数据覆盖验证设计 |
 | 2026-09-20 | SUPERSEDED | 官方 API 全量账户事实采集设计，范围仍偏大 |
 | 2026-09-21 | PLANNED | 按敏捷可运行版本重新收敛为合约/现货成交监控、查询和实时 webhook 闭环 |
+| 2026-09-21 | IN DEVELOPMENT | 完成服务、数据库迁移、Docker Compose、OpenAPI 与运行文档，进入端到端验收阶段 |

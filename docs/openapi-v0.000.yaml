@@ -1,0 +1,157 @@
+openapi: 3.1.0
+info:
+  title: Robotech Trade Log API
+  version: 0.0.0
+  description: Hyperliquid address trade monitoring API delivered by V0.000.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health/live:
+    get:
+      operationId: live
+      responses:
+        "200": { description: Process is alive }
+  /health/ready:
+    get:
+      operationId: ready
+      responses:
+        "200": { description: Service is ready }
+        "503": { description: Database is unavailable }
+  /api/v1/monitored-addresses:
+    post:
+      operationId: createMonitoredAddress
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMonitor" }
+      responses:
+        "201":
+          description: Monitor created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Monitor" }
+        "200":
+          description: Existing monitor returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Monitor" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    get:
+      operationId: listMonitoredAddresses
+      responses:
+        "200":
+          description: Monitors
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Monitor" } }
+  /api/v1/monitored-addresses/{address}:
+    parameters: [{ $ref: "#/components/parameters/Address" }]
+    get:
+      operationId: getMonitoredAddress
+      responses:
+        "200":
+          description: Monitor state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Monitor" }
+        "404": { $ref: "#/components/responses/Error" }
+  /api/v1/monitored-addresses/{address}/raw-trades:
+    parameters:
+      - { $ref: "#/components/parameters/Address" }
+      - { $ref: "#/components/parameters/Cursor" }
+      - { $ref: "#/components/parameters/Limit" }
+    get:
+      operationId: listRawTrades
+      responses:
+        "200":
+          description: Raw Hyperliquid fills in event order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+  /api/v1/monitored-addresses/{address}/trades:
+    parameters:
+      - { $ref: "#/components/parameters/Address" }
+      - { $ref: "#/components/parameters/Cursor" }
+      - { $ref: "#/components/parameters/Limit" }
+    get:
+      operationId: listTrades
+      responses:
+        "200":
+          description: Normalized trade facts in event order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+  /api/v1/webhook-deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      parameters: [{ $ref: "#/components/parameters/Limit" }]
+      responses:
+        "200":
+          description: Latest delivery states
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Page" }
+components:
+  parameters:
+    Address:
+      name: address
+      in: path
+      required: true
+      schema: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+  responses:
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    CreateMonitor:
+      type: object
+      required: [address]
+      properties:
+        address: { type: string, pattern: "^0x[0-9a-fA-F]{40}$" }
+        start_time: { type: [string, "null"], format: date-time }
+    Monitor:
+      type: object
+      required: [address, status, requested_start, history_complete, created_at, updated_at]
+      properties:
+        address: { type: string }
+        status: { type: string, enum: [PENDING, BACKFILLING, LIVE, DEGRADED, FAILED] }
+        requested_start: { type: string, format: date-time }
+        coverage_start: { type: [string, "null"], format: date-time }
+        history_complete: { type: boolean }
+        last_event_time: { type: [string, "null"], format: date-time }
+        last_received_at: { type: [string, "null"], format: date-time }
+        last_error: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Page:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { type: object, additionalProperties: true } }
+        next_cursor: { type: [string, "null"] }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
