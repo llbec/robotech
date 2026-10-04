@@ -1,7 +1,7 @@
 # v0.0 开发文档：程序基础
 
 - 文档版本：0.0
-- 状态：代码已实现，本地验收通过；Docker 与 Linux 容器验收待完成
+- 状态：本地自动验证、用户服务器手动验证及公网接口复核通过
 - 更新日期：2026-10-04
 - 设计依据：[概要设计](overview-design.md)、[详细设计](detailed-design.md)
 - 版本范围依据：[产品版本路线图](roadmap.md)
@@ -98,7 +98,7 @@ docker compose restart query-api
 
 容器停止时程序接收 SIGTERM，停止接受新连接，并在配置时限内完成在途请求。修改挂载的 TOML 后重启生效；修改 Compose 的环境或端口映射后执行 `docker compose up -d --force-recreate query-api`。
 
-本地程序使用方式已验证；Docker 启动契约已实现，容器验证状态见 [v0.0 验收报告](version0.0-acceptance.md)。
+本地程序使用方式已验证；Docker 启动已由用户在服务器验证，验证状态见 [v0.0 验收报告](version0.0-acceptance.md)。
 
 ## 4. 配置来源与运行边界
 
@@ -402,7 +402,7 @@ v0.2 增加交易日志服务的存储与 migrations，v0.3 增加采集任务�
 
 Docker 构建及 Compose 启停可实际使用，挂载配置和端口映射有效；配置和 HTTP 入口可以实际使用；正确与错误路径的行为符合文档；基本日志可用于定位请求；启动、退出和重启验收通过；工程依赖方向符合设计。未接入业务接口是本版范围，不用虚假的成交响应填充演示。
 
-实际验证结果见 [v0.0 验收报告](version0.0-acceptance.md)。Docker 验收完成前不标记本版完整发布验收通过。
+实际验证结果见 [v0.0 验收报告](version0.0-acceptance.md)。报告区分自动测试、用户服务器验证和公网复核，记录未独立检查的部署属性。
 
 ## 10. 交付与运行说明
 
@@ -476,7 +476,7 @@ services:
 
 构建验收包含 `docker compose config`、镜像构建、接口访问、配置重载、容器停止及重建；容器停止后退出码应为 0，不能依赖 SIGKILL 完成正常停止。镜像无需依赖宿主机 Rust 或构建产物。
 
-Compose 字段依据：[Docker Compose 服务配置](https://docs.docker.com/reference/compose-file/services/)。对应 Dockerfile 与 Compose 文件已实现；本机缺少 Docker，镜像构建及容器启停尚未验证。
+Compose 字段依据：[Docker Compose 服务配置](https://docs.docker.com/reference/compose-file/services/)。对应 Dockerfile 与 Compose 文件已实现；用户已在服务器验证部署与启停，助手已复核公网接口；开发机没有 Docker。
 
 ### 10.4 后续迭代约定
 

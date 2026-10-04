@@ -1,7 +1,7 @@
 # v0.0 验收报告
 
 - 日期：2026-10-04（Asia/Shanghai）
-- 状态：本地程序验证通过，Docker 发布验收待完成
+- 状态：本地自动验证、用户服务器手动验证及公网接口复核通过
 - 基准提交：`99a77e50895c9ee99d2ec969a49c10d1c380bb11`，本次实现尚未提交
 - 验证环境：macOS，aarch64；Rust/Cargo 1.96.1
 - 实现入口：`gateway/query-api`，程序版本 `0.0.0`
@@ -39,9 +39,27 @@
 - Rust：`rust:1.96.1-bookworm@sha256:a339861ae23e9abb272cea45dfafde21760d2ce6577a70f8a926153677902663`
 - Debian：`debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251`
 
-本机未安装 Docker CLI/运行时，未执行镜像构建、`docker compose config` 或容器启动。因此本版尚未通过完整 Docker 发布验收，也未验证 Linux amd64 或 arm64 容器运行。
+开发机没有 Docker，未在开发机执行容器构建。用户已在服务器完成手动验证并确认正常；提供的日志显示容器启动、优雅停止、重启和健康请求成功。服务器 CPU 架构尚未采集。
 
-## Docker 环境中的待验收步骤
+## 服务器验证记录
+
+用户于 2026-10-04 确认服务器手动验证全部正常，包括 Compose 启动、正常和错误接口、配置修改与错误配置、正常停止重启及公网访问。此部分为用户提供的结果，助手没有远程 shell 访问。
+
+助手于 2026-10-04 19:11（Asia/Shanghai）直接请求 http://120.77.207.116:8080：
+
+| 检查 | 实测结果 |
+| --- | --- |
+| GET /api/v1/health | 200，status=ok，schema_version=1 |
+| GET /api/v1/version | 200，version=0.0.0 |
+| GET /not-found | 404，RESOURCE_NOT_FOUND |
+| POST /api/v1/health | 405，METHOD_NOT_ALLOWED；Allow: GET, HEAD |
+| HEAD /api/v1/health | 200，无响应体 |
+| 重复健康请求 | started_at 固定为 2026-10-04T11:08:57.170Z，trace ID 各不相同 |
+| 请求关联 | JSON 响应头与响应体的 trace ID 一致 |
+
+公网复核未修改配置或操作容器。非 root 身份、只读文件系统、缺失挂载和 CPU 架构未独立检查，不将这些部署属性记为实测通过。
+
+## 可重复执行的 Docker 验收步骤
 
 从仓库根目录执行：
 
@@ -61,6 +79,6 @@ docker compose start query-api
 docker compose down
 ```
 
-正常停止退出码应为 0。进一步按开发文档验证配置修改重启、Compose 环境及端口修改后的容器重建、错误配置、缺失挂载、端口冲突、非 root 身份和只读文件系统。在 Linux amd64 环境执行并记录结果后才能完成基准发布验收；Apple Silicon 可额外验证原生 arm64。
+正常停止退出码应为 0。进一步按开发文档验证配置修改重启、Compose 环境及端口修改后的容器重建、错误配置、缺失挂载、端口冲突、非 root 身份和只读文件系统。如需限定 Linux amd64 发布支持，补充记录服务器 CPU 架构；Apple Silicon 可额外验证原生 arm64。
 
 README 未修改。运行说明保留在本版开发文档和本报告中。
