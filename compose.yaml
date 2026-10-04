@@ -4,11 +4,8 @@ services:
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
-    environment:
-      ROBOTECH_SERVER_HOST: "0.0.0.0"
-      ROBOTECH_SERVER_PORT: "8080"
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     volumes:
       - type: bind
         source: ./config/query-api.toml

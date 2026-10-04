@@ -77,7 +77,7 @@ cargo run --locked -p query-api -- --config config/query-api.toml
 
 ### 3.2 请求入口
 
-Compose 将容器的 8080 端口映射到宿主机 `127.0.0.1:8080`，运行后可调用：
+Compose 将容器的 8080 端口发布到宿主机各网络接口的 8080 端口，本机可通过 `127.0.0.1:8080` 访问，运行后可调用：
 
 ```sh
 curl -i http://127.0.0.1:8080/api/v1/health
@@ -110,7 +110,7 @@ docker compose restart query-api
 config_version = 1
 
 [server]
-host = "127.0.0.1"
+host = "0.0.0.0"
 port = 8080
 shutdown_timeout_seconds = 10
 
@@ -454,11 +454,8 @@ services:
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
-    environment:
-      ROBOTECH_SERVER_HOST: "0.0.0.0"
-      ROBOTECH_SERVER_PORT: "8080"
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     volumes:
       - type: bind
         source: ./config/query-api.toml
@@ -471,7 +468,7 @@ services:
     restart: "no"
 ```
 
-本地直接运行的配置监听 `127.0.0.1`；Compose 通过环境覆盖使容器监听 `0.0.0.0`，宿主机访问通过端口映射进入。宿主机环境变量不会自动传入容器，修改应用覆盖值须在 Compose 的 `environment` 中声明。容器内部端口由 Compose 固定为 8080，更改时同步调整映射，不能只修改 TOML。
+应用监听地址和端口以 `config/query-api.toml` 为准，Compose 不再用环境变量重复覆盖。默认监听 `0.0.0.0:8080`，宿主机端口通过 `8080:8080` 发布。映射左侧是宿主机端口，右侧是容器目标端口，两者可不同。仅更改宿主机访问端口时修改映射左侧；更改应用监听端口时修改 TOML 并同步映射右侧。Docker Compose 不读取 TOML，应用配置与容器网络映射属于不同层，不引入额外生成脚本。环境覆盖机制仍可供开发或明确的部署覆盖使用。
 
 容器停止宽限时间须大于应用退出时限；默认分别为 15 秒和 10 秒。调整应用时限时同步调整 Compose。首版不自动重启，便于观察启动失败与退出码。容器运行状态不能代替接口健康判断，验收必须实际请求 health。
 
