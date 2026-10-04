@@ -1,0 +1,9 @@
+.git
+.trash
+target
+**/*.log
+logs
+.env
+**/*.key
+**/*.token
+.DS_Store

@@ -1,0 +1,10 @@
+config_version = 1
+
+[server]
+host = "127.0.0.1"
+port = 8080
+shutdown_timeout_seconds = 10
+
+[logging]
+level = "info"
+format = "json"
