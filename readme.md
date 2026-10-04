@@ -1,56 +1,6 @@
 # 链上账户投资分析服务
 
-> 文档：[概要设计](docs/overview-design.md) · [详细设计](docs/detailed-design.md) · [V0.000 版本开发记录](docs/version-0-000.md)
-
-## V0.000 快速开始
-
-V0.000 已实现 Hyperliquid 合约与现货成交监控的最小闭环。它使用官方 HTTP 接口回补成交、使用 WebSocket 持续接收成交，并保存原始记录、标准成交事实及 webhook 投递状态。
-
-运行要求：Docker Engine 及 Docker Compose v2；已经独立部署且容器可访问的 PostgreSQL；主机能够访问 Hyperliquid 官方 API，并准备一个可接收 HTTP POST 的 webhook 地址。
-
-如果 PostgreSQL 通过宿主机端口提供服务，`DATABASE_URL` 使用 `host.docker.internal`。Compose 已为 Linux 配置 `host-gateway` 映射，不要在连接串中使用 `localhost` 或 `127.0.0.1`，因为它们在容器内指向交易日志容器自身。
-
-```bash
-cp .env.example .env
-# 编辑 .env，设置 DATABASE_URL、EVENT_WEBHOOK_URL 和 EVENT_WEBHOOK_SECRET
-docker compose up -d --build
-curl --fail http://localhost:8080/health/ready
-```
-
-添加要监控的地址；省略 `start_time` 时默认回补最近 7 天：
-
-```bash
-curl -X POST http://localhost:8080/api/v1/monitored-addresses \
-  -H 'Content-Type: application/json' \
-  -d '{"address":"0x0000000000000000000000000000000000000000"}'
-```
-
-查询任务、原始成交、标准成交和投递结果：
-
-```bash
-curl http://localhost:8080/api/v1/monitored-addresses
-curl http://localhost:8080/api/v1/monitored-addresses/0x0000000000000000000000000000000000000000/raw-trades
-curl http://localhost:8080/api/v1/monitored-addresses/0x0000000000000000000000000000000000000000/trades
-curl http://localhost:8080/api/v1/webhook-deliveries
-```
-
-停止服务使用 `docker compose down`。该命令只停止交易日志服务，不会停止或删除独立部署的 PostgreSQL。接口契约见 [OpenAPI V0.000](docs/openapi-v0.000.yaml)。
-
-查看服务日志：
-
-```bash
-docker compose logs -f trade-log-server
-```
-
-服务启动时会自动执行幂等数据库迁移。也可以在启动服务前单独执行迁移：
-
-```bash
-docker compose run --rm --entrypoint trade-log-migrate trade-log-server
-```
-
-数据库的备份、恢复、可用性及数据删除均由独立 PostgreSQL 的运维流程负责，本项目的 Compose 不管理数据库生命周期。
-
-V0.000 的范围限于成交日志：它不采集资金费、充值、提现或余额快照，因此尚不能计算完整账户资金状态或收益。历史范围还受 Hyperliquid 官方最近成交保留上限约束；任务接口会通过 `coverage_start` 和 `history_complete` 暴露实际覆盖情况。
+> 文档：[概要设计](docs/overview-design.md) · [详细设计](docs/detailed-design.md)
 
 ## 功能概述
 
