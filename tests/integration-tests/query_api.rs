@@ -301,7 +301,8 @@ fn cli_help_version_and_configuration_errors() {
         command().arg("--unknown").output().unwrap().status.code(),
         Some(2)
     );
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/query-api.toml");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/config/valid.toml");
     let invalid = command()
         .arg("--config")
         .arg(path)
@@ -314,7 +315,8 @@ fn cli_help_version_and_configuration_errors() {
 #[tokio::test]
 async fn occupied_port_is_startup_failure() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/query-api.toml");
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/config/valid.toml");
     let result = command()
         .arg("--config")
         .arg(path)
@@ -349,8 +351,8 @@ async fn os_signals_and_request_logs() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         drop(listener);
-        let path =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/query-api.toml");
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/fixtures/config/valid.toml");
         let mut child = ChildGuard(Some(
             command()
                 .arg("--config")
@@ -432,4 +434,38 @@ async fn os_signals_and_request_logs() {
         }
         TcpListener::bind(address).await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn trade_queries_validate_before_contacting_disabled_dependency() {
+    let (base, _, stop, task) = start(router::build(AppState::new()), Duration::from_secs(1)).await;
+    let client = reqwest::Client::new();
+    let address = "0x0000000000000000000000000000000000000001";
+    for query in [
+        "account=invalid".to_owned(),
+        format!("account={address}&limit=0"),
+        format!("account={address}&start=1"),
+        format!("account={address}&limit=no"),
+    ] {
+        let response = client
+            .get(format!("{base}/api/v1/trade-events?{query}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 400);
+        let body: Value = response.json().await.unwrap();
+        assert_eq!(body["code"], "VALIDATION_ERROR");
+    }
+    let response = client
+        .get(format!("{base}/api/v1/trade-events?account={address}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 503);
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["code"],
+        "DEPENDENCY_UNAVAILABLE"
+    );
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
 }

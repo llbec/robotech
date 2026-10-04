@@ -1,9 +1,13 @@
 [workspace]
-members = ["gateway/query-api"]
+members = [
+    "gateway/query-api", "crates/service-runtime", "crates/shared-types", "crates/account-facts", "crates/protocol-api",
+    "services/trade-log", "services/trade-log/adapters", "services/trade-log/bins/trade-log-query",
+    "protocols/implementations/hyperliquid",
+]
 resolver = "3"
 
 [workspace.package]
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.96"
 
@@ -14,10 +18,21 @@ clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "io-util", "fs"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json"] }
 uuid = { version = "1", features = ["v4"] }
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+async-trait = "0.1"
+sha2 = "0.10"
+rust_decimal = { version = "1", default-features = false, features = ["std"] }
+subtle = "2"
+service-runtime = { path = "crates/service-runtime" }
+shared-types = { path = "crates/shared-types" }
+account-facts = { path = "crates/account-facts" }
+protocol-api = { path = "crates/protocol-api" }
+trade-log = { path = "services/trade-log" }
+trade-log-adapters = { path = "services/trade-log/adapters" }
+hyperliquid = { path = "protocols/implementations/hyperliquid" }

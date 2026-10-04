@@ -1,0 +1,16 @@
+[package]
+name = "hyperliquid"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+trade-log.workspace = true
+protocol-api.workspace = true
+account-facts.workspace = true
+shared-types.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tokio.workspace = true

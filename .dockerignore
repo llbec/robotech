@@ -7,3 +7,5 @@ logs
 **/*.key
 **/*.token
 .DS_Store
+secrets
+var

@@ -9,21 +9,16 @@ use serde::Serialize;
 #[derive(Serialize)]
 struct ErrorBody {
     code: &'static str,
-    message: &'static str,
+    message: String,
     trace_id: String,
 }
 
-pub fn response(
-    status: StatusCode,
-    code: &'static str,
-    message: &'static str,
-    trace: TraceId,
-) -> Response {
+pub fn response(status: StatusCode, code: &'static str, message: &str, trace: TraceId) -> Response {
     (
         status,
         Json(ErrorBody {
             code,
-            message,
+            message: message.into(),
             trace_id: trace.0,
         }),
     )

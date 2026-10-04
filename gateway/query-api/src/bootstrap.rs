@@ -47,6 +47,14 @@ pub async fn run() -> Result<(), StartupError> {
         config::Config::load(&args.config, &overrides).map_err(|e| StartupError::new(2, e))?;
     logging::init(&config.logging)
         .map_err(|e| StartupError::new(3, format!("logging initialization failed: {e}")))?;
+    let mut state = AppState::new();
+    state.trade_log = config
+        .trade_log
+        .as_ref()
+        .map(crate::clients::trade_log::TradeLogClient::from_config)
+        .transpose()
+        .map_err(|e| StartupError::new(2, e))?
+        .flatten();
     let signal = lifecycle::shutdown_signal()
         .map_err(|e| StartupError::new(3, format!("signal initialization failed: {e}")))?;
     let address = config.server.address();
@@ -54,7 +62,7 @@ pub async fn run() -> Result<(), StartupError> {
         tracing::error!(service = crate::SERVICE, %address, error = %e, "bind_failed");
         StartupError::new(3, format!("cannot bind {address}: {e}"))
     })?;
-    let state = AppState::new();
+
     tracing::info!(service = crate::SERVICE, version = crate::VERSION, %address,
         config_path = %args.config.display(), log_level = %config.logging.level,
         log_format = %config.logging.format, shutdown_timeout_seconds = config.server.shutdown_timeout_seconds,

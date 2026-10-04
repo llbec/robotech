@@ -1,9 +1,10 @@
 services:
   query-api:
-    image: robotech/query-api:0.0.0
+    image: robotech/query-api:0.1.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
+      target: query-api
     ports:
       - "8080:8080"
     volumes:
@@ -13,6 +14,54 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ./secrets/trade-log-token
+        target: /run/secrets/trade-log-token
+        read_only: true
+        bind:
+          create_host_path: false
     read_only: true
     stop_grace_period: 15s
     restart: "no"
+
+  trade-log-query:
+    image: robotech/trade-log-query:0.1.0
+    build:
+      context: .
+      dockerfile: gateway/query-api/Dockerfile
+      target: trade-log-query
+    volumes:
+      - type: bind
+        source: ./config/trade-log.toml
+        target: /etc/robotech/trade-log.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/trade-log-token
+        target: /run/secrets/trade-log-token
+        read_only: true
+        bind:
+          create_host_path: false
+      - trade-log-evidence:/var/lib/robotech/trade-log
+    read_only: true
+    stop_grace_period: 15s
+    restart: "no"
+
+  evidence-init:
+    image: robotech/trade-log-query:0.1.0
+    build:
+      context: .
+      dockerfile: gateway/query-api/Dockerfile
+      target: trade-log-query
+    profiles: ["init"]
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["chown 10001:10001 /var/lib/robotech/trade-log && chmod 750 /var/lib/robotech/trade-log"]
+    volumes:
+      - trade-log-evidence:/var/lib/robotech/trade-log
+    read_only: true
+    restart: "no"
+
+volumes:
+  trade-log-evidence:

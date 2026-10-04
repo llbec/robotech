@@ -1,0 +1,26 @@
+config_version = 1
+
+[server]
+host = "0.0.0.0"
+port = 8081
+shutdown_timeout_seconds = 10
+
+[logging]
+level = "info"
+format = "json"
+
+[hyperliquid]
+network = "mainnet"
+connect_timeout_seconds = 5
+request_timeout_seconds = 10
+
+[query]
+timeout_seconds = 30
+max_concurrency = 4
+max_response_bytes = 16777216
+
+[evidence]
+directory = "/var/lib/robotech/trade-log"
+
+[internal]
+credential_file = "/run/secrets/trade-log-token"

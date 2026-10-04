@@ -1,7 +1,7 @@
 # v0.1 开发文档：Hyperliquid 近期合约成交查询
 
 - 文档版本：0.1
-- 状态：待实现设计，尚未完成开发与验收
+- 状态：代码已实现，本地与真实来源验证通过；Docker 部署待服务器验收
 - 更新日期：2026-10-04
 - 设计依据：[概要设计](overview-design.md)、[详细设计](detailed-design.md)、[产品版本路线图](roadmap.md)
 - 前置版本：[v0.0 程序基础](version0.0.md)
@@ -245,7 +245,7 @@ config/
 
 可重试网络错误、429 和 5xx 最多 2 次尝试，遵循 Retry-After 并受查询总时限约束；普通 4xx 与解析错误不重试。并发限制不能代替官方 IP 加权限流，遇到来源限流须明确返回，不持续压测公共接口。
 
-新配置沿用文件加载与显式环境覆盖约定。新键、允许的覆盖变量在实现时列出；不再在 Compose 重复设置应用 host/port。
+新配置沿用文件加载与显式环境覆盖约定。本版环境覆盖仍仅支持 ROBOTECH_SERVER_HOST、ROBOTECH_SERVER_PORT、ROBOTECH_SHUTDOWN_TIMEOUT_SECONDS、ROBOTECH_LOG_LEVEL 和 ROBOTECH_LOG_FORMAT；业务新增配置由 TOML 设置；不再在 Compose 重复设置应用 host/port。
 
 ### 8.2 HTTP 行为
 
@@ -298,11 +298,11 @@ config/
 
 Compose 新增 `trade-log-query`，网关通过 `http://trade-log-query:8081` 访问。应用内部服务监听由 trade-log.toml 指定为 `0.0.0.0:8081`，不发布到宿主机。
 
-两个进程各自构建镜像，采用 v0.0 的多阶段构建、固定基础镜像摘要、非 root、exec ENTRYPOINT 与有界退出。加入公共 crate 后，更新构建 COPY 路径覆盖实际 workspace member。
+两个进程使用 `gateway/query-api/Dockerfile` 的 `query-api` 和 `trade-log-query` 两个 target 分别构建镜像，共享一次 workspace 编译及运行基线；采用 v0.0 的多阶段构建、固定基础镜像摘要、非 root、exec ENTRYPOINT 与有界退出。加入公共 crate 后，更新构建 COPY 路径覆盖实际 workspace member。
 
 交易日志服务只读挂载配置与内部凭证文件，并将命名数据卷挂载到证据目录；启动前由明确的部署初始化步骤设置卷目录 UID/GID 权限，不能依赖开发机 root 运行成功。卷初始化与 Compose 约定在实现时给出可执行命令。
 
-内部凭证由部署者生成并放在忽略的本地 secrets 目录，两个服务挂载同一凭证；提供示例路径和初始化命令，不提交默认共享 token。Compose 对文件存在性检查，缺少时明确启动失败。
+内部凭证由部署者执行 `sh scripts/init-v0.1.sh` 生成并放在忽略的本地 secrets 目录，两个服务挂载同一凭证，不提交默认共享 token。脚本保留已有凭证，并运行仅在 init profile 中启用的一次性 evidence-init 容器，为命名数据卷设置 UID/GID 10001 和目录权限；正常运行的两个应用容器仍使用非 root。Compose 对文件存在性检查，缺少时明确启动失败。
 
 启动仍使用 `docker compose up --build -d`；配置变化重启对应服务，Compose 挂载、镜像或网络变化重建容器。基础接口不依赖内部服务启动就绪；业务调用遇到内部服务未就绪返回 503，避免仅依赖容器启动顺序判断可用。
 
@@ -319,3 +319,150 @@ README 不增加版本入口。开发及部署说明集中在本文件和后续�
 v0.2 在交易日志服务接入原始数据与事实持久化，复用获取、市场映射、事实身份、解析和查询端口；v0.3 的采集入口复用同一协议与业务模块；v0.4 的 WebSocket 与 HTTP 数据使用相同事实身份；v0.5 的发布遵守存储后发布，不等待分析与审核。
 
 本版文件证据适配器后续可以继续用于诊断或由正式归档适配器替换，业务查询不直接依赖文件系统。HTTP handler、标准事实及协议类型不会因增加数据库或消息系统而另起一套实现。
+
+
+### 10.4 手动验证步骤
+
+在服务器项目根目录，按下面顺序逐项操作。每一步先执行命令，再对照预期结果判断是否通过；不需要运行自动校验脚本。
+
+#### 第 1 步：构建并启动
+
+```sh
+sh scripts/init-v0.1.sh
+docker compose up --build -d
+docker compose ps
+```
+
+**看什么：** `query-api` 和 `trade-log-query` 两个服务均显示 `Up` 或 `running`；query-api 发布 8080 端口，trade-log-query 没有宿主机端口映射。
+
+**通过标准：** 构建成功，两个服务均运行，没有反复退出。初始化脚本需要 openssl；重复执行会保留已有凭证。
+
+#### 第 2 步：确认启动日志
+
+```sh
+docker compose logs --tail=30 query-api trade-log-query
+```
+
+**看什么：** 两个服务分别出现 `server_started`，版本为 `0.1.0`。
+
+**通过标准：** 无配置读取、凭证读取、端口绑定或证据目录写入错误。
+
+#### 第 3 步：验证健康和版本接口
+
+```sh
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
+```
+
+**看什么：** 两个请求均返回 `HTTP/1.1 200 OK`；health 的 `data.status` 为 `ok`，version 的 `data.version` 为 `0.1.0`。响应头有 `x-trace-id`，与响应体 `meta.trace_id` 相同。
+
+**通过标准：** 状态码和上述字段全部符合。
+
+#### 第 4 步：查询真实账户成交
+
+```sh
+curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
+  --data-urlencode 'account=0x010461c14e146ac35fe42271bdc1134ee31c703a' \
+  --data-urlencode 'limit=10'
+```
+
+**看什么：** 返回 200；`data.account` 为查询账户；有 `query_id`、`counts`、`coverage`、`trades`、`warnings` 和 `evidence_ref`。`trades` 最多 10 条，每条含 `fact_id`、`occurred_at` 和 `payload`；payload 中有市场、方向、价格、数量和手续费。
+
+**通过标准：** 真实成交正常返回，`counts.returned_records` 等于展示条数且不超过 10。如果 `counts.perpetual_records` 大于展示条数，`display_truncated` 应为 true。来源达到 2000 条时，coverage 应为 LIMITED，warnings 包含 SOURCE_RECORD_LIMIT。
+
+记下返回的 **query_id**，第 7、8 步使用。这个公开账户的近期成交会变化；如果没有合约成交，应换一个有近期合约成交的公开账户验证。429、503 或超时不算本步骤通过。
+
+#### 第 5 步：验证错误输入
+
+分别执行：
+
+```sh
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=invalid'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=0'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=2001'
+```
+
+**看什么：** 三个请求均返回 400，响应体有 `code` 为 `VALIDATION_ERROR`，并有 trace_id。
+
+**通过标准：** 每个非法请求都明确返回错误，没有返回 200 空列表。
+
+#### 第 6 步：从自己的电脑验证公网访问
+
+在自己的电脑执行：
+
+```sh
+curl --noproxy '*' -i http://120.77.207.116:8080/api/v1/health
+curl --noproxy '*' --max-time 45 -i 'http://120.77.207.116:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
+```
+
+**通过标准：** health 返回 200 和 ok；成交查询返回 200，结构符合第 4 步。实时查询结果可能变化，不要求两次成交内容完全一致。如果服务器本机通过而此步失败，检查服务器安全组、系统防火墙和 Compose 的 8080 端口发布。
+
+#### 第 7 步：检查查询证据已落盘
+
+回到服务器，将下面的值替换为第 4 步实际返回的 query_id：
+
+```sh
+v01_query_id='query_替换为实际值'
+docker compose exec -T trade-log-query ls -R "/var/lib/robotech/trade-log/$v01_query_id"
+docker compose exec -T trade-log-query cat "/var/lib/robotech/trade-log/$v01_query_id/manifest.json"
+mkdir -p var/manual-v0.1
+docker compose cp "trade-log-query:/var/lib/robotech/trade-log/$v01_query_id" var/manual-v0.1/
+```
+
+**看什么：** 查询目录含 `manifest.json`、`result.json`、`requests/`、`responses/`、`metadata/`。manifest 的 status 为 COMPLETED，query_id 与 HTTP 返回相同，trace_id 与该次 HTTP 请求相同。
+
+用编辑器打开复制出来的 `var/manual-v0.1/<query_id>/result.json`，与第 4 步结果对照：前面的成交相同；该文件保存完整标准成交，不能只保留 limit=10 的展示结果。例如 HTTP 显示 perpetual_records=2000，完整文件就应保留 2000 条成交。
+
+**通过标准：** 文件齐全，状态和身份一致，完整结果未被展示 limit 截断。原始响应、请求及元数据都有对应文件。
+
+#### 第 8 步：重启后检查证据仍在
+
+```sh
+docker compose restart trade-log-query
+docker compose exec -T trade-log-query cat "/var/lib/robotech/trade-log/$v01_query_id/manifest.json"
+```
+
+**看什么：** 原 query_id 的 manifest 仍可读取，内容仍为 COMPLETED。
+
+再执行第 4 步的查询命令。
+
+**通过标准：** 历史证据仍存在，新查询仍返回 200。普通重启不要使用 `docker compose down -v`，它会删除证据卷。
+
+#### 第 9 步：验证依赖停止时的行为
+
+此步会短暂停止交易查询，请在允许暂停查询时执行。
+
+```sh
+docker compose stop trade-log-query
+curl --noproxy '*' --max-time 45 -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
+docker compose start trade-log-query
+```
+
+**看什么：** 依赖停止期间，成交查询返回 503，`code` 为 DEPENDENCY_UNAVAILABLE；网关 health 仍返回 200 和 ok。
+
+启动后等待日志出现 server_started，再执行第 4 步。
+
+**通过标准：** 故障被明确报告，网关仍可响应，恢复后成交查询重新成功。
+
+#### 第 10 步：验证正常停止并恢复服务
+
+```sh
+docker compose stop
+docker compose ps -a
+docker compose logs --tail=30 query-api trade-log-query
+```
+
+**看什么：** 两个常驻容器显示 `Exited (0)`；两个服务日志都有 `shutdown_started` 和 `shutdown_completed`。
+
+```sh
+docker compose start
+```
+
+再执行第 3 步检查健康和版本。
+
+**通过标准：** 正常退出、恢复后基础接口正常。
+
+完成后记录上述 10 步各自是否通过、失败时的状态码和日志。只有实际执行通过才能登记为服务器 Docker 验收通过；当前开发机的测试结果不能替代此记录。
+
+自动检查命令和已执行结果见 [v0.1 验收报告](version0.1-acceptance.md)。

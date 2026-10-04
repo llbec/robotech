@@ -8,3 +8,9 @@ shutdown_timeout_seconds = 10
 [logging]
 level = "info"
 format = "json"
+
+[trade_log]
+enabled = true
+base_url = "http://trade-log-query:8081"
+credential_file = "/run/secrets/trade-log-token"
+request_timeout_seconds = 35
