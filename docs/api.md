@@ -2,7 +2,7 @@
 
 本文是项目统一的接口说明文档，集中维护所有对外接口和内部接口。后续版本在本文件中更新接口定义，并注明新增、变更或废弃的适用版本，不另建按开发版本命名的接口文档。
 
-当前对应程序版本：0.2.0；JSON schema_version：1。接口定义依据当前代码编写。
+当前对应程序版本：0.3.0；JSON schema_version：1。接口定义依据当前代码编写。
 
 ## 1. 地址和接口列表
 
@@ -13,11 +13,13 @@
 | 对外 | GET | [/api/v1/health](#41-网关健康接口) | 判断网关进程是否存活 |
 | 对外 | GET | [/api/v1/version](#42-版本接口) | 查询网关程序版本 |
 | 对外 | GET | [/api/v1/trade-events](#43-账户近期合约成交查询) | 实时查询并保存成交；[查询已保存成交](#44-已保存成交时间查询) |
+| 对外 | GET | [/api/v1/watch-accounts](#45-自动更新状态) | 查看配置账户的自动采集状态、水位和错误 |
+| 内部 | GET | [/internal/v1/collection-status](#35-内部自动采集状态) | 网关读取 collector 状态，需要服务凭证 |
 | 内部 | GET | [/internal/v1/health](#33-内部健康接口) | 判断交易查询进程是否存活，需要服务凭证 |
 | 内部 | POST | [/internal/v1/trade-queries](#32-内部成交查询) | 网关调用交易查询服务，需要服务凭证 |
 | 内部 | POST | [/internal/v1/stored-trade-queries](#34-内部库存查询) | 查询数据库保存的成交，需要服务凭证 |
 
-对外接口当前不要求客户端提供身份凭证。内部服务默认监听 8081，Compose 不发布该端口；网关在容器网络中使用 `http://trade-log-query:8081`。
+对外接口当前不要求客户端提供身份凭证。交易查询服务默认监听 8081，collector 默认监听 8082；Compose 不发布这两个端口，网关分别通过 `http://trade-log-query:8081` 和 `http://trade-collector:8082` 调用。
 
 对外 GET 接口支持 HEAD：响应不包含 JSON 正文。未定义路径返回 404；已定义路径使用不支持的方法返回 405。
 
@@ -39,7 +41,7 @@
 | --- | --- | --- |
 | data | object | 对应接口的业务数据，具体字段见后文 |
 | meta.trace_id | string | 本次 HTTP 请求的追踪 ID，用于关联网关、内部服务日志及查询证据 |
-| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.2.0 分开管理 |
+| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.3.0 分开管理 |
 
 JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与响应体中的 trace_id 相同。网关为每次外部请求生成新 trace_id，不沿用客户端传入的值。
 
@@ -65,7 +67,7 @@ JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与�
 
 ## 3. 内部接口
 
-内部接口用于项目内不同进程之间的通信。目前 query-api 负责对外 HTTP 请求，trade-log-query 负责来源采集、成交解析和证据保存。通过内部接口明确两者的请求、响应、认证和错误边界，使业务查询过程可以独立运行和迭代，网关无需依赖交易查询进程的内部实现。
+内部接口用于项目内不同进程之间的通信。目前 query-api 负责对外 HTTP 请求，trade-log-query 负责手动成交查询和库存读取，trade-collector 独立执行单地址自动采集。通过内部接口明确这些进程的请求、响应、认证和错误边界，使业务查询过程可以独立运行和迭代，网关无需依赖交易查询进程的内部实现。
 
 当客户端调用外部成交查询接口时，网关完成参数校验，再调用内部成交查询接口；交易查询服务完成采集和证据保存后，网关将结果返回客户端。source=stored 时网关改调用内部库存查询接口，仅读取本库，不进行来源采集。内部健康接口供运维或受信任的服务调用方检查交易查询进程是否存活，当前网关不会在每次成交查询前主动调用它。
 
@@ -109,7 +111,7 @@ GET /internal/v1/health
 没有业务参数，需要 Authorization 请求头。成功返回 200，data 格式：
 
 ```json
-{"status":"ok","service":"trade-log-query","version":"0.2.0"}
+{"status":"ok","service":"trade-log-query","version":"0.3.0"}
 ```
 
 status 表示内部进程可响应，service 为服务名，version 为程序构建版本；完整响应使用 data/meta 包装。该接口不主动检查上游来源。
@@ -134,6 +136,14 @@ Content-Type: application/json
 ```
 
 account 必填；limit 为整数，可省略但不可为 null。start_time、end_time、cursor 可省略或为 null，表示未提供。参数含义和返回数据见第 4.4 节；未知字段返回 400。数据库不可用或操作失败返回 503，不返回空库存冒充成功。
+
+### 3.5 内部自动采集状态
+
+新增于 v0.3。`GET /internal/v1/collection-status`，服务地址 `http://trade-collector:8082`。网关收到 watch-accounts 请求时调用；不会触发立即采集，不直接查询业务数据库。
+
+请求没有正文或参数，必须携带内部 Bearer 服务凭证。成功 data 与第 4.5 节相同，meta 含内部请求 trace_id 和 schema_version=1。数据库读取默认时限 3 秒，失败或超时返回 503；未授权返回 401。能读取检查点而来源采集失败时返回 200，在业务状态中说明失败。
+
+collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.3.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
 
 ## 4. 外部接口
 
@@ -194,13 +204,13 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 成功返回 200；data 格式：
 
 ```json
-{"service":"query-api","version":"0.2.0"}
+{"service":"query-api","version":"0.3.0"}
 ```
 
 | data 字段 | 类型 | 含义 |
 | --- | --- | --- |
 | service | string | 服务名 query-api |
-| version | string | 当前运行程序的构建版本，v0.2 为 0.2.0 |
+| version | string | 当前运行程序的构建版本，v0.2 为 0.3.0 |
 
 实际 HTTP 响应仍使用第 2 节的 data/meta 包装。
 
@@ -455,6 +465,71 @@ curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
 
 有下一页时，把 next_cursor 作为 URL cursor 参数传入，并保持 source、account、时间范围一致，limit 可调整。排序仍为成交时间降序、tid 数值降序、fact_id 升序。stored 不返回 live counts、采集 query_id 或 display_truncated。空库存不说明账户没有交易；数据库错误返回非 200。
 
+### 4.5 自动更新状态
+
+新增于 v0.3。`GET /api/v1/watch-accounts`，没有业务参数或请求正文。本版只读当前配置的一个账户；不提供添加、删除、暂停或恢复账户的管理接口。轮询由独立 trade-collector 运行，读取状态不会执行来源查询。
+
+```sh
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+```
+
+成功 data 为 `{ "items": [状态对象] }`，外层仍为第 2.1 节的 data/meta 信封，正常 items 只有一个对象：
+
+```json
+{
+  "data": {
+    "items": [{
+      "account": "0x0000000000000000000000000000000000000001",
+      "account_key": "hyperliquid:mainnet:hyperliquid:0x0000000000000000000000000000000000000001",
+      "network": "mainnet",
+      "status": "WAITING",
+      "coverage": "SOURCE_HISTORY_NOT_VERIFIED",
+      "initial_start_time": "2026-10-05T00:00:00.000Z",
+      "scanned_through": "2026-10-05T00:01:00.000Z",
+      "last_trade_at": null,
+      "last_attempt_at": "2026-10-05T00:01:02.000Z",
+      "last_success_at": "2026-10-05T00:01:03.000Z",
+      "consecutive_failures": 0,
+      "next_run_at": "2026-10-05T00:01:33.000Z",
+      "pending_range": null,
+      "last_query_id": "query_example",
+      "last_success_query_id": "query_example",
+      "last_error": null,
+      "heartbeat_at": "2026-10-05T00:01:03.000Z",
+      "lease_expires_at": "2026-10-05T00:04:03.000Z",
+      "warnings": ["SOURCE_HISTORY_NOT_VERIFIED", "LATE_DATA_OUTSIDE_OVERLAP_NOT_VERIFIED"]
+    }]
+  },
+  "meta": {"trace_id": "trace_0123456789abcdef0123456789abcdef", "schema_version": 1}
+}
+```
+
+以上是字段格式示例，不代表实际采集证据。
+
+| 字段 | 类型 | 意义 |
+| --- | --- | --- |
+| items | array | 当前配置中的采集账户，包含下列状态字段 |
+| account/account_key/network | string | 规范地址、链协议账户身份、来源环境 |
+| status | string | STARTING 初始化；RUNNING 本轮采集中；WAITING 成功后等待；RETRY_WAIT 退避或预算暂停；FAILED 无法继续或心跳过期；STOPPED 正常停止 |
+| coverage | string | 固定 SOURCE_HISTORY_NOT_VERIFIED，不证明官方历史完整 |
+| initial_start_time | string | 首次建立检查点的扫描起点，UTC 毫秒格式 |
+| scanned_through | string/null | 已提交扫描结束边界，半开区间结束值；不是最新成交时间 |
+| last_trade_at | string/null | 自动采集已提交的最新合约成交时间；无成交可为空 |
+| last_attempt_at | string/null | 最近一次开始尝试的时间 |
+| last_success_at | string/null | 最近一次事实与水位完整事务提交时间；请求返回 200 不足以更新此字段 |
+| consecutive_failures | integer | 连续失败轮数；完整成功后归零，预算暂停不计失败 |
+| next_run_at | string/null | 下一次计划执行时间，包含有界退避 |
+| pending_range | object/null | 未完成固定范围，含 start_time/end_time，开始包含、结束排除 |
+| last_query_id | string/null | 最近尝试的采集任务标识 |
+| last_success_query_id | string/null | 最近成功的自动采集任务标识，可用于 reparse |
+| last_error | object/null | 最近未恢复错误，含 code/message/occurred_at；完整成功后清空 |
+| heartbeat_at/lease_expires_at | string/null | 实例心跳与租约到期时间；数据库持久化值 |
+| warnings | array of string | 来源历史、重叠区间外迟到数据、预算或心跳等限制说明 |
+
+所有时间为 UTC、最大毫秒精度。无成交也可以成功推进扫描水位。原 live 查询和旧证据导入不会推进自动水位；stored 查询沿用 v0.2 行为。
+
+未启用 collector、collector 不可访问、检查点尚未建立或数据库不可读时返回 503，不返回成功空列表。服务可读而采集失败时返回 200，status/last_error 表示业务失败。来源可能限流或截断，失败可见不等于自动补齐完整历史。
+
 ## 5. HTTP 状态及错误码
 
 | HTTP 状态 | code | 意义 |
@@ -467,7 +542,7 @@ curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
 | 422 | INCOMPLETE_DATA | 来源数据无法可靠解析，无法给出可用标准结果 |
 | 429 | RATE_LIMITED | 内部并发容量已满，或来源限流在有限重试后仍未解除 |
 | 500 | INTERNAL_INVARIANT_VIOLATION | 证据存储等内部处理失败 |
-| 503 | DEPENDENCY_UNAVAILABLE | 查询未启用、内部服务不可用、来源请求失败、元数据异常、查询超时或数据库操作失败 |
+| 503 | DEPENDENCY_UNAVAILABLE | 查询未启用、内部服务不可用、来源请求失败、元数据异常、查询超时、数据库操作失败或自动采集状态不可用 |
 
 网关会对内部错误进行转换，内部认证失败等无法正常识别的内部响应会对外表现为 503。message 可能因错误发生位置不同而变化。
 
@@ -479,6 +554,7 @@ curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
 
 | 日期 | 程序版本 | 类型 | 更新内容 |
 | --- | --- | --- | --- |
+| 2026-10-06 | 0.3.0 | 新增接口 | 新增单地址自动采集状态、扫描水位和错误说明；collector 内部状态及健康接口 |
 | 2026-10-05 | 0.2.0 | 新增及兼容扩展 | 实时查询增加持久化回执；新增 source=stored 时间范围及快照游标分页、内部库存查询；数据库故障明确返回 503 |
 | 2026-10-05 | 0.1.0 | 文档调整 | 将接口说明集中到本文件；按内部、外部接口分章，增加用途、调用时机和接口列表页内跳转；接口行为未改变 |
 | 2026-10-04 | 0.1.0 | 新增接口 | 新增外部 GET /api/v1/trade-events；新增内部 POST /internal/v1/trade-queries 与 GET /internal/v1/health；新增成交、覆盖、计数及证据字段说明 |

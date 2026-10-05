@@ -460,6 +460,15 @@ async fn trade_queries_validate_before_contacting_disabled_dependency() {
         let body: Value = response.json().await.unwrap();
         assert_eq!(body["code"], "VALIDATION_ERROR");
     }
+    assert_eq!(
+        client
+            .get(format!("{base}/api/v1/watch-accounts"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        503
+    );
     let response = client
         .get(format!("{base}/api/v1/trade-events?account={address}"))
         .send()

@@ -1,4 +1,6 @@
 pub mod acquisition;
+pub mod checkpoint;
+pub mod collection;
 pub mod normalization;
 pub mod parsing;
 pub mod persistence;

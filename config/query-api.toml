@@ -14,3 +14,9 @@ enabled = true
 base_url = "http://trade-log-query:8081"
 credential_file = "/run/secrets/trade-log-token"
 request_timeout_seconds = 45
+
+[collector]
+enabled = true
+base_url = "http://trade-collector:8082"
+credential_file = "/run/secrets/trade-log-token"
+request_timeout_seconds = 5

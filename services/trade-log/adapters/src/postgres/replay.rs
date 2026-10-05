@@ -20,7 +20,7 @@ impl Postgres {
         parser: &dyn ProtocolParser,
     ) -> Result<ReplayReport, QueryError> {
         let job = sqlx::query(
-            "SELECT account,network,status,result FROM trade_log.collection_jobs WHERE query_id=$1",
+            "SELECT account,network,status,result,job_origin,request FROM trade_log.collection_jobs WHERE query_id=$1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -52,23 +52,42 @@ impl Postgres {
                 .ok_or_else(|| QueryError::incomplete("Missing successful source response"))
         };
         let account: String = job.get("account");
-        let parsed = parser.parse(ParseContext {
-            network: &network,
-            account: &account,
-            raw_log_id: &raw_id,
-            fills: body("userFills")?,
-            meta: body("meta")?,
-            spot_meta: body("spotMeta")?,
-        })?;
-        let source_records = parsed.source_records;
-        let reparsed = trade_log::normalization::result(
-            id,
-            &account,
-            &network,
-            &shared_types::now(),
-            2000,
-            parsed,
-        )?;
+        let (reparsed, source_records) = if job.get::<String, _>("job_origin") == "COLLECTOR" {
+            let request: Value = job.get("request");
+            let ids: Vec<String> = serde_json::from_value(request["accepted_raw_ids"].clone())
+                .map_err(|_| QueryError::incomplete("Collection did not complete"))?;
+            let meta = request["meta_raw_id"]
+                .as_str()
+                .ok_or_else(QueryError::storage)?;
+            let spot = request["spot_meta_raw_id"]
+                .as_str()
+                .ok_or_else(QueryError::storage)?;
+            let (result, _) = self
+                .collection_result(id, &account, &ids, meta, spot, parser)
+                .await?;
+            let count = result.counts.source_records;
+            old = "hyperliquid-v1".into();
+            (result, count)
+        } else {
+            let parsed = parser.parse(ParseContext {
+                network: &network,
+                account: &account,
+                raw_log_id: &raw_id,
+                fills: body("userFills")?,
+                meta: body("meta")?,
+                spot_meta: body("spotMeta")?,
+            })?;
+            let source_records = parsed.source_records;
+            let reparsed = trade_log::normalization::result(
+                id,
+                &account,
+                &network,
+                &shared_types::now(),
+                2000,
+                parsed,
+            )?;
+            (reparsed, source_records)
+        };
         let saved: Option<Value> = job.get("result");
         let mut differences = Vec::new();
         let reference: QueryResult = serde_json::from_value(
@@ -189,6 +208,11 @@ impl Postgres {
             let metadata = read_json(&directory.join("metadata").join(name)).await?;
             let kind: QueryKind = serde_json::from_value(metadata["kind"].clone())
                 .map_err(|_| QueryError::storage())?;
+            if kind == QueryKind::UserFillsByTime {
+                return Err(QueryError::incomplete(
+                    "Only legacy single-page evidence can be imported",
+                ));
+            }
             let attempt = metadata["attempt"]
                 .as_u64()
                 .filter(|v| (1..=2).contains(v))

@@ -1,8 +1,8 @@
 # v0.3 开发文档：单地址自动更新与采集水位
 
 - 文档版本：0.3
-- 状态：待实现，本文件中的新增接口、配置和文件为实现约定，尚未交付
-- 更新日期：2026-10-05
+- 状态：代码已实现，50 项测试及三个 release 程序验收通过；Docker 与服务器持续更新待手动验收
+- 更新日期：2026-10-06
 - 设计依据：[概要设计](overview-design.md)、[详细设计](detailed-design.md)、[产品版本路线图](roadmap.md)
 - 前置版本：[v0.2 开发文档](version0.2.md)
 - 接口契约统一维护在 [接口说明](api.md)，实施本版时同步新增接口及参数说明
@@ -36,7 +36,7 @@
 
 新增 config/trade-collector.toml。使用实际交易账户地址，不使用 agent wallet；地址验证沿用既有规则并规范化为小写。默认 network=mainnet，与已有存储保持一致。
 
-首次启动必须明确 start_time，表示希望从何时开始扫描；配置示例使用占位符，用户须填写实际值。已有同账户检查点时从数据库恢复，不根据每次启动的当前时间重新建立起点。
+首次启动必须明确 start_time，表示希望从何时开始扫描；配置示例使用占位符，用户须填写实际值。实际文件 config/trade-collector.toml 也保留占位符，未填写时启动会明确失败。已有同账户检查点时从数据库恢复，不根据每次启动的当前时间重新建立起点。
 
 ```toml
 [collection]
@@ -203,7 +203,7 @@ reparse 扩展为读取全部成功来源页，按各页 raw_log_id/source_index
 
 实例获取租约使用数据库条件更新或插入冲突处理，仅在租约未持有或已过期时接管，同时递增 lease_epoch。时间判断使用数据库 now()，续租周期不超过 lease_seconds/3，不在 HTTP 请求期间持有数据库行锁。
 
-提交事实和水位时检查 lease_owner、epoch、租约有效期；令牌失效则整个提交回滚。旧实例恢复连接后不能覆盖新实例水位。重复启动 collector 时没有获得租约的实例等待并报告 LEASE_HELD，不进行来源采集；不能依靠“Compose 通常只有一个副本”保证唯一执行。
+提交事实和水位时检查 lease_owner、epoch、租约有效期；令牌失效则整个提交回滚。旧实例恢复连接后不能覆盖新实例水位。重复启动 collector 时没有获得租约的实例等待，不进行来源采集；状态接口读取持有者的共享检查点，避免候补实例覆盖正常运行状态；不能依靠“Compose 通常只有一个副本”保证唯一执行。
 
 数据库断线时无法确认租约和事务提交结果，不推进内存水位；重连后重新读取检查点、任务和租约。若事务已提交但响应丢失，按已提交状态继续；若未提交，则重跑，唯一约束保证事实不重复。
 
@@ -239,7 +239,7 @@ query-api ──内部 HTTP──► trade-log-query ──► PostgreSQL
 
 ### 7.3 本版新增与更新文件
 
-以 v0.2 为基线，以下是实现文件清单；新增与更新明确区分。实现期间如必须调整文件归属，先保持设计职责，再同步本节，不把设计中的未实现项标为已交付。
+以 v0.2 为基线，以下列出本版实际实现文件；新增与更新明确区分。
 
 #### 新增文件
 
@@ -264,7 +264,7 @@ query-api ──内部 HTTP──► trade-log-query ──► PostgreSQL
 | services/trade-log/tests/collection.rs | 范围计算、同毫秒边界、满页拆分及重叠测试 |
 | services/trade-log/adapters/tests/checkpoint.rs | 原子水位、租约隔离、无成交成功和重启恢复测试 |
 | services/trade-log/adapters/tests/collector_chain.rs | 固定来源下调度、持久化和状态 HTTP 链路 |
-| tests/fixtures/v0.3/collection-cases.json | 确定性的空范围、多页、迟到、冲突和故障测试场景 |
+| tests/fixtures/v0.3/collection-cases.json | 采集测试使用的固定账户及调度参数 |
 
 #### 更新文件
 
@@ -278,6 +278,8 @@ query-api ──内部 HTTP──► trade-log-query ──► PostgreSQL
 | services/trade-log/src/lib.rs | 导出 checkpoint 和 collection |
 | services/trade-log/src/acquisition/mod.rs | 增加时间范围来源能力，不破坏现有单页调用 |
 | services/trade-log/src/persistence/mod.rs | 统一完整事实及检查点原子提交契约 |
+| services/trade-log/adapters/Cargo.toml | 注册调度取消所需 tokio-util 依赖 |
+| services/trade-log/adapters/src/file_evidence.rs | 增加采集分页请求及字节的可选文件镜像，数据库仍为正式证据 |
 | services/trade-log/adapters/src/lib.rs | 导出 collector runtime/http 适配器 |
 | services/trade-log/adapters/src/postgres/mod.rs | 装配检查点；按任务来源区分启动恢复 |
 | services/trade-log/adapters/src/postgres/raw_log.rs | 新页身份、完整请求范围及 collector 任务归档 |
@@ -293,15 +295,13 @@ query-api ──内部 HTTP──► trade-log-query ──► PostgreSQL
 | gateway/query-api/src/http/handlers/mod.rs | 导出 watch_accounts handler |
 | gateway/query-api/src/http/router.rs | 注册只读监控状态路由 |
 | services/trade-log/adapters/tests/common/mod.rs | 复用隔离数据库，扩展分范围固定来源 |
-| services/trade-log/adapters/tests/postgres_persistence.rs | 验证新 migration 与角色权限仍兼容 |
-| services/trade-log/adapters/tests/replay_import.rs | 多页重放及旧证据回归 |
 | tests/integration-tests/query_api.rs | 新状态接口、失败映射及旧基础接口回归 |
 
-文档只新增本文件；实施后同步 docs/api.md，完成真实验收后新增 docs/version0.3-acceptance.md。本次不修改 README、roadmap 或详细设计说明，不在其中添加版本入口。
+文档同步 docs/api.md；本地验证结果记录于 docs/version0.3-acceptance.md，服务器 Docker 和真实持续采集结果完成后再补充。本版不修改 README、roadmap 或详细设计说明，不在其中添加版本入口。
 
 #### 直接复用的文件与约定
 
-复用 account-facts、shared-types、service-runtime、现有 Hyperliquid parser、trade-log normalization/validation、stored_query 及 file_evidence。复用 0001 migration 而不修改已发布 SQL 的摘要；新增 0002 承接变更。复用已有 token 和证据卷，不另建版本目录或版本成交 ID。
+复用 account-facts、shared-types、service-runtime、现有 Hyperliquid parser、trade-log normalization/validation、stored_query；file_evidence 保留旧实现并扩展分页镜像。复用 0001 migration 而不修改已发布 SQL 的摘要；新增 0002 承接变更。复用已有 token 和证据卷，不另建版本目录或版本成交 ID。
 
 collector 解析合并要保留每页原始引用和页内 source_index；不能为方便合并把所有事实指向同一个 raw_log_id。existing_records/inserted_records 的业务计数沿用 v0.2 语义。
 
@@ -309,7 +309,7 @@ collector 解析合并要保留每页原始引用和页内 source_index；不能
 
 ### 8.1 配置与权限
 
-collector 配置沿用 config_version、server、logging、hyperliquid、evidence、internal、database 结构，新增第 3.1 节 collection。内部监听默认 0.0.0.0:8082，不对宿主机发布；网关 collector.base_url=http://trade-collector:8082，状态请求默认时限 5 秒。
+collector 配置沿用 config_version、server、logging、hyperliquid、evidence、internal、database 结构，新增第 3.1 节 collection。随附配置将 hyperliquid.max_response_bytes 设置为 16 MiB；collector 不接收 query 配置或迁移凭证。内部监听默认 0.0.0.0:8082，不对宿主机发布；网关 collector.base_url=http://trade-collector:8082，状态请求默认时限 5 秒。
 
 租约必须大于 round_timeout，默认 180 秒对 120 秒；shutdown_timeout 默认 10 秒，Compose stop_grace_period 默认 15 秒。interval、overlap、window、预算、重试均为正整数，safety_delay 允许 0；overlap 小于 max_window，retry_base 不大于 retry_max。配置未知字段、非法地址、非法起点、时限矛盾或缺失凭证启动失败。
 
@@ -328,7 +328,7 @@ init-v0.3.sh 复用已有 v0.2 数据库管理员凭证和应用/迁移凭证，
 | 有界预算耗尽 | RETRY_WAIT，保留 pending_work，warning=ROUND_BUDGET_EXHAUSTED，不计完整成功或来源失败 |
 | 来源毫秒满页 | FAILED，SOURCE_WINDOW_SATURATED，保留证据和旧水位 |
 | 解析失败/事实冲突 | FAILED，沿用 INCOMPLETE_DATA/VERSION_CONFLICT，禁止覆盖已有事实 |
-| 租约由其他实例持有 | STARTING，warning=LEASE_HELD，不读取来源 |
+| 租约由其他实例持有 | 候补实例等待，不读取来源；状态继续反映租约持有者的共享检查点 |
 | 租约失效 | 停止本轮提交并重新获取检查点，不允许旧实例写新水位 |
 | 数据库不可用 | 无成功响应或成功水位，状态接口 503；调度重连后恢复 |
 | collector 进程不可达 | 网关状态接口 503；原 trade-events 和网关 health 可继续独立响应 |
@@ -349,11 +349,11 @@ init-v0.3.sh 复用已有 v0.2 数据库管理员凭证和应用/迁移凭证，
 7. collector 状态鉴权、网关 503 映射、服务健康与采集失败区分，以及数据库连接恢复。
 8. 增量迁移前后旧事实数量和身份一致、角色权限正确；旧 v0.1 文件证据仍可导入。
 
-定时测试使用可控时钟和固定来源，避免依靠真实等待或真实账户恰好发生交易才能验证。PostgreSQL 测试使用隔离数据库，真实来源验证单独记录，不用构造数据冒充真实成交。
+时间范围测试传入明确的毫秒时间；调度测试使用短间隔、固定来源和有界等待，避免依靠真实账户恰好发生交易才能验证。PostgreSQL 测试使用隔离数据库，真实来源验证单独记录，不用构造数据冒充真实成交。
 
 ### 9.2 版本完成标准
 
-Docker 启动后不调用 live，collector 能自动生成至少两个成功采集任务，状态可查询，原始响应和事实可追溯。已存在成交反复采集不重复入账；安静账户仍有新的成功时间和水位。
+服务器验收要求：Docker 启动后不调用 live，collector 能自动生成至少两个成功采集任务，状态可查询，原始响应和事实可追溯。已存在成交反复采集不重复入账；安静账户仍有新的成功时间和水位。
 
 重启恢复、水位与事实原子性、限流退避、故障可见、恢复后继续采集以及来源满页边界均验证通过。实际新成交若验收期间未发生，不能声称已经验证“新成交被自动发现”；该部分使用固定来源测试证明机制，真实持续更新待观察结果记录。
 
@@ -367,7 +367,7 @@ PostgreSQL 沿用 v0.2 的镜像、数据库及 trade-log-postgres 命名卷，�
 
 升级前备份数据库和旧证据。先停止旧应用，执行新版初始化和 0002 migration，再启动新版应用。不要在旧 query 程序仍运行时迁移，因为旧程序严格检查 schema 版本。停止应用命令不包含 postgres，不删除卷。
 
-以下命令及步骤在实现交付后可执行；当前文档不会创建容器、凭证或数据库。
+执行以下步骤前先填写 config/trade-collector.toml 的账户和起点。init-v0.3.sh 会初始化凭证、角色和迁移；已有凭证与命名卷保持不变。
 
 ### 10.2 手动验证步骤
 
@@ -503,3 +503,5 @@ docker compose exec -T trade-log-query trade-log-query reparse --query-id query_
 交付 collector 程序及镜像 target、单地址配置、检查点 migration、范围采集与调度、原子水位提交、租约恢复、只读状态接口、新初始化脚本、必要测试和统一接口文档更新。验收完成后提交独立验收记录，写明数据来源、观察时间、水位变化和未完成项。
 
 本版不新增自动验收脚本，手动验证按本章执行。后续版本继续沿用 trade-log 的 acquisition/checkpoint/persistence 和事实身份；新增 WebSocket 或信号发布时扩展适配器与提交能力，避免重建采集和存储基础。
+
+本地验证结果见 [v0.3 验收记录](version0.3-acceptance.md)，其中区分已执行的原生程序验证与待执行的 Docker 服务器验收。

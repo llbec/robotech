@@ -1,0 +1,42 @@
+config_version = 1
+
+[server]
+host = "0.0.0.0"
+port = 8082
+shutdown_timeout_seconds = 10
+
+[logging]
+level = "info"
+format = "json"
+
+[hyperliquid]
+network = "mainnet"
+connect_timeout_seconds = 5
+request_timeout_seconds = 10
+max_response_bytes = 16777216
+
+[evidence]
+directory = "/var/lib/robotech/trade-log"
+
+[internal]
+credential_file = "/run/secrets/trade-log-token"
+
+[database]
+url_file = "/run/secrets/trade-log-collector-database-url"
+max_connections = 8
+connect_timeout_seconds = 5
+statement_timeout_seconds = 10
+
+[collection]
+# Fill these two values before first startup. Existing checkpoints take precedence.
+account = "<实际账户地址>"
+start_time = "<RFC3339起点>"
+interval_seconds = 30
+overlap_seconds = 60
+safety_delay_seconds = 2
+max_window_seconds = 3600
+max_requests_per_round = 20
+round_timeout_seconds = 120
+lease_seconds = 180
+retry_base_seconds = 5
+retry_max_seconds = 300

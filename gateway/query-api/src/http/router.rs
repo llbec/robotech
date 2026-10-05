@@ -7,6 +7,10 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/health", get(handlers::health::handle))
         .route("/api/v1/version", get(handlers::version::handle))
         .route("/api/v1/trade-events", get(handlers::trade_events::handle))
+        .route(
+            "/api/v1/watch-accounts",
+            get(handlers::watch_accounts::handle),
+        )
         .fallback(error::not_found)
         .method_not_allowed_fallback(error::method_not_allowed)
         .layer(middleware::from_fn(trace_request))

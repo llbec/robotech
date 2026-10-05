@@ -7,6 +7,7 @@ impl Postgres {
             .await
             .map_err(|_| QueryError::unavailable("Trade database migration failed"))?;
         sqlx::raw_sql("DO $$ BEGIN IF EXISTS(SELECT FROM pg_roles WHERE rolname='trade_log_app') THEN GRANT USAGE ON SCHEMA trade_log TO trade_log_app; GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA trade_log TO trade_log_app; GRANT SELECT ON TABLE public._sqlx_migrations TO trade_log_app; END IF; END $$").execute(&self.pool).await.map_err(db_error)?;
+        sqlx::raw_sql("DO $$ BEGIN IF EXISTS(SELECT FROM pg_roles WHERE rolname='trade_log_collector') THEN GRANT USAGE ON SCHEMA trade_log TO trade_log_collector; GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA trade_log TO trade_log_collector; GRANT SELECT ON TABLE public._sqlx_migrations TO trade_log_collector; END IF; END $$").execute(&self.pool).await.map_err(db_error)?;
         Ok(())
     }
     pub async fn check_schema(&self) -> Result<(), QueryError> {

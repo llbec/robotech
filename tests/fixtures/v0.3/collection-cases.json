@@ -1,0 +1,13 @@
+{
+  "account": "0x0000000000000000000000000000000000000001",
+  "start_time": "2026-10-04T07:00:00.000Z",
+  "interval_seconds": 1,
+  "overlap_seconds": 2,
+  "safety_delay_seconds": 2,
+  "max_window_seconds": 10,
+  "max_requests_per_round": 5,
+  "round_timeout_seconds": 2,
+  "lease_seconds": 4,
+  "retry_base_seconds": 1,
+  "retry_max_seconds": 4
+}

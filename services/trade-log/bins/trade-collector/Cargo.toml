@@ -1,29 +1,23 @@
 [package]
-name = "trade-log-adapters"
+name = "trade-collector"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
 trade-log.workspace = true
-protocol-api.workspace = true
-async-trait.workspace = true
+trade-log-adapters.workspace = true
+hyperliquid.workspace = true
 shared-types.workspace = true
-axum.workspace = true
+service-runtime.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
+clap.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-uuid.workspace = true
-sha2.workspace = true
-subtle.workspace = true
 tracing.workspace = true
-
-account-facts.workspace = true
-sqlx.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
-hyperliquid.workspace = true
-query-api = { path = "../../../gateway/query-api" }
 reqwest.workspace = true

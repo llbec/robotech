@@ -15,3 +15,12 @@ pub trait FactStore: Send + Sync {
         complete: &crate::query::QueryResult,
     ) -> Result<Persistence, crate::query::QueryError>;
 }
+
+#[async_trait::async_trait]
+pub trait CollectionFactStore: Send + Sync {
+    async fn persist_collection(
+        &self,
+        complete: &crate::query::QueryResult,
+        commit: &crate::checkpoint::CollectionCommit<'_>,
+    ) -> Result<Persistence, crate::query::QueryError>;
+}

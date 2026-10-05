@@ -31,6 +31,33 @@ impl Postgres {
         result: &QueryResult,
         finished: Option<DateTime<Utc>>,
     ) -> Result<(), QueryError> {
+        self.commit_facts_transaction(id, result, finished, None)
+            .await
+    }
+    pub async fn commit_collection(
+        &self,
+        result: &QueryResult,
+        commit: &super::checkpoint::CollectionCommit<'_>,
+    ) -> Result<(), QueryError> {
+        self.commit_facts_transaction(&result.query_id, result, None, Some(commit))
+            .await?;
+        if let Some(m) = &self.mirror {
+            use trade_log::raw_log::RawEvidenceStore;
+            let mut full = result.clone();
+            full.persistence = self.persistence(&result.query_id).await.unwrap_or(None);
+            if let Err(e) = m.finish(&result.query_id, Ok(&full)).await {
+                tracing::warn!(query_id=%result.query_id,code=%e.code,"evidence_mirror_failed");
+            }
+        }
+        Ok(())
+    }
+    async fn commit_facts_transaction(
+        &self,
+        id: &str,
+        result: &QueryResult,
+        finished: Option<DateTime<Utc>>,
+        collection: Option<&super::checkpoint::CollectionCommit<'_>>,
+    ) -> Result<(), QueryError> {
         let created = if finished.is_some() {
             Some(
                 DateTime::parse_from_rfc3339(&result.queried_at)
@@ -60,8 +87,14 @@ impl Postgres {
         if status != "RUNNING" {
             return Err(QueryError::conflict());
         }
+        let mut position = if let Some(c) = collection {
+            Some(self.lock_collection(&mut tx, c.lease).await?)
+        } else {
+            None
+        };
         let mut inserted = 0;
-        for fact in &result.trades {
+        let facts = collection.map_or(result.trades.as_slice(), |c| c.observations);
+        for fact in facts {
             let hash = content_hash(fact)?;
             let previous:Option<String>=sqlx::query_scalar("SELECT content_hash FROM trade_log.account_fact_versions WHERE fact_id=$1 AND revision=1").bind(&fact.fact_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
             let raw:Uuid=sqlx::query_scalar("SELECT r.id FROM trade_log.raw_logs r JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id WHERE r.source_event_id=$1 AND j.query_id=$2").bind(&fact.raw_log_id).bind(id).fetch_one(&mut *tx).await.map_err(db_error)?;
@@ -106,6 +139,37 @@ impl Postgres {
         });
         sqlx::query("UPDATE trade_log.raw_logs SET parse_status='PARSED' WHERE collection_job_id=(SELECT id FROM trade_log.collection_jobs WHERE query_id=$1) AND http_status BETWEEN 200 AND 299").bind(id).execute(&mut *tx).await.map_err(db_error)?;
         sqlx::query("UPDATE trade_log.collection_jobs SET status='COMPLETED',result=$2,error=NULL,updated_at=COALESCE($3,now()),created_at=COALESCE($4,created_at) WHERE query_id=$1").bind(id).bind(json!(full)).bind(finished).bind(created).execute(&mut *tx).await.map_err(db_error)?;
+        if let Some(c) = collection {
+            let pos = position.as_mut().expect("collection position");
+            let previous = pos["scanned_through_ms"].as_i64().unwrap_or(0);
+            if c.work.range.end_ms < previous {
+                return Err(QueryError::conflict());
+            }
+            pos["scanned_through_ms"] = json!(c.work.range.end_ms);
+            let latest = result
+                .trades
+                .iter()
+                .filter_map(|f| {
+                    DateTime::parse_from_rfc3339(&f.occurred_at)
+                        .ok()
+                        .map(|t| t.timestamp_millis())
+                })
+                .max();
+            if let Some(at) = latest {
+                pos["last_trade_at_ms"] =
+                    json!(at.max(pos["last_trade_at_ms"].as_i64().unwrap_or(0)));
+            }
+            let changed=sqlx::query("UPDATE trade_log.collection_checkpoints SET position=$4,status='WAITING',pending_work=NULL,last_success_at=now(),last_success_query_id=$5,consecutive_failures=0,last_error=NULL,next_run_at=now()+make_interval(secs=>$6),updated_at=now() WHERE partition_key=$1 AND source_id='official_http' AND lease_owner=$2 AND lease_epoch=$3 AND lease_expires_at>clock_timestamp()")
+                .bind(&c.lease.key).bind(Uuid::parse_str(&c.lease.owner).map_err(|_|QueryError::storage())?).bind(c.lease.epoch).bind(pos.clone()).bind(id).bind(c.interval_seconds as f64).execute(&mut *tx).await.map_err(db_error)?;
+            if changed.rows_affected() != 1 {
+                return Err(trade_log::collection::error(
+                    "LEASE_LOST",
+                    "Collection lease lost",
+                    true,
+                ));
+            }
+            sqlx::query("UPDATE trade_log.collection_jobs SET request=request || $2 WHERE query_id=$1 AND job_origin='COLLECTOR'").bind(id).bind(json!({"accepted_raw_ids":c.work.pages.iter().map(|p|p.raw_id.clone()).collect::<Vec<_>>(),"meta_raw_id":c.work.meta,"spot_meta_raw_id":c.work.spot_meta})).execute(&mut *tx).await.map_err(db_error)?;
+        }
         tx.commit().await.map_err(db_error)
     }
     pub async fn job_result(&self, id: &str) -> Result<(String, String, Value), QueryError> {
@@ -131,6 +195,20 @@ impl trade_log::persistence::FactStore for Postgres {
     async fn persist(&self, id: &str, complete: &QueryResult) -> Result<Persistence, QueryError> {
         self.commit_facts(id, complete).await?;
         trade_log::raw_log::RawEvidenceStore::persistence(self, id)
+            .await?
+            .ok_or_else(QueryError::storage)
+    }
+}
+
+#[async_trait::async_trait]
+impl trade_log::persistence::CollectionFactStore for Postgres {
+    async fn persist_collection(
+        &self,
+        complete: &QueryResult,
+        commit: &trade_log::checkpoint::CollectionCommit<'_>,
+    ) -> Result<Persistence, QueryError> {
+        self.commit_collection(complete, commit).await?;
+        trade_log::raw_log::RawEvidenceStore::persistence(self, &complete.query_id)
             .await?
             .ok_or_else(QueryError::storage)
     }

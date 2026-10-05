@@ -37,9 +37,10 @@ impl Postgres {
         })
     }
     pub async fn interrupt(&self) -> Result<(), QueryError> {
-        sqlx::query("UPDATE trade_log.collection_jobs SET status='INTERRUPTED',updated_at=now() WHERE status='RUNNING'").execute(&self.pool).await.map_err(db_error)?;
+        sqlx::query("UPDATE trade_log.collection_jobs SET status='INTERRUPTED',updated_at=now() WHERE status='RUNNING' AND job_origin='MANUAL'").execute(&self.pool).await.map_err(db_error)?;
         Ok(())
     }
 }
 
+pub mod checkpoint;
 pub mod replay;

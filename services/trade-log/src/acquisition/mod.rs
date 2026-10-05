@@ -11,5 +11,13 @@ pub struct SourceResponse {
 #[async_trait]
 pub trait SourceReader: Send + Sync {
     async fn wait_retry(&self, seconds: u64);
+    async fn fetch_range(
+        &self,
+        _account: &str,
+        _start_ms: i64,
+        _end_ms: i64,
+    ) -> Result<SourceResponse, QueryError> {
+        Err(QueryError::unavailable("Time range source not enabled"))
+    }
     async fn fetch(&self, kind: QueryKind, account: &str) -> Result<SourceResponse, QueryError>;
 }

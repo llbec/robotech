@@ -1,13 +1,13 @@
 [workspace]
 members = [
     "gateway/query-api", "crates/service-runtime", "crates/shared-types", "crates/account-facts", "crates/protocol-api",
-    "services/trade-log", "services/trade-log/adapters", "services/trade-log/bins/trade-log-query",
+    "services/trade-log", "services/trade-log/adapters", "services/trade-log/bins/trade-log-query", "services/trade-log/bins/trade-collector",
     "protocols/implementations/hyperliquid",
 ]
 resolver = "3"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.96"
 

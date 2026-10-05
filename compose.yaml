@@ -1,6 +1,6 @@
 services:
   query-api:
-    image: robotech/query-api:0.2.0
+    image: robotech/query-api:0.3.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -25,7 +25,7 @@ services:
     restart: "no"
 
   trade-log-query:
-    image: robotech/trade-log-query:0.2.0
+    image: robotech/trade-log-query:0.3.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -54,8 +54,38 @@ services:
     stop_grace_period: 15s
     restart: "no"
 
+  trade-collector:
+    image: robotech/trade-collector:0.3.0
+    build:
+      context: .
+      dockerfile: gateway/query-api/Dockerfile
+      target: trade-collector
+    volumes:
+      - type: bind
+        source: ./config/trade-collector.toml
+        target: /etc/robotech/trade-collector.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/trade-log-token
+        target: /run/secrets/trade-log-token
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/trade-log-collector-database-url
+        target: /run/secrets/trade-log-collector-database-url
+        read_only: true
+        bind:
+          create_host_path: false
+      - trade-log-evidence:/var/lib/robotech/trade-log
+    read_only: true
+    stop_grace_period: 15s
+    restart: "no"
+
   evidence-init:
-    image: robotech/trade-log-query:0.2.0
+    image: robotech/trade-log-query:0.3.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -93,7 +123,7 @@ services:
     restart: "no"
 
   trade-log-migrate:
-    image: robotech/trade-log-query:0.2.0
+    image: robotech/trade-log-query:0.3.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile

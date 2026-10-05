@@ -149,3 +149,40 @@ impl RawEvidenceStore for FileEvidence {
         save(&manifest, &value).await
     }
 }
+
+impl FileEvidence {
+    // Collector pages keep their own raw IDs and exact request ranges; this is a
+    // diagnostic mirror, while the database remains the authoritative archive.
+    pub async fn collector_response(
+        &self,
+        id: &str,
+        raw_id: &str,
+        request: &Value,
+        response: &SourceResponse,
+    ) -> Result<(), QueryError> {
+        let directory = self.path(id)?;
+        for child in ["requests", "responses", "metadata"] {
+            fs::create_dir_all(directory.join(child))
+                .await
+                .map_err(|_| QueryError::storage())?;
+        }
+        let manifest = directory.join("manifest.json");
+        if !fs::try_exists(&manifest)
+            .await
+            .map_err(|_| QueryError::storage())?
+        {
+            save(&manifest,&json!({"query_id":id,"job_origin":"COLLECTOR","network":self.network,"started_at":shared_types::now(),"status":"RUNNING","tool_version":env!("CARGO_PKG_VERSION"),"parser_version":"hyperliquid-v1","schema_version":1,"identity_version":"hl-fill-v1"})).await?;
+        }
+        atomic(
+            &directory.join("responses").join(format!("{raw_id}.body")),
+            &response.body,
+        )
+        .await?;
+        save(
+            &directory.join("requests").join(format!("{raw_id}.json")),
+            request,
+        )
+        .await?;
+        save(&directory.join("metadata").join(format!("{raw_id}.json")),&json!({"raw_log_id":raw_id,"kind":request["body"]["type"],"http_status":response.status,"received_at":response.received_at,"sha256":format!("{:x}",Sha256::digest(&response.body)),"retry_after_seconds":response.retry_after_seconds})).await
+    }
+}

@@ -48,7 +48,9 @@ impl SourceReader for Source {
     async fn wait_retry(&self, _: u64) {}
     async fn fetch(&self, kind: QueryKind, _: &str) -> Result<SourceResponse, QueryError> {
         let body = match kind {
-            QueryKind::UserFills => serde_json::to_vec(&self.0).unwrap(),
+            QueryKind::UserFills | QueryKind::UserFillsByTime => {
+                serde_json::to_vec(&self.0).unwrap()
+            }
             QueryKind::Meta => META.as_bytes().to_vec(),
             QueryKind::SpotMeta => SPOT.as_bytes().to_vec(),
         };
@@ -109,4 +111,58 @@ pub async fn count(store: &Postgres, table: &str) -> i64 {
         .fetch_one(&store.pool)
         .await
         .unwrap()
+}
+pub fn collection_config() -> trade_log::collection::CollectionConfig {
+    serde_json::from_str(include_str!(
+        "../../../../../tests/fixtures/v0.3/collection-cases.json"
+    ))
+    .unwrap()
+}
+pub struct RangeSource(pub Value);
+#[async_trait]
+impl SourceReader for RangeSource {
+    async fn wait_retry(&self, _: u64) {}
+    async fn fetch(&self, kind: QueryKind, account: &str) -> Result<SourceResponse, QueryError> {
+        Source(self.0.clone()).fetch(kind, account).await
+    }
+    async fn fetch_range(
+        &self,
+        _: &str,
+        start: i64,
+        end: i64,
+    ) -> Result<SourceResponse, QueryError> {
+        let records: Vec<_> = self
+            .0
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| f["time"].as_i64().is_some_and(|v| v >= start && v < end))
+            .take(2000)
+            .cloned()
+            .collect();
+        Ok(SourceResponse {
+            status: 200,
+            body: serde_json::to_vec(&records).unwrap(),
+            received_at: shared_types::now(),
+            retry_after_seconds: None,
+        })
+    }
+}
+pub fn runtime(
+    db: &Postgres,
+    c: trade_log::collection::CollectionConfig,
+    source: Value,
+) -> trade_log_adapters::collector_runtime::CollectorRuntime {
+    trade_log_adapters::collector_runtime::CollectorRuntime {
+        store: db.clone(),
+        config: c,
+        source: Arc::new(RangeSource(source)),
+        parser: Arc::new(HyperliquidParser),
+    }
+}
+pub async fn no_schedule(db: &Postgres) {
+    sqlx::query("UPDATE trade_log.collection_checkpoints SET next_run_at=NULL")
+        .execute(&db.pool)
+        .await
+        .unwrap();
 }

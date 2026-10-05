@@ -34,11 +34,45 @@ impl HttpSource {
 #[async_trait]
 impl SourceReader for HttpSource {
     async fn fetch(&self, kind: QueryKind, account: &str) -> Result<SourceResponse, QueryError> {
+        if kind == QueryKind::UserFillsByTime {
+            return Err(QueryError::validation("Time range is required"));
+        }
         let mut body = serde_json::json!({"type":kind.api_name()});
         if kind == QueryKind::UserFills {
             body["user"] = account.into();
             body["aggregateByTime"] = false.into();
         }
+        self.request(body).await
+    }
+    async fn fetch_range(
+        &self,
+        account: &str,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> Result<SourceResponse, QueryError> {
+        if start_ms < 0 || end_ms <= start_ms {
+            return Err(QueryError::validation("Invalid source range"));
+        }
+        self.request(serde_json::json!({"type":"userFillsByTime","user":account,"startTime":start_ms,"endTime":end_ms-1,"aggregateByTime":false})).await
+    }
+    async fn wait_retry(&self, seconds: u64) {
+        // A huge Retry-After must not overflow Tokio's clock. The query deadline
+        // is at most 120s, so waits beyond it can be capped above that deadline.
+        let jitter = (retry_jitter() % 251) as u64;
+        tokio::time::sleep(Duration::from_secs(seconds.min(121)) + Duration::from_millis(jitter))
+            .await;
+    }
+}
+
+fn retry_jitter() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+}
+
+impl HttpSource {
+    async fn request(&self, body: serde_json::Value) -> Result<SourceResponse, QueryError> {
         let mut response = self
             .client
             .post(&self.endpoint)
@@ -80,18 +114,4 @@ impl SourceReader for HttpSource {
             retry_after_seconds,
         })
     }
-    async fn wait_retry(&self, seconds: u64) {
-        // A huge Retry-After must not overflow Tokio's clock. The query deadline
-        // is at most 120s, so waits beyond it can be capped above that deadline.
-        let jitter = (retry_jitter() % 251) as u64;
-        tokio::time::sleep(Duration::from_secs(seconds.min(121)) + Duration::from_millis(jitter))
-            .await;
-    }
-}
-
-fn retry_jitter() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos()
 }
