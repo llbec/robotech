@@ -1,0 +1,9 @@
+{
+  "raw_log_id": "raw_query_fixture_spotMeta_1",
+  "kind": "spot_meta",
+  "attempt": 1,
+  "http_status": 200,
+  "received_at": "2026-10-04T12:00:00.000Z",
+  "sha256": "d2807ab832d6a5b2ffbff0ddfc77dd6d9980b987063ad8f888d548ee3058db08",
+  "retry_after_seconds": null
+}

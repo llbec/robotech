@@ -1,0 +1,9 @@
+{
+  "raw_log_id": "raw_query_fixture_userFills_1",
+  "kind": "user_fills",
+  "attempt": 1,
+  "http_status": 200,
+  "received_at": "2026-10-04T12:00:00.000Z",
+  "sha256": "1bdc19bf7d6799ece73167593d43b44558efeba13e2a4918fd6365155ca8da42",
+  "retry_after_seconds": null
+}

@@ -15,6 +15,7 @@ pub struct Config {
     pub query: QueryConfig,
     pub evidence: EvidenceConfig,
     pub internal: InternalConfig,
+    pub database: DatabaseConfig,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -39,6 +40,15 @@ pub struct EvidenceConfig {
 #[serde(deny_unknown_fields)]
 pub struct InternalConfig {
     pub credential_file: PathBuf,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DatabaseConfig {
+    pub url_file: PathBuf,
+    pub migration_url_file: Option<PathBuf>,
+    pub max_connections: u32,
+    pub connect_timeout_seconds: u64,
+    pub statement_timeout_seconds: u64,
 }
 impl Config {
     pub fn load(path: &Path, env: &BTreeMap<String, String>) -> Result<Self, String> {
@@ -75,6 +85,13 @@ impl Config {
             || config.internal.credential_file.as_os_str().is_empty()
         {
             return Err("evidence.directory and internal.credential_file are required".into());
+        }
+        if config.database.url_file.as_os_str().is_empty()
+            || !(1..=64).contains(&config.database.max_connections)
+            || !(1..=60).contains(&config.database.connect_timeout_seconds)
+            || !(1..=120).contains(&config.database.statement_timeout_seconds)
+        {
+            return Err("Invalid database configuration".into());
         }
         Ok(config)
     }

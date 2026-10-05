@@ -1,0 +1,9 @@
+{
+  "raw_log_id": "raw_query_fixture_meta_1",
+  "kind": "meta",
+  "attempt": 1,
+  "http_status": 200,
+  "received_at": "2026-10-04T12:00:00.000Z",
+  "sha256": "3376df6daad42e818c70f726e47f37f076684c591a9729165862c5cc88b0dd6d",
+  "retry_after_seconds": null
+}

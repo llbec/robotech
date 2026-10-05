@@ -18,6 +18,10 @@ sha2.workspace = true
 subtle.workspace = true
 tracing.workspace = true
 
+account-facts.workspace = true
+sqlx.workspace = true
+chrono.workspace = true
+
 [dev-dependencies]
 hyperliquid.workspace = true
 query-api = { path = "../../../gateway/query-api" }

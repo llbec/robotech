@@ -21,5 +21,7 @@ axum.workspace = true
 uuid.workspace = true
 serde_json.workspace = true
 
+sqlx.workspace = true
+
 [dev-dependencies]
 reqwest.workspace = true

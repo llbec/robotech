@@ -1,6 +1,7 @@
 use crate::config::TradeLogConfig;
-use serde::Deserialize;
+use serde::{Deserialize, de::DeserializeOwned};
 use std::{sync::Arc, time::Duration};
+use trade_log::stored_query::{StoredRequest, StoredResult};
 use trade_log::{
     query::{QueryError, QueryResult},
     validation::QueryRequest,
@@ -60,9 +61,30 @@ impl TradeLogClient {
         request: &QueryRequest,
         trace: &str,
     ) -> Result<QueryResult, QueryError> {
+        self.send(&self.url, &serde_json::json!(request), trace)
+            .await
+    }
+    pub async fn stored(
+        &self,
+        request: &StoredRequest,
+        trace: &str,
+    ) -> Result<StoredResult, QueryError> {
+        let url = self
+            .url
+            .trim_end_matches("/internal/v1/trade-queries")
+            .to_owned()
+            + "/internal/v1/stored-trade-queries";
+        self.send(&url, &serde_json::json!(request), trace).await
+    }
+    async fn send<T: DeserializeOwned>(
+        &self,
+        url: &str,
+        request: &serde_json::Value,
+        trace: &str,
+    ) -> Result<T, QueryError> {
         let mut response = self
             .client
-            .post(&self.url)
+            .post(url)
             .header("authorization", self.authorization.clone())
             .header("x-trace-id", trace)
             .json(request)
@@ -83,10 +105,10 @@ impl TradeLogClient {
         }
         if status == 200 {
             #[derive(Deserialize)]
-            struct Success {
-                data: QueryResult,
+            struct Success<T> {
+                data: T,
             }
-            return serde_json::from_slice::<Success>(&bytes)
+            return serde_json::from_slice::<Success<T>>(&bytes)
                 .map(|v| v.data)
                 .map_err(|_| QueryError::unavailable("Invalid trade query service response"));
         }

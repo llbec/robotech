@@ -49,6 +49,7 @@ pub fn result(
         });
     let perpetual_records = parsed.trades.len();
     Ok(QueryResult {
+        persistence: None,
         query_id: id.into(),
         account: account.into(),
         network: network.name().into(),

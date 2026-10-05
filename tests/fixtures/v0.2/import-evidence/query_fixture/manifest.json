@@ -1,0 +1,32 @@
+{
+  "query_id": "query_fixture",
+  "request": {
+    "account": "0x0000000000000000000000000000000000000001",
+    "limit": 100
+  },
+  "normalized_account": "0x0000000000000000000000000000000000000001",
+  "trace_id": "trace_0123456789abcdef0123456789abcdef",
+  "network": "mainnet",
+  "started_at": "2026-10-04T12:00:00.000Z",
+  "finished_at": "2026-10-04T12:00:00.000Z",
+  "status": "COMPLETED",
+  "tool_version": "0.1.0",
+  "parser_version": "hyperliquid-v1",
+  "schema_version": 1,
+  "identity_version": "hl-fill-v1",
+  "raw_log_metadata": [
+    "raw_query_fixture_meta_1.json",
+    "raw_query_fixture_spotMeta_1.json",
+    "raw_query_fixture_userFills_1.json"
+  ],
+  "counts": {
+    "source_records": 1,
+    "duplicate_records": 0,
+    "spot_records": 0,
+    "unsupported_records": 0,
+    "invalid_records": 0,
+    "perpetual_records": 1,
+    "returned_records": 1
+  },
+  "coverage": "SOURCE_WINDOW_UNVERIFIED"
+}

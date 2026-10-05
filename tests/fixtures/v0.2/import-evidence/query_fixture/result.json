@@ -1,0 +1,90 @@
+{
+  "query_id": "query_fixture",
+  "account": "0x0000000000000000000000000000000000000001",
+  "network": "mainnet",
+  "queried_at": "2026-10-04T12:00:00.000Z",
+  "query_scope": "RECENT_SOURCE_WINDOW",
+  "coverage": "SOURCE_WINDOW_UNVERIFIED",
+  "counts": {
+    "source_records": 1,
+    "duplicate_records": 0,
+    "spot_records": 0,
+    "unsupported_records": 0,
+    "invalid_records": 0,
+    "perpetual_records": 1,
+    "returned_records": 1
+  },
+  "display_truncated": false,
+  "observed_range": {
+    "first_at": "2026-10-04T07:00:00.000Z",
+    "last_at": "2026-10-04T07:00:00.000Z"
+  },
+  "trades": [
+    {
+      "fact_id": "hl_fill_v1_7ad47a033ec0a3acbb533af39503356bd718c37d77243de259a5577794929c7c",
+      "fact_type": "TRADE",
+      "revision": 1,
+      "change_type": "UPSERT",
+      "confirmation_status": "OBSERVED",
+      "chain_id": "hyperliquid:mainnet",
+      "protocol": "hyperliquid",
+      "account": "0x0000000000000000000000000000000000000001",
+      "account_key": "hyperliquid:mainnet:hyperliquid:0x0000000000000000000000000000000000000001",
+      "ordering_key": "00000001791097200000:00009007199254740993",
+      "sub_index": 0,
+      "source": "OFFICIAL_API",
+      "source_ref": "9007199254740993",
+      "raw_log_id": "raw_query_fixture_userFills_1",
+      "occurred_at": "2026-10-04T07:00:00.000Z",
+      "payload": {
+        "market": "hyperliquid:ETH-USDC",
+        "instrument_type": "PERPETUAL",
+        "base_asset": "ETH",
+        "quote_asset": "USDC",
+        "action": "TRADE",
+        "trigger_type": "USER",
+        "copy_eligible": true,
+        "side": "BUY",
+        "position_effect": "OPEN",
+        "order_id": "9007199254740995",
+        "operation_id": null,
+        "price": "2500.25",
+        "quantity": "0.1",
+        "notional": "250.025",
+        "fee": "-0.0125",
+        "fee_asset": "USDC",
+        "reported_realized_pnl": "0",
+        "reported_pnl_asset": null,
+        "reported_pnl_includes_fee": null,
+        "reported_pnl_includes_funding": null,
+        "transaction_hash": "0xexample",
+        "extension": {
+          "source_fill": {
+            "coin": "ETH",
+            "tid": 9007199254740993,
+            "oid": 9007199254740995,
+            "time": 1791097200000,
+            "side": "B",
+            "px": "2500.25",
+            "sz": "0.1",
+            "fee": "-0.0125",
+            "feeToken": "USDC",
+            "startPosition": "0",
+            "dir": "Open Long",
+            "closedPnl": "0",
+            "hash": "0xexample",
+            "crossed": false
+          },
+          "source_indices": [
+            0
+          ],
+          "time_ms": 1791097200000,
+          "source_dir": "Open Long",
+          "trigger_unconfirmed": false
+        }
+      }
+    }
+  ],
+  "warnings": [],
+  "evidence_ref": "query_fixture"
+}

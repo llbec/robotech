@@ -446,6 +446,10 @@ async fn trade_queries_validate_before_contacting_disabled_dependency() {
         format!("account={address}&limit=0"),
         format!("account={address}&start=1"),
         format!("account={address}&limit=no"),
+        format!("account={address}&source=unknown"),
+        format!("account={address}&source=live&cursor=invalid"),
+        format!("account={address}&source=stored&start_time=invalid"),
+        format!("account={address}&source=stored&cursor="),
     ] {
         let response = client
             .get(format!("{base}/api/v1/trade-events?{query}"))

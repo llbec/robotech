@@ -1,0 +1,12 @@
+{
+  "universe": [
+    {
+      "name": "ETH",
+      "szDecimals": 4
+    },
+    {
+      "name": "BTC",
+      "szDecimals": 5
+    }
+  ]
+}

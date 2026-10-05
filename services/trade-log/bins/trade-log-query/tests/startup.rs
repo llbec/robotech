@@ -7,7 +7,7 @@ fn service_configuration_and_cli_failures() {
     for (from, to) in [
         ("network = \"mainnet\"", "network = \"invalid\""),
         ("max_concurrency = 4", "max_concurrency = 0"),
-        ("timeout_seconds = 30", "timeout_seconds = 0"),
+        ("timeout_seconds = 40", "timeout_seconds = 0"),
         ("max_response_bytes = 16777216", "max_response_bytes = 0"),
         (
             "directory = \"/var/lib/robotech/trade-log\"",

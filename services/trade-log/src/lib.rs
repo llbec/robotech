@@ -1,6 +1,9 @@
 pub mod acquisition;
 pub mod normalization;
 pub mod parsing;
+pub mod persistence;
 pub mod query;
 pub mod raw_log;
+pub mod replay;
+pub mod stored_query;
 pub mod validation;

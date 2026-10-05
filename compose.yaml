@@ -1,6 +1,6 @@
 services:
   query-api:
-    image: robotech/query-api:0.1.0
+    image: robotech/query-api:0.2.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -25,7 +25,7 @@ services:
     restart: "no"
 
   trade-log-query:
-    image: robotech/trade-log-query:0.1.0
+    image: robotech/trade-log-query:0.2.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -43,13 +43,19 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ./secrets/trade-log-database-url
+        target: /run/secrets/trade-log-database-url
+        read_only: true
+        bind:
+          create_host_path: false
       - trade-log-evidence:/var/lib/robotech/trade-log
     read_only: true
     stop_grace_period: 15s
     restart: "no"
 
   evidence-init:
-    image: robotech/trade-log-query:0.1.0
+    image: robotech/trade-log-query:0.2.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -63,5 +69,53 @@ services:
     read_only: true
     restart: "no"
 
+  postgres:
+    image: postgres:18.0-bookworm@sha256:3f55f8895c4ed50603e2fbdfc72fffeeaba3173321fee5cb825bbbeb30d9d854
+    environment:
+      POSTGRES_USER: robotech_admin
+      POSTGRES_DB: robotech
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+      PGDATA: /var/lib/postgresql/18/docker
+    volumes:
+      - trade-log-postgres:/var/lib/postgresql
+      - type: bind
+        source: ./secrets/postgres-password
+        target: /run/secrets/postgres-password
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U robotech_admin -d robotech"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 15s
+    restart: "no"
+
+  trade-log-migrate:
+    image: robotech/trade-log-query:0.2.0
+    build:
+      context: .
+      dockerfile: gateway/query-api/Dockerfile
+      target: trade-log-query
+    profiles: ["init"]
+    command: ["--config", "/etc/robotech/trade-log.toml", "migrate"]
+    volumes:
+      - type: bind
+        source: ./config/trade-log.toml
+        target: /etc/robotech/trade-log.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/trade-log-migration-url
+        target: /run/secrets/trade-log-migration-url
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    restart: "no"
+
 volumes:
   trade-log-evidence:
+  trade-log-postgres:

@@ -1,7 +1,7 @@
 # v0.2 开发文档：成交持久化与时间区间查询
 
 - 文档版本：0.2
-- 状态：设计稿，尚未实现；以下新增接口、配置、命令均为本版交付要求
+- 状态：代码已实现，已通过本地 PostgreSQL、HTTP 链路及实际 release 程序验证；Docker 运行待服务器手动验收
 - 更新日期：2026-10-05
 - 设计依据：[概要设计](overview-design.md)、[详细设计](detailed-design.md)、[产品版本路线图](roadmap.md)
 - 前置版本：[v0.1 开发文档](version0.1.md)
@@ -86,7 +86,7 @@ stored 的 observed_range 按本次时间条件和固定分页快照下的完整
 
 ### 5.1 接口增量
 
-完整参数和字段维护在统一 [接口文档](api.md)，新增内容必须标为“v0.2 设计，尚未实现”。实现后才更新为已支持。
+完整参数和字段维护在统一 [接口文档](api.md)，本版新增参数、持久化回执、库存结果及内部读取接口已同步。
 
 | 接口变化 | 设计约定 |
 | --- | --- |
@@ -121,7 +121,7 @@ raw_logs 的 source_event_id 使用兼容的原始响应字符串 ID，network/s
 
 创建索引 `(account_key, occurred_at DESC, source_tid DESC, fact_id)`，当前事实与版本按主键连接；查询只读取未撤回的 TRADE。NUMERIC tid 用于精确排序，大整数不可转浮点数。金额沿用标准 payload 的十进制字符串，本版不建立金额聚合列；未来独立数值列按详细设计采用 NUMERIC。
 
-collection_jobs、raw_logs 的补充列和新增关联表属于本版具体化；不另建 trades_v02 等平行事实模型。raw_logs.payload 可空是对整体设计“保留错误原始响应”的必要补充，详细设计同步注明。
+collection_jobs、raw_logs 的补充列和新增关联表属于本版具体化；不另建 trades_v02 等平行事实模型。raw_logs.payload 可空是对整体设计“保留错误原始响应”的必要补充，具体字段以本版 migration 为准。
 
 ### 5.3 内容一致性和事务
 
@@ -169,7 +169,7 @@ reparse 从数据库读取指定任务的成功 userFills/meta/spotMeta 响应�
 
 import-evidence 遍历本地 v0.1 查询目录；只导入 COMPLETED 且网络、请求、三个成功原始响应、SHA-256 均可核对的目录。重新解析 raw body，不以 result.json 代替来源；使用原 query_id、raw 字符串标识和时间，按照同一幂等写入流程保存。
 
-一个目录失败不回滚已完成目录；输出每个目录及最终汇总，任一失败整体退出非零。同 query_id 同内容重复导入跳过；同 query_id 内容不同返回冲突。历史证据缺少元数据或损坏时明确拒绝，不自动补网络数据。
+一个目录失败不回滚已完成目录；输出每个目录及最终汇总，任一失败整体退出非零。同 query_id 同内容重复导入跳过；同 query_id 内容不同返回冲突。早期 manifest 未包含 normalized_account 时从校验过的原请求规范化推导；已提供但与请求不符则拒绝。其他必要元数据缺失或证据损坏明确拒绝，不自动补网络数据。中断/失败的相同输入导入可恢复，既有原始响应不能被不同内容覆盖。
 
 ## 7. 程序结构设计
 
@@ -203,17 +203,17 @@ scripts/
 
 ### 7.2 数据库适配器
 
-在 trade-log/adapters 引入 SQLx 或等价的异步 PostgreSQL 驱动，统一依赖与锁文件。DTO、业务事实和数据库 row 分离，映射发生在适配器内。迁移随本服务发布，不放到 gateway。
+在 trade-log/adapters 引入 SQLx 0.8.6 异步 PostgreSQL 驱动，统一依赖与锁文件。DTO、业务事实和数据库 row 分离，映射发生在适配器内。迁移随本服务发布，不放到 gateway。
 
 运行角色只能读写 trade_log 业务表；迁移角色负责 DDL；数据库管理密码不交给网关。事务与连接释放纳入原有生命周期和有界退出。v0.3 采集入口通过同一 persistence 端口写事实，v0.5 再接入 outbox，禁止另建一套去重逻辑。
 
-### 7.3 本版计划新增与更新文件
+### 7.3 本版新增与更新文件
 
-以 v0.1 交付状态为基线。**v0.2 尚未实现，下面是计划文件清单，不代表文件已经创建或更新。** 新增模块采用与既有代码一致的 mod.rs 组织方式；实现时若文件拆分有变化，应同步修订本章，不能另起一套版本目录。
+以 v0.1 交付状态为基线。以下列出本版实际新增和更新的程序、配置、构建及测试文件；文档编辑不计入程序清单。实现沿用原目录，不另建版本程序。
 
-#### 计划新增文件
+#### 新增文件
 
-| 文件 | 计划职责或变更点 |
+| 文件 | 职责或变更点 |
 | --- | --- |
 | `services/trade-log/src/persistence/mod.rs` | 新增幂等保存、事务结果及使用方存储端口 |
 | `services/trade-log/src/stored_query/mod.rs` | 新增时间范围、分页快照、游标与库存查询业务端口 |
@@ -223,6 +223,9 @@ scripts/
 | `services/trade-log/adapters/src/postgres/facts.rs` | 事实版本、当前指针、来源关联及幂等事务 |
 | `services/trade-log/adapters/src/postgres/stored_query.rs` | 库存筛选、统计和固定快照 keyset 分页 SQL |
 | `services/trade-log/adapters/src/postgres/migration.rs` | 服务 migration 执行及 schema 版本检查 |
+| `services/trade-log/adapters/src/postgres/replay.rs` | 数据库重新解析、旧证据校验及中断导入恢复 |
+| `services/trade-log/adapters/tests/common/mod.rs` | 各集成测试的独立数据库和固定来源装配 |
+| `services/trade-log/tests/stored_validation.rs` | 时间格式、精度、区间和账户规范化验证 |
 | `services/trade-log/migrations/0001_trade_log_storage.sql` | 初始 trade_log schema、表、约束和索引；由迁移管理，不在 handler 建表 |
 | `scripts/init-v0.2.sh` | 数据库凭证、角色、数据卷和 migration 初始化入口 |
 | `services/trade-log/adapters/tests/postgres_persistence.rs` | 数据库幂等、并发、冲突、事务回滚及重启保留验证 |
@@ -242,9 +245,9 @@ scripts/
 
 导入样本是构造数据，query_fixture 及原始响应 ID 必须在 manifest、请求、元数据和结果中相互一致；原始字节的 SHA-256 按实际样本生成。样本不得使用部署凭证或实际服务器地址。
 
-#### 计划更新文件
+#### 更新文件
 
-| 文件 | 计划职责或变更点 |
+| 文件 | 职责或变更点 |
 | --- | --- |
 | `Cargo.toml` | 版本升级 0.2.0，统一新增数据库驱动、游标等实际依赖 |
 | `Cargo.lock` | 锁定新增依赖与更新后的 workspace 包版本 |
@@ -256,22 +259,24 @@ scripts/
 | `gateway/query-api/src/http/handlers/trade_events.rs` | 新增 source、时间与游标参数及分支；保持原 live 请求兼容 |
 | `services/trade-log/src/lib.rs` | 导出 persistence、stored_query、replay 新模块 |
 | `services/trade-log/src/query/mod.rs` | 实时成功返回前保存完整事实，增加 persistence 结果 |
+| `services/trade-log/src/normalization/mod.rs` | 初始化新增持久化回执字段，不改变原来源计数与排序 |
+| `services/trade-log/Cargo.toml` | 新增时间规范化和游标编码依赖，业务不依赖数据库驱动 |
 | `services/trade-log/src/raw_log/mod.rs` | 扩展可重新读取数据库原始响应的证据端口，保持业务不依赖数据库 |
-| `services/trade-log/src/validation/mod.rs` | 增加新查询模式、时间精度、参数组合及游标条件校验 |
 | `services/trade-log/adapters/Cargo.toml` | 注册数据库驱动及集成测试所需依赖 |
 | `services/trade-log/adapters/src/lib.rs` | 导出 postgres 适配器 |
-| `services/trade-log/adapters/src/file_evidence.rs` | 支持诊断镜像与旧证据读取；保留原目录格式 |
 | `services/trade-log/adapters/src/internal_http.rs` | 增加库存内部路由和状态映射，实时成功返回持久化计数 |
 | `services/trade-log/bins/trade-log-query/Cargo.toml` | 增加迁移和离线子命令实际使用的依赖 |
 | `services/trade-log/bins/trade-log-query/src/bootstrap.rs` | 装配数据库、schema 检查和 migrate/reparse/import-evidence 子命令 |
 | `services/trade-log/bins/trade-log-query/src/config.rs` | 新增数据库凭证文件、连接池和时限校验 |
-| `services/trade-log/bins/trade-log-query/tests/startup.rs` | 新增数据库配置、迁移前启动失败及 CLI 验证 |
-| `services/trade-log/adapters/tests/query_chain.rs` | 保留 v0.1 行为测试并验证完整保存及持久化回执 |
+| `services/trade-log/bins/trade-log-query/tests/startup.rs` | 更新默认查询时限的启动校验 |
+| `services/trade-log/adapters/tests/query_chain.rs` | 调整内部状态装配，保留 v0.1 查询链路测试 |
 | `tests/integration-tests/query_api.rs` | 新增 source 分支、时间/cursor 参数和旧接口兼容验证 |
 
-#### 计划直接复用的文件
+#### 直接复用的文件
 
 `crates/account-facts/src/lib.rs` 及其稳定身份测试、`crates/shared-types/src/lib.rs`、`crates/protocol-api/src/lib.rs`、`crates/service-runtime/src/` 的既有文件，以及 `protocols/implementations/hyperliquid/src/lib.rs`、`parser.rs`、`source.rs` 均复用现有实现。本版存储功能不要求重新开发来源读取、事实身份、金额处理或协议解析。
+
+`services/trade-log/src/validation/mod.rs` 和 `services/trade-log/adapters/src/file_evidence.rs` 直接沿用；新增库存校验位于 stored_query，旧证据读取位于 postgres/replay，数据库调用文件镜像的既有端口。
 
 `.gitignore` 和 `.dockerignore` 的既有 secrets/var 排除规则直接沿用，无须因数据库挂载新增版本专用规则。
 
@@ -279,7 +284,7 @@ scripts/
 
 ## 8. 配置与异常处理
 
-### 8.1 计划新增配置
+### 8.1 新增配置
 
 trade-log.toml 保留原配置，新增必填数据库配置；query-api 的内部 base_url/凭证仍沿用：
 
@@ -334,7 +339,7 @@ health 仍只表示进程存活，数据库故障期间可响应；stored 查询
 
 ### 9.3 完成标准
 
-时间查询、稳定身份、原始字节与事实关联、事务及冲突、导入/重新解析、数据库重启保留和故障恢复全部验证通过。服务器完成第 10.4 节手动步骤后再编写实际验收报告；本文不代表功能已实现或验收通过。
+时间查询、稳定身份、原始字节与事实关联、事务及冲突、导入/重新解析、数据库重启保留和故障恢复全部验证通过。服务器完成第 10.4 节手动步骤后再编写实际验收报告；本地实现与验证已完成，Docker 服务器验收仍需实际执行，结果见 [v0.2 验收报告](version0.2-acceptance.md)。
 
 ## 10. 交付、部署与手动验证
 
@@ -350,11 +355,11 @@ health 仍只表示进程存活，数据库故障期间可响应；stored 查询
 | 服务凭证 | ./secrets/trade-log-token，只读 bind | /run/secrets/trade-log-token |
 | 应用数据库 URL | ./secrets/trade-log-database-url，只读 bind，仅查询服务 | /run/secrets/trade-log-database-url |
 | 迁移数据库 URL | ./secrets/trade-log-migration-url，只读 bind，仅迁移服务 | /run/secrets/trade-log-migration-url |
-| PostgreSQL 管理密码 | ./secrets/postgres-password，只读 bind，仅数据库/初始化服务 | /run/secrets/postgres-password |
+| PostgreSQL 管理密码 | ./secrets/postgres-password，只读 bind，仅数据库服务 | /run/secrets/postgres-password |
 | 原有文件证据 | trade-log-evidence 命名卷，保留 | /var/lib/robotech/trade-log |
 | 数据库数据 | trade-log-postgres 命名卷 | /var/lib/postgresql |
 
-计划采用 PostgreSQL 18 主版本，并配置 PGDATA=/var/lib/postgresql/18/docker（参照 [官方镜像目录约定](https://github.com/docker-library/docs/blob/master/postgres/README.md)）；发布时固定经过验证的小版本镜像及摘要，文档记录实际值。PostgreSQL 数据卷的权限按数据库镜像要求处理，不能用应用 UID 10001 覆盖数据库目录所有权。
+Compose 使用 `postgres:18.0-bookworm@sha256:3f55f8895c4ed50603e2fbdfc72fffeeaba3173321fee5cb825bbbeb30d9d854`，配置 PGDATA=/var/lib/postgresql/18/docker（参照 [官方镜像目录约定](https://github.com/docker-library/docs/blob/master/postgres/README.md)）。本地数据库验证同为 PostgreSQL 18.0；Docker 镜像运行仍待服务器验收。PostgreSQL 数据卷的权限按数据库镜像要求处理，不能用应用 UID 10001 覆盖数据库目录所有权。
 
 数据库初始化明确创建 robotech_admin 管理角色、trade_log_migrator 迁移角色及 trade_log_app 运行角色。init-v0.2.sh 保留原服务 token，初始化数据库密码/角色及 URL 文件，不打印凭证；启动数据库、等待可用，再执行 migration，并为原证据卷保持 UID/GID 10001 写权限。既有数据库角色和密码重复初始化不更改；角色创建和迁移的权限分离。应用镜像仍使用共用多阶段 Dockerfile 的两个 target。
 
@@ -374,7 +379,7 @@ health 仍只表示进程存活，数据库故障期间可响应；stored 查询
 
 ### 10.4 手动验证步骤
 
-**以下命令在 v0.2 实现完成后执行，当前版本尚不具备这些子命令或参数。** 在服务器仓库根目录，逐步执行并观察结果；不要求使用自动验收脚本。
+在服务器仓库根目录，逐步执行并观察结果；不要求使用自动验收脚本。首次升级先备份旧证据；初始化脚本保留已有凭证和命名卷。
 
 #### 第 1 步：初始化、构建和检查容器
 
@@ -461,7 +466,13 @@ docker compose exec -T trade-log-query trade-log-query reparse --query-id query_
 
 #### 第 7 步：确定性验证重复导入
 
-使用一个已有 v0.1 COMPLETED 证据目录；没有旧证据时，用发布附带的固定导入样本挂载到证据目录（样本明确标为构造数据），不要拿两次变化的实时窗口作为固定输入。
+使用一个已有 v0.1 COMPLETED 证据目录；没有旧证据时，可先复制构造样本到容器证据卷（只供验收，账户为固定样本账户，非真实交易记录）：
+
+```sh
+docker compose cp tests/fixtures/v0.2/import-evidence/query_fixture trade-log-query:/var/lib/robotech/trade-log/
+```
+
+不要拿两次变化的实时窗口作为固定输入。
 
 ```sh
 docker compose exec -T trade-log-query trade-log-query import-evidence --directory /var/lib/robotech/trade-log

@@ -22,6 +22,7 @@ use trade_log::{
 #[derive(Clone)]
 pub struct InternalState {
     pub service: Arc<QueryService>,
+    pub stored: Option<Arc<dyn trade_log::stored_query::StoredQuery>>,
     pub credential: Arc<String>,
     pub permits: Arc<Semaphore>,
     pub timeout: Duration,
@@ -130,6 +131,29 @@ async fn query(
         }
     }
 }
+async fn stored_query(
+    State(state): State<InternalState>,
+    axum::Extension(trace): axum::Extension<String>,
+    input: Result<Json<trade_log::stored_query::StoredRequest>, JsonRejection>,
+) -> Response {
+    let result = async {
+        let Json(request) = input.map_err(|_| QueryError::validation("Invalid query body"))?;
+        let request = request.validated()?;
+        let store = state
+            .stored
+            .ok_or_else(|| QueryError::unavailable("Stored queries unavailable"))?;
+        tokio::time::timeout(state.timeout, store.stored(&request))
+            .await
+            .map_err(|_| QueryError::unavailable("Stored query timed out"))?
+    }
+    .await;
+    match result {
+        Ok(data) => {
+            Json(json!({"data":data,"meta":{"trace_id":trace,"schema_version":1}})).into_response()
+        }
+        Err(e) => error_response(e, &trace),
+    }
+}
 async fn health(axum::Extension(trace): axum::Extension<String>) -> Response {
     Json(json!({"data":{"status":"ok","service":"trade-log-query","version":env!("CARGO_PKG_VERSION")},"meta":{"trace_id":trace,"schema_version":1}})).into_response()
 }
@@ -150,6 +174,7 @@ async fn method_not_allowed(axum::Extension(trace): axum::Extension<String>) -> 
 pub fn router(state: InternalState) -> Router {
     Router::new()
         .route("/internal/v1/trade-queries", post(query))
+        .route("/internal/v1/stored-trade-queries", post(stored_query))
         .route("/internal/v1/health", get(health))
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)

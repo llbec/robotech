@@ -93,6 +93,8 @@ pub struct ObservedRange {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QueryResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persistence: Option<crate::persistence::Persistence>,
     pub query_id: String,
     pub account: String,
     pub network: String,
@@ -132,7 +134,9 @@ impl QueryService {
         let request = normalized;
         let result = self.collect(id, &request).await;
         self.evidence.finish(id, result.as_ref()).await?;
-        result.map(QueryResult::for_display)
+        let mut result = result?;
+        result.persistence = self.evidence.persistence(id).await?;
+        Ok(result.for_display())
     }
     async fn fetch(
         &self,

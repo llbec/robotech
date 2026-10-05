@@ -15,7 +15,7 @@ connect_timeout_seconds = 5
 request_timeout_seconds = 10
 
 [query]
-timeout_seconds = 30
+timeout_seconds = 40
 max_concurrency = 4
 max_response_bytes = 16777216
 
@@ -24,3 +24,10 @@ directory = "/var/lib/robotech/trade-log"
 
 [internal]
 credential_file = "/run/secrets/trade-log-token"
+
+[database]
+url_file = "/run/secrets/trade-log-database-url"
+migration_url_file = "/run/secrets/trade-log-migration-url"
+max_connections = 8
+connect_timeout_seconds = 5
+statement_timeout_seconds = 10

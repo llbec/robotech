@@ -80,6 +80,7 @@ async fn gateway_to_source_roundtrip_with_persistent_evidence() {
         evidence: evidence.clone(),
     });
     let state = InternalState {
+        stored: None,
         service,
         credential: Arc::new(TOKEN.into()),
         permits: Arc::new(Semaphore::new(1)),
@@ -362,6 +363,7 @@ async fn timeout_capacity_and_response_size_limits() {
     });
     let permits = Arc::new(Semaphore::new(1));
     let state = InternalState {
+        stored: None,
         service: service.clone(),
         credential: Arc::new(TOKEN.into()),
         permits: permits.clone(),
@@ -501,6 +503,7 @@ async fn live_public_account_acceptance() {
         evidence,
     });
     let state = InternalState {
+        stored: None,
         service,
         credential: Arc::new(TOKEN.into()),
         permits: Arc::new(Semaphore::new(1)),

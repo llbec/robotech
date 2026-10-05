@@ -2,7 +2,7 @@
 
 本文是项目统一的接口说明文档，集中维护所有对外接口和内部接口。后续版本在本文件中更新接口定义，并注明新增、变更或废弃的适用版本，不另建按开发版本命名的接口文档。
 
-当前对应程序版本：0.1.0；JSON schema_version：1。接口定义依据当前代码编写。
+当前对应程序版本：0.2.0；JSON schema_version：1。接口定义依据当前代码编写。
 
 ## 1. 地址和接口列表
 
@@ -12,9 +12,10 @@
 | --- | --- | --- | --- |
 | 对外 | GET | [/api/v1/health](#41-网关健康接口) | 判断网关进程是否存活 |
 | 对外 | GET | [/api/v1/version](#42-版本接口) | 查询网关程序版本 |
-| 对外 | GET | [/api/v1/trade-events](#43-账户近期合约成交查询) | 查询账户近期合约成交 |
+| 对外 | GET | [/api/v1/trade-events](#43-账户近期合约成交查询) | 实时查询并保存成交；[查询已保存成交](#44-已保存成交时间查询) |
 | 内部 | GET | [/internal/v1/health](#33-内部健康接口) | 判断交易查询进程是否存活，需要服务凭证 |
 | 内部 | POST | [/internal/v1/trade-queries](#32-内部成交查询) | 网关调用交易查询服务，需要服务凭证 |
+| 内部 | POST | [/internal/v1/stored-trade-queries](#34-内部库存查询) | 查询数据库保存的成交，需要服务凭证 |
 
 对外接口当前不要求客户端提供身份凭证。内部服务默认监听 8081，Compose 不发布该端口；网关在容器网络中使用 `http://trade-log-query:8081`。
 
@@ -38,7 +39,7 @@
 | --- | --- | --- |
 | data | object | 对应接口的业务数据，具体字段见后文 |
 | meta.trace_id | string | 本次 HTTP 请求的追踪 ID，用于关联网关、内部服务日志及查询证据 |
-| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.1.0 分开管理 |
+| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.2.0 分开管理 |
 
 JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与响应体中的 trace_id 相同。网关为每次外部请求生成新 trace_id，不沿用客户端传入的值。
 
@@ -66,7 +67,7 @@ JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与�
 
 内部接口用于项目内不同进程之间的通信。目前 query-api 负责对外 HTTP 请求，trade-log-query 负责来源采集、成交解析和证据保存。通过内部接口明确两者的请求、响应、认证和错误边界，使业务查询过程可以独立运行和迭代，网关无需依赖交易查询进程的内部实现。
 
-当客户端调用外部成交查询接口时，网关完成参数校验，再调用内部成交查询接口；交易查询服务完成采集和证据保存后，网关将结果返回客户端。内部健康接口供运维或受信任的服务调用方检查交易查询进程是否存活，当前网关不会在每次成交查询前主动调用它。
+当客户端调用外部成交查询接口时，网关完成参数校验，再调用内部成交查询接口；交易查询服务完成采集和证据保存后，网关将结果返回客户端。source=stored 时网关改调用内部库存查询接口，仅读取本库，不进行来源采集。内部健康接口供运维或受信任的服务调用方检查交易查询进程是否存活，当前网关不会在每次成交查询前主动调用它。
 
 内部接口位于容器网络，默认不向宿主机发布端口。所有内部接口均要求服务凭证，普通业务客户端通过第 4 章的外部接口访问。
 
@@ -97,7 +98,7 @@ Content-Type: application/json
 
 account 必填、limit 可省略并默认 100；含义和校验规则与[第 4.3.1 节](#431-请求格式和参数)相同。limit 在 JSON 中必须为整数，不能写成字符串；未知字段被拒绝。请求体上限为 16 KiB，无效 JSON、错误 Content-Type 或超限请求由查询处理器返回 400 VALIDATION_ERROR。
 
-成功响应与[外部成交查询](#432-成功响应结构)相同，错误格式与第 2.2 节相同。默认最多并行执行 4 个查询，超过立即返回 429；默认整体查询超时 30 秒，超时返回 503。并发和超时以 trade-log.toml 的实际配置为准，网关内部请求默认超时为 35 秒。
+成功响应与[外部成交查询](#432-成功响应结构)相同，错误格式与第 2.2 节相同。默认最多并行执行 4 个查询，超过立即返回 429；默认整体查询超时 40 秒，超时返回 503。并发和超时以 trade-log.toml 的实际配置为准，网关内部请求默认超时为 45 秒。
 
 ### 3.3 内部健康接口
 
@@ -108,10 +109,31 @@ GET /internal/v1/health
 没有业务参数，需要 Authorization 请求头。成功返回 200，data 格式：
 
 ```json
-{"status":"ok","service":"trade-log-query","version":"0.1.0"}
+{"status":"ok","service":"trade-log-query","version":"0.2.0"}
 ```
 
 status 表示内部进程可响应，service 为服务名，version 为程序构建版本；完整响应使用 data/meta 包装。该接口不主动检查上游来源。
+
+### 3.4 内部库存查询
+
+网关在外部请求 source=stored 时调用，只读数据库，不调用 Hyperliquid。内部认证、请求头、JSON 体上限与第 3.1、3.2 节相同。
+
+```http
+POST /internal/v1/stored-trade-queries
+Authorization: Bearer <服务凭证>
+Content-Type: application/json
+```
+
+```json
+{
+  "account": "0x010461c14e146ac35fe42271bdc1134ee31c703a",
+  "limit": 10,
+  "start_time": "2026-10-04T00:00:00.000Z",
+  "end_time": "2026-10-05T00:00:00.000Z"
+}
+```
+
+account 必填；limit 为整数，可省略但不可为 null。start_time、end_time、cursor 可省略或为 null，表示未提供。参数含义和返回数据见第 4.4 节；未知字段返回 400。数据库不可用或操作失败返回 503，不返回空库存冒充成功。
 
 ## 4. 外部接口
 
@@ -172,13 +194,13 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 成功返回 200；data 格式：
 
 ```json
-{"service":"query-api","version":"0.1.0"}
+{"service":"query-api","version":"0.2.0"}
 ```
 
 | data 字段 | 类型 | 含义 |
 | --- | --- | --- |
 | service | string | 服务名 query-api |
-| version | string | 当前运行程序的构建版本，v0.1 为 0.1.0 |
+| version | string | 当前运行程序的构建版本，v0.2 为 0.2.0 |
 
 实际 HTTP 响应仍使用第 2 节的 data/meta 包装。
 
@@ -194,8 +216,11 @@ GET /api/v1/trade-events?account=<账户地址>&limit=100
 | --- | --- | --- | --- | --- | --- |
 | account | URL query | string | 是 | 无 | 被查询的账户；必须以小写 `0x` 开头，后跟 40 个十六进制字符，总长度 42；地址字符可大小写混合，结果规范化为小写；不接受前后空格 |
 | limit | URL query | integer | 否 | 100 | 最多展示多少条合约成交，范围 1–2000；不接受小数、负数或空字符串 |
+| source | URL query | string | 否 | live | live 调用来源并保存；stored 查询数据库，详见第 4.4 节 |
 
-请求不带 JSON body。缺少 account、未知参数、重复的同名参数、非法类型或超出范围均返回 400。network 从服务配置读取，不能通过请求切换；不提供起止时间、分页游标、市场筛选或排序参数。
+source=live（或省略 source）使用本节的实时响应；不允许 start_time、end_time 或 cursor。
+
+请求不带 JSON body。缺少 account、未知参数、重复的同名参数、非法类型或超出范围均返回 400。network 从服务配置读取，不能通过请求切换。实时查询不提供起止时间和游标；已保存记录的时间查询见第 4.4 节。不提供市场筛选或自定义排序参数。
 
 示例账户为公开账户，实际近期成交会变化：
 
@@ -233,7 +258,8 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
     "observed_range": null,
     "trades": [],
     "warnings": ["NO_SOURCE_RECORDS"],
-    "evidence_ref": "query_0123456789abcdef0123456789abcdef"
+    "evidence_ref": "query_0123456789abcdef0123456789abcdef",
+    "persistence": {"status":"COMMITTED","inserted_records":0,"existing_records":0}
   },
   "meta": {
     "trace_id": "trace_0123456789abcdef0123456789abcdef",
@@ -257,7 +283,11 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 | observed_range.last_at | string | 完整标准成交中的最晚成交时间 |
 | trades | array | 展示的标准成交事实，结构见第 4.3.4、4.3.5 节 |
 | warnings | array of string | 覆盖限制和解析诊断，可为空数组 |
-| evidence_ref | string | 当前等于 query_id，是证据目录标识；不是下载 URL |
+| evidence_ref | string | 当前等于 query_id，是数据库采集任务及诊断证据标识；不是下载 URL |
+| persistence | object | v0.2 保存回执，只有数据库提交成功才返回实时成功响应 |
+| persistence.status | string | 固定 COMMITTED |
+| persistence.inserted_records | integer | 本次完整标准集合中新入库的事实数，不受展示 limit 影响 |
+| persistence.existing_records | integer | 本次完整标准集合中已经存在且内容相同的事实数；与 inserted 之和为 perpetual_records，不是原始数组内 duplicate_records |
 
 按 occurred_at 从新到旧排序；时间相同时按来源 tid 数值降序，再按 fact_id 字典升序。observed_range 根据完整标准成交集合计算，可能比展示的 10 条覆盖更长，不代表已覆盖该区间的所有历史记录。
 
@@ -362,6 +392,69 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 
 成功的空 trades 不表示账户从未交易。来源请求失败、查询超时或存储失败会返回非 200 错误，不返回伪造的空列表。来源有记录但全部无法解析且没有现货或未支持市场时，返回 422。
 
+### 4.4 已保存成交时间查询
+
+沿用 GET /api/v1/trade-events，以 source=stored 选择数据库查询。此调用只读取已保存事实，不调用来源、不创建采集 query_id。
+
+| 参数 | 类型 | 必填/默认 | 意义与校验 |
+| --- | --- | --- | --- |
+| account | string | 必填 | 地址规则同第 4.3.1 节 |
+| source | string | 必须为 stored | 省略时仍执行 live，不是数据库查询 |
+| limit | integer | 默认 100 | 每页展示上限，1–2000；下一页可调整 |
+| start_time | string | 可选，无下界 | 包含开始时刻；带时区 RFC 3339，最多 3 位小数秒，转换为 UTC |
+| end_time | string | 可选，无上界 | 不包含结束时刻；格式同 start_time |
+| cursor | string | 可选，第一页无游标 | 直接使用上一页 next_cursor；最大 8192 字节，绑定账户、网络及时间条件 |
+
+区间为 `[start_time,end_time)`；两者均存在时必须 start_time < end_time。无时区时间、负 Unix 时间、超出毫秒精度、未知 source、游标损坏或条件不匹配返回 400。分页期间新写入的事实不进入原快照；重新发起不带游标的请求才能看到新库存。
+
+```sh
+curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
+  --data-urlencode 'account=0x010461c14e146ac35fe42271bdc1134ee31c703a' \
+  --data-urlencode 'source=stored' \
+  --data-urlencode 'start_time=2026-10-04T00:00:00.000Z' \
+  --data-urlencode 'end_time=2026-10-05T00:00:00.000Z' \
+  --data-urlencode 'limit=10'
+```
+
+成功响应仍为 data/meta；data 字段如下，与实时响应按 source 区分：
+
+| data 字段 | 类型 | 意义 |
+| --- | --- | --- |
+| account/network | string | 规范化账户和配置网络 |
+| query_scope | string | 固定 STORED_TIME_RANGE |
+| coverage | string | 固定 STORED_RECORDS_ONLY，不承诺账户历史完整 |
+| request_range | object | start_time/end_time 为标准 UTC 时间或 null；null 表示该方向无限制 |
+| snapshot_seq | string | 此分页快照的已提交事实水位，以十进制字符串传输 |
+| matched_records | integer | 本次条件及快照下的完整匹配数，不是本页条数 |
+| returned_records | integer | 本页条数，等于 trades.length，不超过 limit |
+| observed_range | object/null | 完整匹配集的 first_at/last_at，含义同第 4.3.2 节，无匹配为 null |
+| trades | array | 持久化的标准事实；结构见第 4.3.4、4.3.5 节，保留首次来源引用 |
+| has_more | boolean | 快照内是否有下一页 |
+| next_cursor | string/null | 下一页游标，最后一页为 null |
+| warnings | array of string | 包含 STORED_HISTORY_NOT_VERIFIED，说明保存历史尚未证明完整 |
+
+示例：尚无保存记录时，data 返回如下（实际仍包含 meta）：
+
+```json
+{
+  "account":"0x010461c14e146ac35fe42271bdc1134ee31c703a",
+  "network":"mainnet",
+  "query_scope":"STORED_TIME_RANGE",
+  "coverage":"STORED_RECORDS_ONLY",
+  "request_range":{"start_time":null,"end_time":null},
+  "snapshot_seq":"0",
+  "matched_records":0,
+  "returned_records":0,
+  "observed_range":null,
+  "trades":[],
+  "has_more":false,
+  "next_cursor":null,
+  "warnings":["STORED_HISTORY_NOT_VERIFIED"]
+}
+```
+
+有下一页时，把 next_cursor 作为 URL cursor 参数传入，并保持 source、account、时间范围一致，limit 可调整。排序仍为成交时间降序、tid 数值降序、fact_id 升序。stored 不返回 live counts、采集 query_id 或 display_truncated。空库存不说明账户没有交易；数据库错误返回非 200。
+
 ## 5. HTTP 状态及错误码
 
 | HTTP 状态 | code | 意义 |
@@ -374,11 +467,11 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 | 422 | INCOMPLETE_DATA | 来源数据无法可靠解析，无法给出可用标准结果 |
 | 429 | RATE_LIMITED | 内部并发容量已满，或来源限流在有限重试后仍未解除 |
 | 500 | INTERNAL_INVARIANT_VIOLATION | 证据存储等内部处理失败 |
-| 503 | DEPENDENCY_UNAVAILABLE | 查询未启用、内部服务不可用、来源请求失败、元数据异常或查询超时 |
+| 503 | DEPENDENCY_UNAVAILABLE | 查询未启用、内部服务不可用、来源请求失败、元数据异常、查询超时或数据库操作失败 |
 
 网关会对内部错误进行转换，内部认证失败等无法正常识别的内部响应会对外表现为 503。message 可能因错误发生位置不同而变化。
 
-当前没有公开的证据下载接口。证据在交易查询容器 `/var/lib/robotech/trade-log/<query_id>/`，包含 manifest.json、完整 result.json 和 requests/responses/metadata 子目录；通过部署运维命令查看。手动验证流程见 [v0.1 开发文档第 10.4 节](version0.1.md#104-手动验证步骤)。
+当前没有公开的证据下载接口。v0.2 原始字节、任务及完整事实保存于 PostgreSQL，文件仅为诊断副本；重新解析不依赖文件副本。文件证据在交易查询容器 `/var/lib/robotech/trade-log/<query_id>/`，包含 manifest.json、完整 result.json 和 requests/responses/metadata 子目录；通过部署运维命令查看。手动验证流程见 [v0.2 开发文档第 10.4 节](version0.2.md#104-手动验证步骤)。
 
 ## 6. 更新记录
 
@@ -386,6 +479,7 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 
 | 日期 | 程序版本 | 类型 | 更新内容 |
 | --- | --- | --- | --- |
+| 2026-10-05 | 0.2.0 | 新增及兼容扩展 | 实时查询增加持久化回执；新增 source=stored 时间范围及快照游标分页、内部库存查询；数据库故障明确返回 503 |
 | 2026-10-05 | 0.1.0 | 文档调整 | 将接口说明集中到本文件；按内部、外部接口分章，增加用途、调用时机和接口列表页内跳转；接口行为未改变 |
 | 2026-10-04 | 0.1.0 | 新增接口 | 新增外部 GET /api/v1/trade-events；新增内部 POST /internal/v1/trade-queries 与 GET /internal/v1/health；新增成交、覆盖、计数及证据字段说明 |
 | 2026-10-04 | 0.0.0 | 初始接口 | 提供外部 GET /api/v1/health 与 GET /api/v1/version，以及统一响应、追踪 ID 和路由错误格式 |

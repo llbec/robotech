@@ -1,0 +1,9 @@
+{
+  "endpoint": "https://api.hyperliquid.xyz/info",
+  "method": "POST",
+  "body": {
+    "type": "userFills",
+    "user": "0x0000000000000000000000000000000000000001",
+    "aggregateByTime": false
+  }
+}
