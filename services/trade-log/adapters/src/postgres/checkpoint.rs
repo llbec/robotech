@@ -149,6 +149,10 @@ impl Postgres {
         if !budget {
             sqlx::query("UPDATE trade_log.collection_jobs SET status='FAILED',error=$2,updated_at=now() WHERE query_id=(SELECT last_query_id FROM trade_log.collection_checkpoints WHERE partition_key=$1 AND source_id='official_http') AND status='RUNNING'").bind(&l.key).bind(json!(e)).execute(&mut *tx).await.map_err(db_error)?;
         }
+        if !e.retryable && !budget {
+            sqlx::query("UPDATE trade_log.collection_gaps SET status='BLOCKED',last_error=$2 WHERE checkpoint_key=$1 AND status<>'HTTP_SCANNED'").bind(&l.key).bind(json!(e)).execute(&mut *tx).await.map_err(db_error)?;
+            super::realtime::refresh_recovery(&mut tx, &l.key).await?;
+        }
         tx.commit().await.map_err(db_error)
     }
     pub async fn release_collection(&self, l: &Lease) -> Result<(), QueryError> {
@@ -284,7 +288,46 @@ impl CollectionStatusReader for Postgres {
         {
             warnings.push("ROUND_BUDGET_EXHAUSTED".into());
         }
-        let status=CollectionStatus{account:account.into(),account_key:key,network:self.network.name().into(),status:state,coverage:"SOURCE_HISTORY_NOT_VERIFIED".into(),initial_start_time:time(pos["initial_start_ms"].as_i64().ok_or_else(QueryError::storage)?),scanned_through:pos["scanned_through_ms"].as_i64().map(time),last_trade_at:pos["last_trade_at_ms"].as_i64().map(time),last_attempt_at:timestamp(row.get("last_attempt_at")),last_success_at:timestamp(row.get("last_success_at")),consecutive_failures:row.get("consecutive_failures"),next_run_at:timestamp(row.get("next_run_at")),pending_range:pending.map(|p|json!({"start_time":time(p["range"]["start_ms"].as_i64().unwrap_or(0)),"end_time":time(p["range"]["end_ms"].as_i64().unwrap_or(0))})),last_query_id:row.get("last_query_id"),last_success_query_id:row.get("last_success_query_id"),last_error:row.get("last_error"),heartbeat_at:timestamp(row.get("heartbeat_at")),lease_expires_at:timestamp(row.get("lease_expires_at")),warnings};
+        let mut websocket = json!({"enabled":false,"status":"DISABLED","session_id":null,"connected_at":null,"subscribed_at":null,"last_received_at":null,"last_committed_at":null,"last_trade_at":null,"last_pong_at":null,"reconnect_count":0,"next_retry_at":null,"last_error":null,"pending_messages":0,"pending_bytes":0,"metadata_stale":false});
+        let saved: Value = row.get("websocket_state");
+        websocket
+            .as_object_mut()
+            .ok_or_else(QueryError::storage)?
+            .extend(saved.as_object().ok_or_else(QueryError::storage)?.clone());
+        let mut recovery = json!({"status":"DISABLED","target_through":null,"open_gap_count":0,"last_scanned_at":null,"last_error":null});
+        let saved: Value = row.get("recovery_state");
+        recovery
+            .as_object_mut()
+            .ok_or_else(QueryError::storage)?
+            .extend(saved.as_object().ok_or_else(QueryError::storage)?.clone());
+        if websocket["metadata_stale"] == true {
+            warnings.push("METADATA_STALE".into());
+        }
+        let monitoring = if state == "STOPPED" {
+            "STOPPED"
+        } else if state == "FAILED"
+            || websocket["status"] == "FAILED"
+            || recovery["status"] == "BLOCKED"
+        {
+            "FAILED"
+        } else if websocket["enabled"] != true {
+            "HTTP_ONLY"
+        } else if websocket["status"] == "LIVE" {
+            if recovery["open_gap_count"].as_i64().unwrap_or(0) > 0 {
+                "RECOVERING"
+            } else if websocket["last_pong_at"].is_null() {
+                "STARTING"
+            } else if state == "RETRY_WAIT" && row.get::<Option<Value>, _>("last_error").is_some() {
+                "DEGRADED"
+            } else {
+                "LIVE"
+            }
+        } else if websocket["status"] == "RECONNECT_WAIT" {
+            "DEGRADED"
+        } else {
+            "STARTING"
+        };
+        let status=CollectionStatus{account:account.into(),account_key:key,network:self.network.name().into(),status:state,coverage:"SOURCE_HISTORY_NOT_VERIFIED".into(),initial_start_time:time(pos["initial_start_ms"].as_i64().ok_or_else(QueryError::storage)?),scanned_through:pos["scanned_through_ms"].as_i64().map(time),last_trade_at:pos["last_trade_at_ms"].as_i64().map(time),last_attempt_at:timestamp(row.get("last_attempt_at")),last_success_at:timestamp(row.get("last_success_at")),consecutive_failures:row.get("consecutive_failures"),next_run_at:timestamp(row.get("next_run_at")),pending_range:pending.map(|p|json!({"start_time":time(p["range"]["start_ms"].as_i64().unwrap_or(0)),"end_time":time(p["range"]["end_ms"].as_i64().unwrap_or(0))})),last_query_id:row.get("last_query_id"),last_success_query_id:row.get("last_success_query_id"),last_error:row.get("last_error"),heartbeat_at:timestamp(row.get("heartbeat_at")),lease_expires_at:timestamp(row.get("lease_expires_at")),monitoring_status:monitoring.into(),websocket,recovery,warnings};
         Ok(CollectionList {
             items: vec![status],
         })

@@ -1,7 +1,7 @@
 # v0.4 开发文档：单地址实时监控与断线恢复
 
 - 文档版本：0.4
-- 状态：待实现；本文件定义下一版本的开发与验收约定，不表示新增功能已交付
+- 状态：已实现并完成本地验收；Docker 服务器验收待执行，详见 [验收记录](version0.4-acceptance.md)
 - 更新日期：2026-10-06
 - 设计依据：[概要设计](overview-design.md)、[详细设计](detailed-design.md)、[产品版本路线图](roadmap.md)
 - 前置版本：[v0.3 开发文档](version0.3.md)
@@ -115,7 +115,7 @@ WebSocket 快照和 HTTP 响应都不能证明无限历史完整。长期停机�
 | --- | --- | --- |
 | scanned_through | HTTP 完整范围与事实一起提交后的结束边界 | 计算下一次 HTTP 扫描起点和断线补偿范围 |
 | WebSocket last_trade_at | WebSocket 已提交成交中的最大时间 | 展示实时观察位置，不能推进 HTTP 水位 |
-| WebSocket last_received_at | 最近收到合法账户成交消息的本机时间 | 观察接收活跃度，不证明消息已入库 |
+| WebSocket last_received_at | 最近已归档账户数据消息的接收时间 | 观察接收活跃度，不证明事实已提交；内存队列中的消息尚不更新此持久化值 |
 | WebSocket last_committed_at | 最近完整保存 WebSocket 数据消息的时间 | 确认数据消息已提交，无成交快照也可有提交时间 |
 | session_id/message_sequence | 本地连接身份与消息顺序 | 原始消息归档及重放；不是官方恢复游标 |
 
@@ -136,14 +136,16 @@ WebSocket 最新成交时间不能替代 HTTP scanned_through。收到时间很�
 | websocket.status | DISABLED、CONNECTING、SUBSCRIBING、LIVE、RECONNECT_WAIT、FAILED、STOPPED |
 | websocket.session_id | UUID string/null，当前或最近连接身份 |
 | websocket.connected_at/subscribed_at | UTC 毫秒时间/null，连接与订阅确认分开 |
-| websocket.last_received_at | UTC 毫秒时间/null，最近合法账户成交消息接收时间 |
+| websocket.last_received_at | UTC 毫秒时间/null，最近已归档账户数据消息的接收时间，不等于事实提交时间 |
 | websocket.last_committed_at | UTC 毫秒时间/null，最近成功数据消息提交时间 |
 | websocket.last_trade_at | UTC 毫秒时间/null，最近已提交成交位置，不替代 HTTP 水位 |
 | websocket.last_pong_at | UTC 毫秒时间/null，用于安静账户的连接健康判断 |
-| websocket.reconnect_count | 非负整数，累计重新建立连接的次数，跨重启保留 |
+| websocket.reconnect_count | 非负整数，首次成功连接之外重新建立连接的次数，跨重启保留；失败握手不计入 |
+| websocket.connection_count | 非负整数，成功建立连接的总次数，包含首次 |
 | websocket.next_retry_at | UTC 毫秒时间/null，下一次重连时间 |
 | websocket.last_error | null 或 code/message/occurred_at 脱敏摘要 |
-| websocket.pending_messages/pending_bytes | 非负整数，当前内存队列观测值；重启归零，不是持久化数据量 |
+| websocket.pending_messages/pending_bytes | 非负整数，最近内存队列观测值；重启归零，不是持久化数据量；字节包含包络和提取 fills |
+| websocket.metadata_stale | boolean，沿用旧映射时为 true，并增加 METADATA_STALE 警告 |
 | recovery.status | NOT_STARTED、SCANNING、HTTP_SCANNED、BLOCKED；关闭 WebSocket 且无待补偿范围时 DISABLED，已有待补偿范围仍保留 SCANNING 或 BLOCKED，完成后转为 DISABLED |
 | recovery.target_through | UTC 毫秒时间/null，当前需要追赶的固定结束边界 |
 | recovery.open_gap_count | 非负整数，尚未完成 HTTP 扫描或已阻塞的恢复范围数量 |
@@ -170,13 +172,13 @@ WS 原始消息没有 HTTP 状态码，raw_logs.http_status 改为允许 null，
 
 raw_logs 新增 `(session_id,message_sequence)` 的非空唯一索引，保证本地同一消息归档幂等。该索引不能替代成交 fact_id 去重，不同连接重复发送同一成交仍产生新的来源观察。
 
-每个账户数据消息建立一个独立采集任务和 query_id，空 fills 合法，元数据引用保存在任务中。订阅确认、ping/pong 不生成成交任务，连接状态另行保存。格式错误的 userFills 数据消息保留原始字节和错误任务，不在解析失败后丢掉证据。
+每个账户数据消息建立一个独立采集任务和 query_id，空 fills 合法，元数据原始字节和 SHA-256 保存在任务 request.meta_snapshots，active_meta_snapshot 选择本次解析快照；需要刷新未知市场时追加快照，不覆写原证据。订阅确认、ping/pong 不生成成交任务，连接状态另行保存。格式错误的 userFills 数据消息保留原始字节和错误任务，不在解析失败后丢掉证据。
 
 ### 5.3 连接与缺口记录
 
-新增 trade_log.collection_stream_sessions：id UUID 主键，checkpoint 身份、lease_epoch、账户、network、连接状态、connected_at/subscribed_at/disconnected_at、断开原因、最后接收和 pong 时间、消息计数及创建更新时间。仅记录已实际发生的会话，不预先生成“成功连接”。
+新增 trade_log.collection_stream_sessions：session_id UUID 主键，checkpoint_key、lease_epoch、账户、network、连接状态、connected_at/subscribed_at/closed_at、close_reason、最后接收/提交和 pong 时间、接收/提交消息计数及 created_at。仅记录已实际发生的会话，不预先生成“成功连接”。
 
-新增 trade_log.collection_gaps：id UUID 主键，checkpoint 身份、session 引用、reason、start_ms、end_ms 可空、status、检测时间、HTTP 扫描完成时间及错误说明。reason 包含 STARTUP、DISCONNECT、HEARTBEAT_TIMEOUT、QUEUE_OVERFLOW、DATABASE_UNAVAILABLE、PROCESS_INTERRUPTED；相邻或重叠的未扫描范围合并处理，保留触发会话关联，避免每次重连建立无界重复任务。
+新增 trade_log.collection_gaps：gap_id UUID 主键，checkpoint_key、session_ids 引用数组、reason、start_ms、end_ms 可空、status、detected_at、scanned_at 及 last_error。reason 包含 STARTUP、DISCONNECT、HEARTBEAT_TIMEOUT、QUEUE_OVERFLOW、DATABASE_UNAVAILABLE、PROCESS_INTERRUPTED；相邻或重叠的未扫描范围合并处理，保留触发会话关联，避免每次重连建立无界重复任务。
 
 | gap.status | 含义 |
 | --- | --- |
@@ -267,31 +269,31 @@ query-api ──内部 HTTP──► trade-log-query ──► PostgreSQL
 
 ### 7.2 复用与扩展原则
 
-扩展已有 acquisition/checkpoint/persistence 端口，新增实时消息分类与提交意图，不复制 HTTP 收集流程和 Hyperliquid 金额解析。WebSocket 适配器负责 envelope 识别、账户验证和 fills 提取，既有 parser 负责标准事实。
+复用已有 acquisition/persistence 的 HTTP 端口，扩展 checkpoint 状态，新增 realtime 来源流端口、实时消息分类与提交意图，不复制 HTTP 收集流程和 Hyperliquid 金额解析。WebSocket 适配器负责 envelope 识别、账户验证和 fills 提取，既有 parser 负责标准事实。
 
 租约管理从 v0.3 单轮调度扩展为两个 worker 共用的监督任务。HTTP 原子提交继续保留，只增加 gap 更新；WS 使用同一事实存储基础，仅更新自己的接收提交位置。
 
 ### 7.3 本版新增与更新文件
 
-以 v0.3 为基线。以下为待实现文件清单，明确新增、更新和复用；完成代码后按实际文件同步，不能把计划文件标为已交付。
+以 v0.3 为基线。以下为实际实现文件清单，明确新增、更新和复用。
 
 #### 新增文件
 
 | 文件 | 职责 |
 | --- | --- |
-| services/trade-log/src/realtime/mod.rs | 消息模式、标准 WS 提交意图、实时接收业务端口 |
+| services/trade-log/src/realtime/mod.rs | 实时来源流端口、消息数据、配置与纯重连调度 |
 | services/trade-log/src/collection/content.rs | 标准业务指纹规则，保持事实身份与原字节摘要独立 |
 | protocols/implementations/hyperliquid/src/websocket.rs | WSS 连接、订阅、应用层心跳和包络适配 |
 | services/trade-log/adapters/src/websocket_runtime.rs | 有界消息队列、重连与数据消息处理 |
 | services/trade-log/adapters/src/postgres/realtime.rs | WS 原始消息、任务、会话、恢复记录及事务位置更新 |
 | services/trade-log/migrations/0003_websocket_monitoring.sql | 状态列、传输证据、业务指纹、会话与 gap 表和约束 |
-| services/trade-log/tests/realtime.rs | 快照/更新/未知分类、业务指纹和恢复范围逻辑 |
+| services/trade-log/tests/realtime.rs | 重连退避、抖动、滚动频率窗口、稳定重置和旧配置默认值 |
 | services/trade-log/adapters/tests/websocket_chain.rs | 固定 WS 来源、HTTP 重复、断线恢复、队列与事务测试 |
 | protocols/implementations/hyperliquid/tests/websocket.rs | 订阅确认、账户匹配、ping/pong、消息限制和关闭协议 |
-| tests/fixtures/v0.4/user-fills-snapshot.json | 构造快照包络与固定成交 |
-| tests/fixtures/v0.4/user-fills-update.json | 与 HTTP 可比的实时更新包络 |
-| tests/fixtures/v0.4/user-fills-unknown.json | 缺少 isSnapshot 的保守分类样本 |
-| tests/fixtures/v0.4/user-fills-malformed.json | 可归档但不能解析的消息样本 |
+| tests/fixtures/v0.4/snapshot.json | 构造快照包络与固定成交 |
+| tests/fixtures/v0.4/update.json | 与 HTTP 可比的实时更新包络 |
+| tests/fixtures/v0.4/unknown.json | 缺少 isSnapshot 的保守分类样本 |
+| tests/fixtures/v0.4/malformed.json | 可归档但不能解析的消息样本 |
 | scripts/init-v0.4.sh | 保留已有凭证与角色，执行 0003 migration 和证据卷初始化 |
 
 #### 更新文件
@@ -303,36 +305,34 @@ query-api ──内部 HTTP──► trade-log-query ──► PostgreSQL
 | compose.yaml | 应用镜像标签 0.4.0；四个常驻服务和原卷不变 |
 | config/trade-collector.toml | 新增可选 websocket 段，随附配置启用，账户及起点保持 |
 | services/trade-log/src/lib.rs | 导出 realtime 模块 |
-| services/trade-log/src/acquisition/mod.rs | 增加来源流端口，不影响 HTTP SourceReader |
 | services/trade-log/src/checkpoint/mod.rs | 状态 DTO、会话/恢复位置及租约共用契约 |
-| services/trade-log/src/persistence/mod.rs | 增加实时提交端口，保持 HTTP 提交契约 |
 | services/trade-log/src/collection/mod.rs | 导出版本化业务内容比较，复用原范围逻辑 |
 | protocols/implementations/hyperliquid/Cargo.toml | 引入实际 WS 库及 TLS 能力，不引入完整交易 SDK |
 | protocols/implementations/hyperliquid/src/lib.rs | 导出 WS 适配器 |
-| services/trade-log/adapters/Cargo.toml | 注册队列和运行适配所需的实际依赖 |
+| protocols/implementations/hyperliquid/src/source.rs | HTTP 补偿与元数据共用滚动权重预算及来源限流等待 |
+| protocols/implementations/hyperliquid/src/parser.rs | 同批重复记录按标准业务指纹比较，保留逐笔原始索引 |
+| services/trade-log/Cargo.toml | 标准业务指纹所需定点金额与摘要依赖 |
 | services/trade-log/adapters/src/lib.rs | 导出 WS runtime |
 | services/trade-log/adapters/src/collector_runtime.rs | 双 worker 监督、统一租约和优雅关闭，保留 HTTP 轮询 |
 | services/trade-log/adapters/src/postgres/mod.rs | 导出 realtime 适配器 |
 | services/trade-log/adapters/src/postgres/checkpoint.rs | 读取双通道状态，恢复 gap 及独立字段更新 |
 | services/trade-log/adapters/src/postgres/facts.rs | 版本化标准业务比较、共用事实事务和观察关联 |
-| services/trade-log/adapters/src/postgres/migration.rs | 新表授权和 schema 版本检查，沿用已有角色 |
 | services/trade-log/adapters/src/postgres/replay.rs | 根据任务 transport 选择 HTTP/WS 重放；旧任务兼容 |
 | services/trade-log/adapters/src/file_evidence.rs | 可选完整 WS 消息镜像，不伪造 HTTP 状态 |
 | services/trade-log/bins/trade-collector/src/config.rs | WS 参数默认值、大小及关联时限校验 |
 | services/trade-log/bins/trade-collector/src/bootstrap.rs | 装配来源流、HTTP 补偿及共享监督任务 |
 | services/trade-log/bins/trade-collector/tests/startup.rs | 关闭 WS 的旧配置兼容与双通道退出验证 |
 | services/trade-log/adapters/tests/common/mod.rs | 复用隔离数据库，增加固定 WS 与 HTTP 组合来源 |
-| services/trade-log/adapters/tests/checkpoint.rs | WS 不推进 HTTP 水位、恢复标记与 HTTP 提交原子性 |
-| services/trade-log/adapters/tests/replay_import.rs | WS 重放与旧证据回归，旧 import 不修改实时水位 |
-| tests/integration-tests/query_api.rs | 状态扩展、降级/恢复及基础接口兼容验证 |
+| services/trade-log/adapters/tests/checkpoint.rs | 保留旧 schema 升级测试，按旧列保存历史事实后执行新版迁移 |
+| services/trade-log/adapters/tests/collector_chain.rs | 验证网关透传双通道新增字段，保留认证与数据库故障映射 |
 
 #### 直接复用的文件和约定
 
-复用 account-facts 的事实 ID 与公开 payload、shared-types 定点金额、service-runtime 日志和生命周期、Hyperliquid parser 与 HTTP source、既有 stored 查询、网关 handler/client 以及 collector_http 路由。状态 DTO 增加字段即可传递新状态，不另建公网实时接口。
+复用 account-facts 的事实 ID 与公开 payload、shared-types 定点金额、service-runtime 日志和生命周期、既有 stored 查询、网关 handler/client 以及 collector_http 路由。来源流端口集中在 realtime/mod.rs；原 acquisition 的 HTTP SourceReader、persistence 的 HTTP 提交端口、migration 的全表授权及版本校验直接复用。既有 replay_import 和网关测试继续执行；新增 WS 重放、状态和故障测试集中在 websocket_chain.rs。状态 DTO 增加字段即可传递新状态，不另建公网实时接口。
 
 不要求修改 Dockerfile 的 build target 或引入新 binary；已有三个程序的 target 和构建缓存继续使用。0001/0002 migration、v0.3 的既有初始化脚本和历史版本文档保留，不把旧脚本偷偷改成另一版本入口。
 
-实施时同步 docs/api.md，并在实际验收后新增 docs/version0.4-acceptance.md。本次只新增本文件，不修改 README、roadmap、详细设计或代码。
+本版同步 docs/api.md，并新增 docs/version0.4-acceptance.md 记录实际验收结果。不修改 README、roadmap、详细设计或历史版本文档。
 
 ## 8. 配置与异常处理
 
@@ -344,7 +344,7 @@ WebSocket 重连默认基础等待 5 秒、指数增长至 60 秒，随机抖动
 
 Hyperliquid 官方限制按 IP 共享：最多同时保持 10 个 WebSocket 连接，每分钟最多建立 30 个新连接，每分钟发送至来源的 WS 消息总数最多 2000；HTTP REST 请求共享每分钟 1200 权重额度，userFillsByTime 等接口还按返回条数增加权重。[官方请求与连接限制](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/rate-limits-and-user-limits)
 
-重连调度必须限制本采集进程滚动 60 秒内最多 10 次连接尝试，失败的握手也计入；超过后等待最早一次尝试退出窗口，再同时满足退避与恢复条件才发起下一次。此内部上限预留同一公网出口其他程序的余量，不能保证其他程序共同使用时仍不触及官方限额。部署时需统筹同出口连接数量及请求额度。HTTP 的 30 秒等待不代表一次轮次只请求一次；恢复扫描、拆分及重试均须计入权重预算，限流时遵循来源可用的 Retry-After 或既有 HTTP 退避，不立即连续重试。
+重连调度必须限制本采集进程滚动 60 秒内最多 10 次连接尝试，失败的握手也计入；超过后等待最早一次尝试退出窗口，再同时满足退避与恢复条件才发起下一次。此调度状态由同一进程监督任务持有，租约重获或 WS worker 重建不重置频率窗口及尚未结束的退避；进程重启后重新计时。此内部上限预留同一公网出口其他程序的余量，不能保证其他程序共同使用时仍不触及官方限额。部署时需统筹同出口连接数量及请求额度。HTTP 来源实例使用滚动 60 秒最多 1000 的内部权重预算；每个 fills 请求按最多 2000 条保守预留 120 权重，meta/spotMeta 各预留 20，并在收到 429 时共享来源冷却等待，避免元数据刷新绕过限流。该预算不协调其他进程或同出口其他应用。HTTP 的 30 秒等待不代表一次轮次只请求一次；恢复扫描、拆分及重试均须计入权重预算，限流时遵循来源可用的 Retry-After 或既有 HTTP 退避，不立即连续重试。
 
 WS 心跳默认每 20 秒发送一次，发送后 10 秒内未收到对应 pong 则判为不可用。不得因账户没有成交而单独判为断线。ping_interval 与 pong_timeout 之和必须小于官方空闲关闭阈值；重连、连接及订阅时限均正数且有上界。
 
@@ -401,7 +401,7 @@ Docker 环境能成功连接并订阅一个地址，安静账户靠 pong 保持�
 
 迁移前备份数据库和文件证据。旧程序严格检查 schema，升级时先停止三个应用、保留 postgres，再初始化和启动新版。不用 down -v 进行升级或普通重启验证。
 
-下列命令在本版实现后才可执行，当前没有 init-v0.4.sh 或 WS 配置实现。
+本版已提供 init-v0.4.sh 和 WS 配置。下面是服务器 Docker 手动验收步骤；本机原生进程验收不代替容器部署验收。
 
 ### 10.2 手动验证步骤
 

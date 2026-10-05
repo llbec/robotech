@@ -85,6 +85,10 @@ pub async fn run() -> Result<(), (u8, String)> {
         account: c.collection.account.clone(),
         credential: Arc::new(token),
     };
+    let realtime_source = Arc::new(hyperliquid::websocket::WebsocketSource::new(
+        &c.hyperliquid.network,
+    ));
+    let websocket_config = c.websocket;
     let runtime = CollectorRuntime {
         store: store.clone(),
         config: c.collection,
@@ -94,7 +98,9 @@ pub async fn run() -> Result<(), (u8, String)> {
     let cancel = CancellationToken::new();
     let worker_cancel = cancel.clone();
     let worker = tokio::spawn(async move {
-        runtime.run(worker_cancel).await;
+        runtime
+            .run_with_realtime(worker_cancel, websocket_config, realtime_source)
+            .await;
     });
     tracing::info!(service="trade-collector",version=env!("CARGO_PKG_VERSION"),%address,config_path=%args.config.display(),"server_started");
     let signal_cancel = cancel.clone();

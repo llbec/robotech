@@ -20,7 +20,7 @@ impl Postgres {
         parser: &dyn ProtocolParser,
     ) -> Result<ReplayReport, QueryError> {
         let job = sqlx::query(
-            "SELECT account,network,status,result,job_origin,request FROM trade_log.collection_jobs WHERE query_id=$1",
+            "SELECT account,network,status,result,job_origin,request,transport FROM trade_log.collection_jobs WHERE query_id=$1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -29,7 +29,7 @@ impl Postgres {
         .ok_or_else(|| QueryError::incomplete("Unknown query"))?;
         let network: Network = serde_json::from_value(Value::String(job.get("network")))
             .map_err(|_| QueryError::storage())?;
-        let rows=sqlx::query("SELECT source_event_id,kind,body,sha256,parser_version FROM trade_log.raw_logs WHERE collection_job_id=(SELECT id FROM trade_log.collection_jobs WHERE query_id=$1) AND http_status BETWEEN 200 AND 299 ORDER BY attempt DESC").bind(id).fetch_all(&self.pool).await.map_err(db_error)?;
+        let rows=sqlx::query("SELECT source_event_id,kind,body,sha256,parser_version FROM trade_log.raw_logs WHERE collection_job_id=(SELECT id FROM trade_log.collection_jobs WHERE query_id=$1) AND (http_status BETWEEN 200 AND 299 OR transport='WEBSOCKET') ORDER BY attempt DESC").bind(id).fetch_all(&self.pool).await.map_err(db_error)?;
         let mut bodies = BTreeMap::new();
         let mut raw_id = String::new();
         let mut old = String::new();
@@ -52,7 +52,12 @@ impl Postgres {
                 .ok_or_else(|| QueryError::incomplete("Missing successful source response"))
         };
         let account: String = job.get("account");
-        let (reparsed, source_records) = if job.get::<String, _>("job_origin") == "COLLECTOR" {
+        let (reparsed, source_records) = if job.get::<String, _>("transport") == "WEBSOCKET" {
+            let result = self.stream_result(id, parser).await?;
+            let count = result.counts.source_records;
+            old = "hyperliquid-v1".into();
+            (result, count)
+        } else if job.get::<String, _>("job_origin") == "COLLECTOR" {
             let request: Value = job.get("request");
             let ids: Vec<String> = serde_json::from_value(request["accepted_raw_ids"].clone())
                 .map_err(|_| QueryError::incomplete("Collection did not complete"))?;
@@ -97,12 +102,22 @@ impl Postgres {
         let before: BTreeMap<_, _> = reference
             .trades
             .iter()
-            .map(|f| Ok((f.fact_id.clone(), content_hash(f)?)))
+            .map(|f| {
+                Ok((
+                    f.fact_id.clone(),
+                    trade_log::collection::content::semantic_hash(f)?,
+                ))
+            })
             .collect::<Result<_, QueryError>>()?;
         let after: BTreeMap<_, _> = reparsed
             .trades
             .iter()
-            .map(|f| Ok((f.fact_id.clone(), content_hash(f)?)))
+            .map(|f| {
+                Ok((
+                    f.fact_id.clone(),
+                    trade_log::collection::content::semantic_hash(f)?,
+                ))
+            })
             .collect::<Result<_, QueryError>>()?;
         for key in before.keys().chain(after.keys()) {
             if before.get(key) != after.get(key) {
@@ -110,7 +125,7 @@ impl Postgres {
             }
         }
         // Check the saved job against the immutable database versions and observations, not just its result JSON.
-        let facts=sqlx::query("SELECT DISTINCT v.fact_id,v.content_hash,v.payload FROM trade_log.fact_observations o JOIN trade_log.account_fact_versions v ON(v.fact_id,v.revision)=(o.fact_id,o.revision) JOIN trade_log.raw_logs r ON r.id=o.raw_log_id JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id WHERE j.query_id=$1").bind(id).fetch_all(&self.pool).await.map_err(db_error)?;
+        let facts=sqlx::query("SELECT DISTINCT v.fact_id,v.content_hash,v.payload,v.semantic_hash_version,v.semantic_content_hash FROM trade_log.fact_observations o JOIN trade_log.account_fact_versions v ON(v.fact_id,v.revision)=(o.fact_id,o.revision) JOIN trade_log.raw_logs r ON r.id=o.raw_log_id JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id WHERE j.query_id=$1").bind(id).fetch_all(&self.pool).await.map_err(db_error)?;
         let mut associated = BTreeMap::new();
         for row in facts {
             let f: account_facts::AccountFact =
@@ -120,7 +135,17 @@ impl Postgres {
             if hash != stored {
                 differences.push(f.fact_id.clone());
             }
-            associated.insert(f.fact_id, hash);
+            let semantic = trade_log::collection::content::semantic_hash(&f)?;
+            if row
+                .get::<Option<String>, _>("semantic_content_hash")
+                .is_some_and(|v| v != semantic)
+                || row
+                    .get::<Option<String>, _>("semantic_hash_version")
+                    .is_some_and(|v| v != trade_log::collection::content::HASH_VERSION)
+            {
+                differences.push(f.fact_id.clone());
+            }
+            associated.insert(f.fact_id, semantic);
         }
         for key in before.keys().chain(associated.keys()) {
             if before.get(key) != associated.get(key) {

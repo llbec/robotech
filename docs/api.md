@@ -2,7 +2,7 @@
 
 本文是项目统一的接口说明文档，集中维护所有对外接口和内部接口。后续版本在本文件中更新接口定义，并注明新增、变更或废弃的适用版本，不另建按开发版本命名的接口文档。
 
-当前对应程序版本：0.3.0；JSON schema_version：1。接口定义依据当前代码编写。
+当前对应程序版本：0.4.0；JSON schema_version：1。接口定义依据当前代码编写。
 
 ## 1. 地址和接口列表
 
@@ -41,7 +41,7 @@
 | --- | --- | --- |
 | data | object | 对应接口的业务数据，具体字段见后文 |
 | meta.trace_id | string | 本次 HTTP 请求的追踪 ID，用于关联网关、内部服务日志及查询证据 |
-| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.3.0 分开管理 |
+| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.4.0 分开管理 |
 
 JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与响应体中的 trace_id 相同。网关为每次外部请求生成新 trace_id，不沿用客户端传入的值。
 
@@ -111,7 +111,7 @@ GET /internal/v1/health
 没有业务参数，需要 Authorization 请求头。成功返回 200，data 格式：
 
 ```json
-{"status":"ok","service":"trade-log-query","version":"0.3.0"}
+{"status":"ok","service":"trade-log-query","version":"0.4.0"}
 ```
 
 status 表示内部进程可响应，service 为服务名，version 为程序构建版本；完整响应使用 data/meta 包装。该接口不主动检查上游来源。
@@ -143,7 +143,7 @@ account 必填；limit 为整数，可省略但不可为 null。start_time、end
 
 请求没有正文或参数，必须携带内部 Bearer 服务凭证。成功 data 与第 4.5 节相同，meta 含内部请求 trace_id 和 schema_version=1。数据库读取默认时限 3 秒，失败或超时返回 503；未授权返回 401。能读取检查点而来源采集失败时返回 200，在业务状态中说明失败。
 
-collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.3.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
+collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.4.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
 
 ## 4. 外部接口
 
@@ -204,13 +204,13 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 成功返回 200；data 格式：
 
 ```json
-{"service":"query-api","version":"0.3.0"}
+{"service":"query-api","version":"0.4.0"}
 ```
 
 | data 字段 | 类型 | 含义 |
 | --- | --- | --- |
 | service | string | 服务名 query-api |
-| version | string | 当前运行程序的构建版本，v0.2 为 0.3.0 |
+| version | string | 当前运行程序的构建版本，v0.4 为 0.4.0 |
 
 实际 HTTP 响应仍使用第 2 节的 data/meta 包装。
 
@@ -467,7 +467,7 @@ curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
 
 ### 4.5 自动更新状态
 
-新增于 v0.3。`GET /api/v1/watch-accounts`，没有业务参数或请求正文。本版只读当前配置的一个账户；不提供添加、删除、暂停或恢复账户的管理接口。轮询由独立 trade-collector 运行，读取状态不会执行来源查询。
+新增于 v0.3。`GET /api/v1/watch-accounts`，没有业务参数或请求正文。本版只读当前配置的一个账户；不提供添加、删除、暂停或恢复账户的管理接口。采集由独立 trade-collector 运行；v0.4 可同时启用 WebSocket 实时接收与 HTTP 补偿，读取状态不会执行来源查询。
 
 ```sh
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
@@ -497,6 +497,32 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
       "last_error": null,
       "heartbeat_at": "2026-10-05T00:01:03.000Z",
       "lease_expires_at": "2026-10-05T00:04:03.000Z",
+      "monitoring_status": "LIVE",
+      "websocket": {
+        "enabled": true,
+        "status": "LIVE",
+        "session_id": "00000000-0000-4000-8000-000000000001",
+        "connected_at": "2026-10-05T00:00:01.000Z",
+        "subscribed_at": "2026-10-05T00:00:02.000Z",
+        "last_received_at": "2026-10-05T00:00:02.100Z",
+        "last_committed_at": "2026-10-05T00:00:02.200Z",
+        "last_trade_at": null,
+        "last_pong_at": "2026-10-05T00:01:02.000Z",
+        "reconnect_count": 0,
+        "connection_count": 1,
+        "next_retry_at": null,
+        "last_error": null,
+        "pending_messages": 0,
+        "pending_bytes": 0,
+        "metadata_stale": false
+      },
+      "recovery": {
+        "status": "HTTP_SCANNED",
+        "target_through": null,
+        "open_gap_count": 0,
+        "last_scanned_at": "2026-10-05T00:01:03.000Z",
+        "last_error": null
+      },
       "warnings": ["SOURCE_HISTORY_NOT_VERIFIED", "LATE_DATA_OUTSIDE_OVERLAP_NOT_VERIFIED"]
     }]
   },
@@ -510,13 +536,13 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 | --- | --- | --- |
 | items | array | 当前配置中的采集账户，包含下列状态字段 |
 | account/account_key/network | string | 规范地址、链协议账户身份、来源环境 |
-| status | string | STARTING 初始化；RUNNING 本轮采集中；WAITING 成功后等待；RETRY_WAIT 退避或预算暂停；FAILED 无法继续或心跳过期；STOPPED 正常停止 |
+| status | string | HTTP 调度状态：STARTING 初始化；RUNNING 本轮采集中；WAITING 成功后等待；RETRY_WAIT 退避或预算暂停；FAILED 无法继续或租约心跳过期；STOPPED 正常停止 |
 | coverage | string | 固定 SOURCE_HISTORY_NOT_VERIFIED，不证明官方历史完整 |
 | initial_start_time | string | 首次建立检查点的扫描起点，UTC 毫秒格式 |
 | scanned_through | string/null | 已提交扫描结束边界，半开区间结束值；不是最新成交时间 |
-| last_trade_at | string/null | 自动采集已提交的最新合约成交时间；无成交可为空 |
+| last_trade_at | string/null | HTTP 自动采集已提交的最新合约成交时间；无成交可为空；WS 最新成交另见 websocket.last_trade_at |
 | last_attempt_at | string/null | 最近一次开始尝试的时间 |
-| last_success_at | string/null | 最近一次事实与水位完整事务提交时间；请求返回 200 不足以更新此字段 |
+| last_success_at | string/null | 最近一次 HTTP 事实与水位完整事务提交时间；HTTP 返回 200 或收到 WS 消息均不足以更新此字段 |
 | consecutive_failures | integer | 连续失败轮数；完整成功后归零，预算暂停不计失败 |
 | next_run_at | string/null | 下一次计划执行时间，包含有界退避 |
 | pending_range | object/null | 未完成固定范围，含 start_time/end_time，开始包含、结束排除 |
@@ -525,6 +551,35 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 | last_error | object/null | 最近未恢复错误，含 code/message/occurred_at；完整成功后清空 |
 | heartbeat_at/lease_expires_at | string/null | 实例心跳与租约到期时间；数据库持久化值 |
 | warnings | array of string | 来源历史、重叠区间外迟到数据、预算或心跳等限制说明 |
+
+v0.4 增加以下字段，接口路径和 schema_version=1 保持不变。顶层水位、轮次失败计数、任务标识和调度时间仍表示 HTTP；WS 与 HTTP 的错误独立记录。
+
+| 字段 | 类型 | 意义 |
+| --- | --- | --- |
+| monitoring_status | string | HTTP_ONLY 纯 HTTP；STARTING 初始化或尚未确认心跳；LIVE 双通道可用且恢复范围已扫描；RECOVERING 实时已订阅、HTTP 正在追赶；DEGRADED 某通道异常；FAILED 阻塞错误或租约过期；STOPPED 正常停止 |
+| websocket.enabled | boolean | 是否启用来源实时订阅 |
+| websocket.status | string | DISABLED、CONNECTING、SUBSCRIBING、LIVE、RECONNECT_WAIT、FAILED、STOPPED；LIVE 仅表示订阅已确认，需结合 pong 与 monitoring_status 判断健康 |
+| websocket.session_id | string/null | 当前或最近连接的 UUID；不是来源游标 |
+| websocket.connected_at/subscribed_at | string/null | 建立连接、收到订阅确认的 UTC 毫秒时间 |
+| websocket.last_received_at | string/null | 最近归档账户数据消息的接收时间；不证明事实已提交，队列中尚未归档的消息不更新此持久化值 |
+| websocket.last_committed_at | string/null | 最近数据消息完整事务提交时间；空快照也可以更新 |
+| websocket.last_trade_at | string/null | 已提交 WS 合约成交的最大时间；不能推进或替代 HTTP scanned_through |
+| websocket.last_pong_at | string/null | 最近一次应用层 ping 对应 pong 的确认时间；用于安静账户连接健康判断 |
+| websocket.reconnect_count | integer | 首次成功连接之外重新建立连接的累计次数，跨进程重启保留；失败握手不计入此成功连接次数 |
+| websocket.connection_count | integer | 成功建立连接的总次数，包含首次；跨重启保留 |
+| websocket.next_retry_at | string/null | 下一次重连计划时间；退避、连接频率和恢复条件同时约束实际尝试 |
+| websocket.last_error | object/null | 独立 WS 错误，含 code/message/occurred_at；订阅恢复后清除 |
+| websocket.pending_messages/pending_bytes | integer | 有界内存队列的最近观测值；进程重启归零，非待补采成交数量；字节包含原始包络与提取的 fills |
+| websocket.metadata_stale | boolean | 是否沿用旧市场映射；为 true 时 warnings 包含 METADATA_STALE |
+| recovery.status | string | NOT_STARTED 恢复目标尚未固定；SCANNING HTTP 追赶中；HTTP_SCANNED 已完整扫描目标；BLOCKED 无法继续；DISABLED 未启用 WS 且无待补偿范围 |
+| recovery.target_through | string/null | 重新订阅确认时固定的 HTTP 恢复目标；未固定或无待补偿范围时为 null |
+| recovery.open_gap_count | integer | 尚未完成 HTTP 扫描的恢复范围数量，包含阻塞范围 |
+| recovery.last_scanned_at | string/null | 最近恢复范围随 HTTP 水位事务完成扫描的时间 |
+| recovery.last_error | object/null | 阻塞恢复的错误摘要 |
+
+例如，WS 已保存较新的成交但 HTTP 尚未扫描中间范围时，websocket.status=LIVE，monitoring_status=RECOVERING，scanned_through 仍为原 HTTP 水位。只有 HTTP 范围及事实成功提交后，恢复范围才能标为 HTTP_SCANNED；此状态仍不证明来源历史完整。关闭 WS 不删除缺口，已有 HTTP 补偿继续执行。
+
+WS 数据模式 SNAPSHOT、LIVE_UPDATE、UNKNOWN 保存在采集任务和原始证据中，不改变 stored 的标准成交字段。当前没有对外实时推送接口，stored 查询不会触发订阅或补偿。具体协作流程见 [v0.4 第 6 章](version0.4.md#6-处理流程)。
 
 所有时间为 UTC、最大毫秒精度。无成交也可以成功推进扫描水位。原 live 查询和旧证据导入不会推进自动水位；stored 查询沿用 v0.2 行为。
 
@@ -544,6 +599,8 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 | 500 | INTERNAL_INVARIANT_VIOLATION | 证据存储等内部处理失败 |
 | 503 | DEPENDENCY_UNAVAILABLE | 查询未启用、内部服务不可用、来源请求失败、元数据异常、查询超时、数据库操作失败或自动采集状态不可用 |
 
+自动状态中的 last_error 是业务诊断，不直接作为该状态请求的 HTTP 状态。WS 连接异常可记录 CONNECT_TIMEOUT、SUBSCRIBE_TIMEOUT、SUBSCRIPTION_REJECTED、HEARTBEAT_TIMEOUT、WS_IO_ERROR、DISCONNECT；数据及处理异常可记录 INVALID_WS_MESSAGE、WS_ACCOUNT_MISMATCH、MESSAGE_TOO_LARGE、QUEUE_OVERFLOW、COMMIT_TIMEOUT、METADATA_UNAVAILABLE、VERSION_CONFLICT、LEASE_LOST。数据库可读时仍以 HTTP 200 返回这些状态；数据库不可读或 collector 不可达才返回 503。
+
 网关会对内部错误进行转换，内部认证失败等无法正常识别的内部响应会对外表现为 503。message 可能因错误发生位置不同而变化。
 
 当前没有公开的证据下载接口。v0.2 原始字节、任务及完整事实保存于 PostgreSQL，文件仅为诊断副本；重新解析不依赖文件副本。文件证据在交易查询容器 `/var/lib/robotech/trade-log/<query_id>/`，包含 manifest.json、完整 result.json 和 requests/responses/metadata 子目录；通过部署运维命令查看。手动验证流程见 [v0.2 开发文档第 10.4 节](version0.2.md#104-手动验证步骤)。
@@ -554,6 +611,7 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 
 | 日期 | 程序版本 | 类型 | 更新内容 |
 | --- | --- | --- | --- |
+| 2026-10-06 | 0.4.0 | 兼容扩展 | 自动状态增加 monitoring_status、websocket、recovery；HTTP 水位与 WS 接收、提交位置独立；stored 路径及 schema_version 不变 |
 | 2026-10-06 | 0.3.0 | 新增接口 | 新增单地址自动采集状态、扫描水位和错误说明；collector 内部状态及健康接口 |
 | 2026-10-05 | 0.2.0 | 新增及兼容扩展 | 实时查询增加持久化回执；新增 source=stored 时间范围及快照游标分页、内部库存查询；数据库故障明确返回 503 |
 | 2026-10-05 | 0.1.0 | 文档调整 | 将接口说明集中到本文件；按内部、外部接口分章，增加用途、调用时机和接口列表页内跳转；接口行为未改变 |

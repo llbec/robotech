@@ -384,7 +384,7 @@ async fn incremental_migration_preserves_legacy_facts_and_collector_role_is_limi
         network: shared_types::Network::Mainnet,
         mirror: None,
     };
-    let saved = collect(&db, "query_v02_upgrade", fills(2), 100)
+    let saved = legacy_collect(&db, "query_v02_upgrade", fills(2))
         .await
         .unwrap();
     let ids: Vec<_> = saved.trades.iter().map(|f| f.fact_id.clone()).collect();

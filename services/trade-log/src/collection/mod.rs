@@ -1,3 +1,4 @@
+pub mod content;
 use crate::{checkpoint::ScanRange, parsing::Parsed, query::QueryError};
 use account_facts::AccountFact;
 use serde::Deserialize;
@@ -95,15 +96,7 @@ pub fn merge(parts: Vec<Parsed>) -> Result<(Parsed, Vec<AccountFact>), QueryErro
         merged.spot_records += part.spot_records;
         merged.warnings.extend(part.warnings);
         for fact in part.trades {
-            let mut value = serde_json::to_value(&fact).map_err(|_| QueryError::storage())?;
-            value
-                .as_object_mut()
-                .ok_or_else(QueryError::storage)?
-                .remove("raw_log_id");
-            value["payload"]["extension"]
-                .as_object_mut()
-                .ok_or_else(QueryError::storage)?
-                .remove("source_indices");
+            let value = content::semantic_hash(&fact)?;
             if let Some((previous, _)) = facts.get(&fact.fact_id) {
                 if previous != &value {
                     return Err(QueryError::conflict());

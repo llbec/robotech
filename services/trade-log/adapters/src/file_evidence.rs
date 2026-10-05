@@ -186,3 +186,39 @@ impl FileEvidence {
         save(&directory.join("metadata").join(format!("{raw_id}.json")),&json!({"raw_log_id":raw_id,"kind":request["body"]["type"],"http_status":response.status,"received_at":response.received_at,"sha256":format!("{:x}",Sha256::digest(&response.body)),"retry_after_seconds":response.retry_after_seconds})).await
     }
 }
+
+impl FileEvidence {
+    pub async fn stream_response(
+        &self,
+        id: &str,
+        raw: &str,
+        session: uuid::Uuid,
+        sequence: i64,
+        message: &trade_log::realtime::StreamMessage,
+        metadata: (&[u8], &[u8]),
+    ) -> Result<(), QueryError> {
+        let (meta, spot) = metadata;
+        let directory = self.path(id)?;
+        for child in ["requests", "responses", "metadata"] {
+            fs::create_dir_all(directory.join(child))
+                .await
+                .map_err(|_| QueryError::storage())?;
+        }
+        let manifest = directory.join("manifest.json");
+        if !fs::try_exists(&manifest)
+            .await
+            .map_err(|_| QueryError::storage())?
+        {
+            save(&manifest,&json!({"query_id":id,"job_origin":"COLLECTOR","transport":"WEBSOCKET","session_id":session,"message_sequence":sequence,"message_mode":message.mode,"network":self.network,"started_at":message.received_at,"status":"RUNNING","tool_version":env!("CARGO_PKG_VERSION"),"parser_version":"hyperliquid-v1","schema_version":1,"identity_version":"hl-fill-v1"})).await?;
+        }
+        atomic(
+            &directory.join("responses").join(format!("{raw}.body")),
+            &message.body,
+        )
+        .await?;
+        atomic(&directory.join("responses").join("meta.body"), meta).await?;
+        atomic(&directory.join("responses").join("spotMeta.body"), spot).await?;
+        save(&directory.join("metadata").join(format!("{raw}.json")),&json!({"raw_log_id":raw,"kind":"userFills","transport":"WEBSOCKET","session_id":session,"message_sequence":sequence,"message_mode":message.mode,"http_status":null,"source_path":"data.fills","received_at":message.received_at,"sha256":format!("{:x}",Sha256::digest(&message.body)),"meta_sha256":format!("{:x}",Sha256::digest(meta)),"spot_meta_sha256":format!("{:x}",Sha256::digest(spot))})).await?;
+        save(&directory.join("requests").join(format!("{raw}.json")),&json!({"method":"subscribe","subscription":{"type":"userFills"},"transport":"WEBSOCKET"})).await
+    }
+}

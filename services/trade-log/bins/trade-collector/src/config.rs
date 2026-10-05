@@ -16,6 +16,8 @@ pub struct Config {
     pub evidence: EvidenceConfig,
     pub internal: InternalConfig,
     pub collection: CollectionConfig,
+    #[serde(default)]
+    pub websocket: trade_log::realtime::WebsocketConfig,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -93,6 +95,7 @@ impl Config {
         {
             return Err("Credential and evidence paths are required".into());
         }
+        c.websocket.validate(c.collection.lease_seconds)?;
         Ok(c)
     }
 }

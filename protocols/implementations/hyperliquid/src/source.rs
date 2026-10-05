@@ -10,6 +10,8 @@ pub struct HttpSource {
     client: reqwest::Client,
     endpoint: String,
     max_bytes: usize,
+    budget: tokio::sync::Mutex<std::collections::VecDeque<(tokio::time::Instant, u32)>>,
+    cooldown: tokio::sync::Mutex<Option<tokio::time::Instant>>,
 }
 impl HttpSource {
     pub fn new(
@@ -28,6 +30,8 @@ impl HttpSource {
             client,
             endpoint: endpoint.into(),
             max_bytes,
+            budget: tokio::sync::Mutex::new(std::collections::VecDeque::new()),
+            cooldown: tokio::sync::Mutex::new(None),
         })
     }
 }
@@ -73,6 +77,42 @@ fn retry_jitter() -> u128 {
 
 impl HttpSource {
     async fn request(&self, body: serde_json::Value) -> Result<SourceResponse, QueryError> {
+        // Reserve the worst-case documented weight for a 2000-fill response.
+        // This budget is shared by HTTP compensation and metadata requests using this source.
+        let weight = if matches!(body["type"].as_str(), Some("userFills" | "userFillsByTime")) {
+            120
+        } else {
+            20
+        };
+        loop {
+            let cooldown = *self.cooldown.lock().await;
+            if let Some(at) = cooldown.filter(|at| *at > tokio::time::Instant::now()) {
+                tokio::time::sleep_until(at).await;
+                continue;
+            }
+            let delay = {
+                let mut used = self.budget.lock().await;
+                let now = tokio::time::Instant::now();
+                while used
+                    .front()
+                    .is_some_and(|(at, _)| now.duration_since(*at) >= Duration::from_secs(60))
+                {
+                    used.pop_front();
+                }
+                if used.iter().map(|(_, w)| *w).sum::<u32>() + weight <= 1000 {
+                    used.push_back((now, weight));
+                    None
+                } else {
+                    used.front()
+                        .map(|(at, _)| *at + Duration::from_secs(60) - now)
+                }
+            };
+            if let Some(delay) = delay {
+                tokio::time::sleep(delay).await;
+            } else {
+                break;
+            }
+        }
         let mut response = self
             .client
             .post(&self.endpoint)
@@ -88,6 +128,12 @@ impl HttpSource {
             .get("retry-after")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse().ok());
+        if status == 429 {
+            let seconds = retry_after_seconds.unwrap_or(5_u64).min(86400);
+            let until = tokio::time::Instant::now() + Duration::from_secs(seconds);
+            let mut cooldown = self.cooldown.lock().await;
+            *cooldown = Some(cooldown.map_or(until, |old| old.max(until)));
+        }
         if response
             .content_length()
             .is_some_and(|n| n > self.max_bytes as u64)

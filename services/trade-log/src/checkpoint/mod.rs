@@ -69,6 +69,12 @@ pub struct CollectionStatus {
     pub last_error: Option<serde_json::Value>,
     pub heartbeat_at: Option<String>,
     pub lease_expires_at: Option<String>,
+    #[serde(default)]
+    pub monitoring_status: String,
+    #[serde(default)]
+    pub websocket: serde_json::Value,
+    #[serde(default)]
+    pub recovery: serde_json::Value,
     pub warnings: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]

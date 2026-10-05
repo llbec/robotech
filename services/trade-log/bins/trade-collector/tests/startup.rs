@@ -49,3 +49,38 @@ fn configuration_and_process_failure_contract() {
             .contains(env!("CARGO_PKG_VERSION"))
     );
 }
+
+#[test]
+fn optional_websocket_config_keeps_legacy_http_mode_and_validates_limits() {
+    let legacy = valid().split("[websocket]").next().unwrap().to_owned();
+    assert!(
+        !Config::parse(&legacy, &BTreeMap::new())
+            .unwrap()
+            .websocket
+            .enabled
+    );
+    let text = valid();
+    for (a, b) in [
+        ("reconnect_base_seconds = 5", "reconnect_base_seconds = 0"),
+        ("reconnect_max_seconds = 60", "reconnect_max_seconds = 61"),
+        (
+            "reconnect_reset_after_seconds = 60",
+            "reconnect_reset_after_seconds = 59",
+        ),
+        (
+            "reconnect_jitter_percent = 20",
+            "reconnect_jitter_percent = 21",
+        ),
+        ("pong_timeout_seconds = 10", "pong_timeout_seconds = 40"),
+        ("max_pending_messages = 256", "max_pending_messages = 0"),
+        (
+            "commit_timeout_seconds = 10",
+            "commit_timeout_seconds = 180",
+        ),
+    ] {
+        assert!(
+            Config::parse(&text.replace(a, b), &BTreeMap::new()).is_err(),
+            "{b}"
+        );
+    }
+}

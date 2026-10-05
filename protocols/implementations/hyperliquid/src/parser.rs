@@ -89,7 +89,22 @@ impl ProtocolParser for HyperliquidParser {
             let key = (coin.to_owned(), tid);
             if let Some((previous, trade_index)) = seen.get(&key) {
                 if previous != fill {
-                    return Err(QueryError::conflict());
+                    let same = if let Some(i) = trade_index {
+                        parse_fill(&c, fill, index, coin, tid)
+                            .ok()
+                            .is_some_and(|fact| {
+                                trade_log::collection::content::semantic_hash(&fact).ok()
+                                    == trade_log::collection::content::semantic_hash(
+                                        &result.trades[*i],
+                                    )
+                                    .ok()
+                            })
+                    } else {
+                        false
+                    };
+                    if !same {
+                        return Err(QueryError::conflict());
+                    }
                 }
                 result.duplicate_records += 1;
                 if let Some(i) = trade_index {

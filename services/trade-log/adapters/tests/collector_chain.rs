@@ -196,6 +196,9 @@ async fn gateway_status_authentication_and_database_fault_mapping() {
     let body: serde_json::Value = r.json().await.unwrap();
     assert_eq!(body["meta"]["trace_id"], trace);
     assert_eq!(body["data"]["items"][0]["account"], ACCOUNT);
+    assert_eq!(body["data"]["items"][0]["monitoring_status"], "HTTP_ONLY");
+    assert_eq!(body["data"]["items"][0]["websocket"]["status"], "DISABLED");
+    assert_eq!(body["data"]["items"][0]["recovery"]["open_gap_count"], 0);
     assert_eq!(
         body["data"]["items"][0]["coverage"],
         "SOURCE_HISTORY_NOT_VERIFIED"

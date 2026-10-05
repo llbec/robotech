@@ -126,132 +126,155 @@ impl CollectorRuntime {
         Ok(true)
     }
     pub async fn run(&self, cancel: CancellationToken) {
+        self.supervise(cancel, None).await;
+    }
+    pub async fn run_with_realtime(
+        &self,
+        cancel: CancellationToken,
+        config: trade_log::realtime::WebsocketConfig,
+        source: Arc<dyn trade_log::realtime::RealtimeSource>,
+    ) {
+        let stream = config.enabled.then_some((config, source));
+        self.supervise(cancel, stream).await;
+    }
+    async fn supervise(
+        &self,
+        cancel: CancellationToken,
+        stream: Option<(
+            trade_log::realtime::WebsocketConfig,
+            Arc<dyn trade_log::realtime::RealtimeSource>,
+        )>,
+    ) {
         let instance = uuid::Uuid::new_v4();
-        let mut lease: Option<Lease> = None;
+        let reconnect_schedule = Arc::new(tokio::sync::Mutex::new(
+            trade_log::realtime::ReconnectSchedule::default(),
+        ));
+        let clock_origin = tokio::time::Instant::now();
         loop {
             if cancel.is_cancelled() {
                 break;
             }
-            if lease.is_none() {
-                match self.store.acquire_collection(&self.config, instance).await {
-                    Ok(value) => lease = value,
-                    Err(e) => {
-                        tracing::warn!(service="trade-collector",code=%e.code,"collection_lease_unavailable")
-                    }
-                }
-            }
-            if let Some(l) = lease.clone() {
-                if self
-                    .store
-                    .renew_collection(&l, self.config.lease_seconds)
-                    .await
-                    .is_err()
-                {
-                    lease = None;
-                } else {
-                    match self
-                        .store
-                        .collection_work(&l, &self.config, chrono::Utc::now().timestamp_millis())
-                        .await
-                    {
-                        Ok(Some(mut work)) => {
-                            let outcome = {
-                                let deadline = tokio::time::sleep(Duration::from_secs(
-                                    self.config.round_timeout_seconds,
-                                ));
-                                tokio::pin!(deadline);
-                                let operation = self.round(&l, &mut work);
-                                tokio::pin!(operation);
-                                let mut heartbeat = tokio::time::interval(Duration::from_secs(
-                                    (self.config.lease_seconds / 3).max(1),
-                                ));
-                                heartbeat.tick().await;
-                                loop {
-                                    tokio::select! {
-                                     biased;
-                                     _=cancel.cancelled()=>{break None;}
-                                     _=&mut deadline=>{break Some(Err(error("ROUND_TIMEOUT","Collection round timed out",true)));}
-                                     result=&mut operation=>{break Some(result);}
-                                     _=heartbeat.tick()=>{if self.store.renew_collection(&l,self.config.lease_seconds).await.is_err(){lease=None;break None;}}
-                                    }
-                                }
-                            };
-                            if let Some(result) = outcome {
-                                match result {
-                                    Ok(true) => {}
-                                    Ok(false) => {
-                                        let e = error(
-                                            "ROUND_BUDGET_EXHAUSTED",
-                                            "Collection request budget exhausted",
-                                            true,
-                                        );
-                                        let _ = self
-                                            .store
-                                            .collection_failure(
-                                                &l,
-                                                &e,
-                                                self.config.interval_seconds,
-                                                true,
-                                            )
-                                            .await;
-                                    }
-                                    Err(mut e) => {
-                                        if e.code == "DEPENDENCY_UNAVAILABLE" {
-                                            e.retryable = true;
-                                        }
-                                        let failures=sqlx::query_scalar::<_,i32>("SELECT consecutive_failures FROM trade_log.collection_checkpoints WHERE partition_key=$1").bind(&l.key).fetch_one(&self.store.pool).await.unwrap_or(0);
-                                        let delay = self
-                                            .config
-                                            .retry_base_seconds
-                                            .saturating_mul(1_u64 << failures.min(20))
-                                            .min(self.config.retry_max_seconds);
-                                        let source_delay = self
-                                            .store
-                                            .collection_retry_after(&work.query_id)
-                                            .await
-                                            .unwrap_or(0);
-                                        let delay = delay
-                                            .max(source_delay)
-                                            .min(self.config.retry_max_seconds);
-                                        let jitter = u64::from(instance.as_bytes()[0]) % 3;
-                                        tracing::warn!(service="trade-collector",account_key=%l.key,query_id=%work.query_id,code=%e.code,"collection_failed");
-                                        if self
-                                            .store
-                                            .collection_failure(
-                                                &l,
-                                                &e,
-                                                delay
-                                                    .saturating_add(jitter)
-                                                    .min(self.config.retry_max_seconds),
-                                                false,
-                                            )
-                                            .await
-                                            .is_err()
-                                        {
-                                            lease = None;
-                                        }
-                                    }
-                                }
+            let acquired = tokio::select! { _=cancel.cancelled()=>break, result=self.store.acquire_collection(&self.config,instance)=>result };
+            if let Ok(Some(lease)) = acquired {
+                let ready = tokio::select! { _=cancel.cancelled()=>false,result=self.store.prepare_stream(&lease,&self.config,stream.is_some())=>result.is_ok() };
+                if ready {
+                    let workers = cancel.child_token();
+                    let http = self.run_http(&lease, workers.clone());
+                    let ws = async {
+                        if let Some((config, source)) = &stream {
+                            crate::websocket_runtime::WebsocketRuntime {
+                                store: self.store.clone(),
+                                collection: self.config.clone(),
+                                config: config.clone(),
+                                source: source.clone(),
+                                http: self.source.clone(),
+                                parser: self.parser.clone(),
+                                schedule: reconnect_schedule.clone(),
+                                clock_origin,
                             }
+                            .run(&lease, workers.clone())
+                            .await;
+                        } else {
+                            workers.cancelled().await;
                         }
-                        Ok(None) => {}
-                        Err(e) => {
-                            let _ = self
-                                .store
-                                .collection_failure(&l, &e, self.config.retry_base_seconds, false)
-                                .await;
-                            if e.code == "LEASE_LOST" {
-                                lease = None;
+                    };
+                    tokio::pin!(http, ws);
+                    let mut heartbeat = tokio::time::interval(Duration::from_secs(
+                        (self.config.lease_seconds / 3).max(1),
+                    ));
+                    heartbeat.tick().await;
+                    let mut http_done = false;
+                    let mut ws_done = false;
+                    loop {
+                        tokio::select! {
+                            biased;
+                            _=cancel.cancelled()=>break,
+                            _=&mut http=>{http_done=true;break;},
+                            _=&mut ws=>{ws_done=true;break;},
+                            _=heartbeat.tick()=>{
+                                let renewed=tokio::select! { _=cancel.cancelled()=>false,result=self.store.renew_collection(&lease,self.config.lease_seconds)=>result.is_ok() };
+                                if !renewed { break; }
                             }
                         }
                     }
+                    workers.cancel();
+                    if !http_done {
+                        http.await;
+                    }
+                    if !ws_done {
+                        ws.await;
+                    }
                 }
-            }
-            tokio::select! {_=cancel.cancelled()=>break,_=tokio::time::sleep(Duration::from_secs(1))=>{}}
-        }
-        if let Some(l) = lease {
-            let _ = tokio::time::timeout(Duration::from_secs(2), self.store.release_collection(&l))
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(2),
+                    self.store.release_collection(&lease),
+                )
                 .await;
+            }
+            tokio::select! { _=cancel.cancelled()=>break, _=tokio::time::sleep(Duration::from_secs(1))=>{} }
+        }
+    }
+    async fn run_http(&self, l: &Lease, cancel: CancellationToken) {
+        loop {
+            let available = tokio::select! { _=cancel.cancelled()=>break,result=self.store.collection_work(l,&self.config,chrono::Utc::now().timestamp_millis())=>result };
+            match available {
+                Ok(Some(mut work)) => {
+                    let outcome = tokio::select! {
+                        _=cancel.cancelled()=>break,
+                        value=tokio::time::timeout(Duration::from_secs(self.config.round_timeout_seconds),self.round(l,&mut work))=>value.unwrap_or_else(|_|Err(error("ROUND_TIMEOUT","Collection round timed out",true)))
+                    };
+                    let (e, delay, budget) = match outcome {
+                        Ok(true) => {
+                            continue;
+                        }
+                        Ok(false) => (
+                            error(
+                                "ROUND_BUDGET_EXHAUSTED",
+                                "Collection request budget exhausted",
+                                true,
+                            ),
+                            self.config.interval_seconds,
+                            true,
+                        ),
+                        Err(mut e) => {
+                            if e.code == "LEASE_LOST" {
+                                break;
+                            }
+                            if e.code == "DEPENDENCY_UNAVAILABLE" {
+                                e.retryable = true;
+                            }
+                            let failures=sqlx::query_scalar::<_,i32>("SELECT consecutive_failures FROM trade_log.collection_checkpoints WHERE partition_key=$1").bind(&l.key).fetch_one(&self.store.pool).await.unwrap_or(0);
+                            let delay = self
+                                .config
+                                .retry_base_seconds
+                                .saturating_mul(1_u64 << failures.min(20))
+                                .min(self.config.retry_max_seconds);
+                            let source_delay = self
+                                .store
+                                .collection_retry_after(&work.query_id)
+                                .await
+                                .unwrap_or(0);
+                            (e, delay.max(source_delay), false)
+                        }
+                    };
+                    tracing::warn!(service="trade-collector",account_key=%l.key,query_id=%work.query_id,code=%e.code,"collection_failed");
+                    let recorded = tokio::select! { _=cancel.cancelled()=>break,result=self.store.collection_failure(l,&e,delay,budget)=>result };
+                    if recorded.is_err() {
+                        break;
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    if e.code == "LEASE_LOST" {
+                        break;
+                    }
+                    let recorded = tokio::select! { _=cancel.cancelled()=>break,result=self.store.collection_failure(l,&e,self.config.retry_base_seconds,false)=>result };
+                    if recorded.is_err() {
+                        break;
+                    }
+                }
+            }
+            tokio::select! { _=cancel.cancelled()=>break,_=tokio::time::sleep(Duration::from_secs(1))=>{} }
         }
     }
 }

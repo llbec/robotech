@@ -1,0 +1,25 @@
+{
+  "channel": "userFills",
+  "data": {
+    "user": "0x0000000000000000000000000000000000000001",
+    "fills": [
+      {
+        "coin": "ETH",
+        "tid": 9007199254740993,
+        "oid": 9007199254740995,
+        "time": 1791097200000,
+        "side": "B",
+        "px": "2500.25",
+        "sz": "0.1",
+        "fee": "-0.0125",
+        "feeToken": "USDC",
+        "startPosition": "0",
+        "dir": "Open Long",
+        "closedPnl": "0",
+        "hash": "0xexample",
+        "crossed": false
+      }
+    ],
+    "isSnapshot": false
+  }
+}

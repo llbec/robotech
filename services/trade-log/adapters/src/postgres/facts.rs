@@ -31,7 +31,7 @@ impl Postgres {
         result: &QueryResult,
         finished: Option<DateTime<Utc>>,
     ) -> Result<(), QueryError> {
-        self.commit_facts_transaction(id, result, finished, None)
+        self.commit_facts_transaction(id, result, finished, None, None)
             .await
     }
     pub async fn commit_collection(
@@ -39,7 +39,7 @@ impl Postgres {
         result: &QueryResult,
         commit: &super::checkpoint::CollectionCommit<'_>,
     ) -> Result<(), QueryError> {
-        self.commit_facts_transaction(&result.query_id, result, None, Some(commit))
+        self.commit_facts_transaction(&result.query_id, result, None, Some(commit), None)
             .await?;
         if let Some(m) = &self.mirror {
             use trade_log::raw_log::RawEvidenceStore;
@@ -51,12 +51,30 @@ impl Postgres {
         }
         Ok(())
     }
+    pub async fn commit_stream(
+        &self,
+        result: &QueryResult,
+        commit: &super::realtime::StreamCommit<'_>,
+    ) -> Result<(), QueryError> {
+        self.commit_facts_transaction(&result.query_id, result, None, None, Some(commit))
+            .await?;
+        if let Some(m) = &self.mirror {
+            use trade_log::raw_log::RawEvidenceStore;
+            let mut full = result.clone();
+            full.persistence = self.persistence(&result.query_id).await.unwrap_or(None);
+            if let Err(e) = m.finish(&result.query_id, Ok(&full)).await {
+                tracing::warn!(code=%e.code, "evidence_mirror_failed");
+            }
+        }
+        Ok(())
+    }
     async fn commit_facts_transaction(
         &self,
         id: &str,
         result: &QueryResult,
         finished: Option<DateTime<Utc>>,
         collection: Option<&super::checkpoint::CollectionCommit<'_>>,
+        stream: Option<&super::realtime::StreamCommit<'_>>,
     ) -> Result<(), QueryError> {
         let created = if finished.is_some() {
             Some(
@@ -92,22 +110,47 @@ impl Postgres {
         } else {
             None
         };
+        if let Some(c) = stream {
+            self.lock_collection(&mut tx, c.lease).await?;
+            let valid:bool=sqlx::query_scalar("SELECT checkpoint_key=$2 AND lease_epoch=$3 AND transport='WEBSOCKET' AND session_id=$4 AND message_sequence=$5 FROM trade_log.collection_jobs WHERE query_id=$1").bind(id).bind(&c.lease.key).bind(c.lease.epoch).bind(c.session_id).bind(c.sequence).fetch_one(&mut *tx).await.map_err(db_error)?;
+            if !valid {
+                return Err(QueryError::conflict());
+            }
+        }
         let mut inserted = 0;
         let facts = collection.map_or(result.trades.as_slice(), |c| c.observations);
         for fact in facts {
             let hash = content_hash(fact)?;
-            let previous:Option<String>=sqlx::query_scalar("SELECT content_hash FROM trade_log.account_fact_versions WHERE fact_id=$1 AND revision=1").bind(&fact.fact_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
+            let semantic = trade_log::collection::content::semantic_hash(fact)?;
+            let previous=sqlx::query("SELECT payload,content_hash,semantic_content_hash,semantic_hash_version FROM trade_log.account_fact_versions WHERE fact_id=$1 AND revision=1").bind(&fact.fact_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
             let raw:Uuid=sqlx::query_scalar("SELECT r.id FROM trade_log.raw_logs r JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id WHERE r.source_event_id=$1 AND j.query_id=$2").bind(&fact.raw_log_id).bind(id).fetch_one(&mut *tx).await.map_err(db_error)?;
             if let Some(previous) = previous {
-                if previous != hash {
+                let old: AccountFact = serde_json::from_value(previous.get("payload"))
+                    .map_err(|_| QueryError::storage())?;
+                if content_hash(&old)? != previous.get::<String, _>("content_hash") {
+                    return Err(QueryError::incomplete("Stored fact checksum mismatch"));
+                }
+                let old_semantic = trade_log::collection::content::semantic_hash(&old)?;
+                if previous
+                    .get::<Option<String>, _>("semantic_content_hash")
+                    .is_some_and(|v| v != old_semantic)
+                    || previous
+                        .get::<Option<String>, _>("semantic_hash_version")
+                        .is_some_and(|v| v != trade_log::collection::content::HASH_VERSION)
+                {
+                    return Err(QueryError::incomplete("Stored semantic checksum mismatch"));
+                }
+                if old_semantic != semantic {
                     return Err(QueryError::conflict());
                 }
+                sqlx::query("UPDATE trade_log.account_fact_versions SET semantic_hash_version=$2,semantic_content_hash=$3 WHERE fact_id=$1 AND revision=1 AND semantic_content_hash IS NULL").bind(&fact.fact_id).bind(trade_log::collection::content::HASH_VERSION).bind(&semantic).execute(&mut *tx).await.map_err(db_error)?;
             } else {
                 let at = DateTime::parse_from_rfc3339(&fact.occurred_at)
                     .map_err(|_| QueryError::storage())?
                     .with_timezone(&Utc);
                 sqlx::query("INSERT INTO trade_log.account_fact_versions(fact_id,revision,event_id,account_key,fact_type,ordering_key,sub_index,change_type,confirmation_status,occurred_at,payload,raw_log_id,parser_version,content_hash) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'hyperliquid-v1',$12)")
                     .bind(&fact.fact_id).bind(format!("{}:1",fact.fact_id)).bind(&fact.account_key).bind(&fact.fact_type).bind(&fact.ordering_key).bind(fact.sub_index as i32).bind(&fact.change_type).bind(&fact.confirmation_status).bind(at).bind(json!(fact)).bind(raw).bind(&hash).execute(&mut *tx).await.map_err(db_error)?;
+                sqlx::query("UPDATE trade_log.account_fact_versions SET semantic_hash_version=$2,semantic_content_hash=$3 WHERE fact_id=$1 AND revision=1").bind(&fact.fact_id).bind(trade_log::collection::content::HASH_VERSION).bind(&semantic).execute(&mut *tx).await.map_err(db_error)?;
                 seq = seq.checked_add(1).ok_or_else(QueryError::storage)?;
                 sqlx::query("INSERT INTO trade_log.account_facts_current(fact_id,current_revision,account_key,fact_type,ordering_key,sub_index,occurred_at,source_tid,ingest_seq) VALUES($1,1,$2,$3,$4,$5,$6,$7::text::numeric,$8)")
                     .bind(&fact.fact_id).bind(&fact.account_key).bind(&fact.fact_type).bind(&fact.ordering_key).bind(fact.sub_index as i32).bind(at).bind(&fact.source_ref).bind(seq).execute(&mut *tx).await.map_err(db_error)?;
@@ -137,7 +180,7 @@ impl Postgres {
             inserted_records: inserted,
             existing_records: full.trades.len() - inserted,
         });
-        sqlx::query("UPDATE trade_log.raw_logs SET parse_status='PARSED' WHERE collection_job_id=(SELECT id FROM trade_log.collection_jobs WHERE query_id=$1) AND http_status BETWEEN 200 AND 299").bind(id).execute(&mut *tx).await.map_err(db_error)?;
+        sqlx::query("UPDATE trade_log.raw_logs SET parse_status='PARSED' WHERE collection_job_id=(SELECT id FROM trade_log.collection_jobs WHERE query_id=$1) AND (http_status BETWEEN 200 AND 299 OR transport='WEBSOCKET')").bind(id).execute(&mut *tx).await.map_err(db_error)?;
         sqlx::query("UPDATE trade_log.collection_jobs SET status='COMPLETED',result=$2,error=NULL,updated_at=COALESCE($3,now()),created_at=COALESCE($4,created_at) WHERE query_id=$1").bind(id).bind(json!(full)).bind(finished).bind(created).execute(&mut *tx).await.map_err(db_error)?;
         if let Some(c) = collection {
             let pos = position.as_mut().expect("collection position");
@@ -168,7 +211,29 @@ impl Postgres {
                     true,
                 ));
             }
+            super::realtime::http_recovered(&mut tx, &c.lease.key, c.work.range.end_ms).await?;
             sqlx::query("UPDATE trade_log.collection_jobs SET request=request || $2 WHERE query_id=$1 AND job_origin='COLLECTOR'").bind(id).bind(json!({"accepted_raw_ids":c.work.pages.iter().map(|p|p.raw_id.clone()).collect::<Vec<_>>(),"meta_raw_id":c.work.meta,"spot_meta_raw_id":c.work.spot_meta})).execute(&mut *tx).await.map_err(db_error)?;
+        }
+        if let Some(c) = stream {
+            let latest = result
+                .trades
+                .iter()
+                .filter_map(|f| {
+                    DateTime::parse_from_rfc3339(&f.occurred_at)
+                        .ok()
+                        .map(|t| t.timestamp_millis())
+                })
+                .max();
+            let changed=sqlx::query("UPDATE trade_log.collection_checkpoints SET websocket_state=websocket_state || jsonb_build_object('last_committed_at',$4::text,'last_trade_at',CASE WHEN $5::bigint IS NULL THEN websocket_state->'last_trade_at' ELSE to_jsonb(to_char(to_timestamp(GREATEST($5,COALESCE((extract(epoch FROM (websocket_state->>'last_trade_at')::timestamptz)*1000)::bigint,0))/1000.0) AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"')) END),updated_at=now() WHERE partition_key=$1 AND source_id='official_http' AND lease_owner=$2 AND lease_epoch=$3 AND lease_expires_at>clock_timestamp()")
+                .bind(&c.lease.key).bind(Uuid::parse_str(&c.lease.owner).map_err(|_|QueryError::storage())?).bind(c.lease.epoch).bind(shared_types::now()).bind(latest).execute(&mut *tx).await.map_err(db_error)?;
+            if changed.rows_affected() != 1 {
+                return Err(trade_log::collection::error(
+                    "LEASE_LOST",
+                    "Collection lease lost",
+                    true,
+                ));
+            }
+            sqlx::query("UPDATE trade_log.collection_stream_sessions SET last_committed_at=now(),committed_messages=committed_messages+1 WHERE session_id=$1").bind(c.session_id).execute(&mut *tx).await.map_err(db_error)?;
         }
         tx.commit().await.map_err(db_error)
     }

@@ -40,3 +40,20 @@ round_timeout_seconds = 120
 lease_seconds = 180
 retry_base_seconds = 5
 retry_max_seconds = 300
+
+# Disable this section to keep the v0.3 HTTP-only behavior.
+[websocket]
+enabled = true
+connect_timeout_seconds = 10
+subscribe_timeout_seconds = 10
+ping_interval_seconds = 20
+pong_timeout_seconds = 10
+reconnect_base_seconds = 5
+reconnect_max_seconds = 60
+reconnect_jitter_percent = 20
+reconnect_reset_after_seconds = 60
+max_message_bytes = 16777216
+max_pending_messages = 256
+max_pending_bytes = 33554432
+metadata_refresh_seconds = 300
+commit_timeout_seconds = 10
