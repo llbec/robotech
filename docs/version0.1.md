@@ -323,6 +323,8 @@ v0.2 在交易日志服务接入原始数据与事实持久化，复用获取、
 
 ### 10.4 手动验证步骤
 
+接口请求格式、参数及全部响应字段说明见 [接口说明](api.md)。
+
 在服务器项目根目录，按下面顺序逐项操作。每一步先执行命令，再对照预期结果判断是否通过；不需要运行自动校验脚本。
 
 #### 第 1 步：构建并启动
@@ -388,11 +390,11 @@ curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x01046
 
 #### 第 6 步：从自己的电脑验证公网访问
 
-在自己的电脑执行：
+在自己的电脑执行，将 `server.example.com` 替换为实际服务器地址：
 
 ```sh
-curl --noproxy '*' -i http://120.77.207.116:8080/api/v1/health
-curl --noproxy '*' --max-time 45 -i 'http://120.77.207.116:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
+curl --noproxy '*' -i http://server.example.com:8080/api/v1/health
+curl --noproxy '*' --max-time 45 -i 'http://server.example.com:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
 ```
 
 **通过标准：** health 返回 200 和 ok；成交查询返回 200，结构符合第 4 步。实时查询结果可能变化，不要求两次成交内容完全一致。如果服务器本机通过而此步失败，检查服务器安全组、系统防火墙和 Compose 的 8080 端口发布。
