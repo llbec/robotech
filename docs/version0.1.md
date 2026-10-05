@@ -222,6 +222,88 @@ config/
 
 网关生成的 trace ID 通过受认证内部请求传播，内部错误转换为网关统一错误格式。内部服务只接受规定格式的 trace ID，否则自行生成；不直接信任外部客户端提供的 ID。
 
+### 7.3 本版新增与更新文件
+
+以 v0.0 交付状态为基线。以下是 v0.1 程序、配置、构建及测试文件的实际变更；表中明确列出文件，不以新增目录代替文件清单。
+
+#### 新增文件
+
+| 文件 | 职责或变更点 |
+| --- | --- |
+| `config/trade-log.toml` | 服务运行配置 |
+| `crates/account-facts/Cargo.toml` | crate 依赖与构建目标 |
+| `crates/account-facts/src/lib.rs` | 标准事实、成交字段及稳定身份 |
+| `crates/account-facts/tests/identity.rs` | 行为及集成验证 |
+| `crates/protocol-api/Cargo.toml` | crate 依赖与构建目标 |
+| `crates/protocol-api/src/lib.rs` | 协议请求类型契约 |
+| `crates/service-runtime/Cargo.toml` | crate 依赖与构建目标 |
+| `crates/service-runtime/src/config.rs` | 配置类型与校验 |
+| `crates/service-runtime/src/lib.rs` | 跨进程运行组件导出 |
+| `crates/service-runtime/src/lifecycle.rs` | 运行生命周期与优雅退出 |
+| `crates/service-runtime/src/logging.rs` | 日志初始化 |
+| `crates/shared-types/Cargo.toml` | crate 依赖与构建目标 |
+| `crates/shared-types/src/lib.rs` | 网络、地址、时间和精确金额值对象 |
+| `gateway/query-api/src/clients/mod.rs` | 模块声明、契约或业务实现 |
+| `gateway/query-api/src/clients/trade_log.rs` | 内部交易日志客户端 |
+| `gateway/query-api/src/http/handlers/trade_events.rs` | 成交查询 HTTP handler |
+| `protocols/implementations/hyperliquid/Cargo.toml` | crate 依赖与构建目标 |
+| `protocols/implementations/hyperliquid/src/lib.rs` | 模块导出和公共入口 |
+| `protocols/implementations/hyperliquid/src/parser.rs` | 协议来源解析及标准事实映射 |
+| `protocols/implementations/hyperliquid/src/source.rs` | 官方来源 HTTP 读取 |
+| `protocols/implementations/hyperliquid/tests/parsing.rs` | 行为及集成验证 |
+| `scripts/init-v0.1.sh` | 服务凭证及数据卷初始化 |
+| `services/trade-log/Cargo.toml` | crate 依赖与构建目标 |
+| `services/trade-log/adapters/Cargo.toml` | crate 依赖与构建目标 |
+| `services/trade-log/adapters/src/file_evidence.rs` | 原始来源与查询结果文件存储 |
+| `services/trade-log/adapters/src/internal_http.rs` | 内部 HTTP 路由、认证与查询处理 |
+| `services/trade-log/adapters/src/lib.rs` | 模块导出和公共入口 |
+| `services/trade-log/adapters/tests/query_chain.rs` | 行为及集成验证 |
+| `services/trade-log/bins/trade-log-query/Cargo.toml` | crate 依赖与构建目标 |
+| `services/trade-log/bins/trade-log-query/src/bootstrap.rs` | 服务装配、配置加载及运行入口 |
+| `services/trade-log/bins/trade-log-query/src/config.rs` | 配置类型与校验 |
+| `services/trade-log/bins/trade-log-query/src/lib.rs` | 模块导出和公共入口 |
+| `services/trade-log/bins/trade-log-query/src/main.rs` | 可执行程序入口 |
+| `services/trade-log/bins/trade-log-query/tests/startup.rs` | 行为及集成验证 |
+| `services/trade-log/src/acquisition/mod.rs` | 来源读取端口 |
+| `services/trade-log/src/lib.rs` | 模块导出和公共入口 |
+| `services/trade-log/src/normalization/mod.rs` | 结果排序、计数和覆盖说明 |
+| `services/trade-log/src/parsing/mod.rs` | 协议解析端口 |
+| `services/trade-log/src/query/mod.rs` | 来源查询流程编排 |
+| `services/trade-log/src/raw_log/mod.rs` | 证据存储端口 |
+| `services/trade-log/src/validation/mod.rs` | 账户及 limit 校验 |
+| `tests/fixtures/hyperliquid/fills.json` | 测试样本 |
+| `tests/fixtures/hyperliquid/meta.json` | 测试样本 |
+| `tests/fixtures/hyperliquid/spot-meta.json` | 测试样本 |
+
+#### 更新文件
+
+| 文件 | 职责或变更点 |
+| --- | --- |
+| `.dockerignore` | 排除 secrets 和本地证据 var，避免进入镜像构建上下文 |
+| `.gitignore` | 排除本地服务凭证 secrets 和证据 var |
+| `Cargo.lock` | 锁定 v0.1 新增依赖及 workspace 包版本 |
+| `Cargo.toml` | 版本升级为 0.1.0，注册公共 crate、业务/协议模块及新进程依赖 |
+| `compose.yaml` | 增加交易查询与卷初始化服务、内部凭证及证据卷 |
+| `config/query-api.toml` | 启用内部 trade_log 客户端并设置地址、凭证文件和时限 |
+| `gateway/query-api/Cargo.toml` | 增加运行组件、业务契约及内部 HTTP 客户端依赖 |
+| `gateway/query-api/Dockerfile` | 扩展 workspace COPY，构建两个程序，新增交易查询镜像 target |
+| `gateway/query-api/src/bootstrap.rs` | 装配内部交易日志客户端并加入应用状态 |
+| `gateway/query-api/src/config.rs` | 复用公共运行配置，新增可选 trade_log 配置及兼容校验 |
+| `gateway/query-api/src/http/error.rs` | 支持业务错误文案及成交查询错误转换 |
+| `gateway/query-api/src/http/handlers/mod.rs` | 注册新增 trade_events handler 模块 |
+| `gateway/query-api/src/http/router.rs` | 增加外部成交查询路由 |
+| `gateway/query-api/src/lib.rs` | 导出新增内部客户端模块 |
+| `gateway/query-api/src/lifecycle.rs` | 改为复用 service-runtime 生命周期实现 |
+| `gateway/query-api/src/logging.rs` | 改为复用 service-runtime 日志实现 |
+| `gateway/query-api/src/state.rs` | 增加可选的内部交易日志客户端 |
+| `tests/integration-tests/query_api.rs` | 使用既有固定配置，增加关闭成交功能及参数校验回归测试 |
+
+#### 保持不变的主要文件
+
+`gateway/query-api/src/main.rs`、`gateway/query-api/src/http/mod.rs`、`gateway/query-api/src/http/middleware.rs`、`gateway/query-api/src/http/response.rs`、`gateway/query-api/src/http/handlers/health.rs`、`gateway/query-api/src/http/handlers/version.rs`、`rust-toolchain.toml` 和 `tests/fixtures/config/valid.toml` 沿用 v0.0，不属于本版新增或更新。
+
+运行配置、日志和生命周期的通用实现新增到 service-runtime；网关原来的 config/logging/lifecycle 文件是更新后复用这些组件，并非删除原网关入口或重新创建整个程序。
+
 ## 8. 配置与异常处理
 
 ### 8.1 新增配置

@@ -347,6 +347,44 @@ v0.2 增加交易日志服务的存储与 migrations，v0.3 增加采集任务�
 
 公共模块在出现跨进程实际复用需求时抽取为公共组件，保持配置字段和响应行为兼容。首版不创建未使用的业务 crate、空服务或未来全部七个进程，也不将运行配置塞入 `shared-types` 业务值对象包。
 
+### 7.4 本版新增与更新文件
+
+本清单列出程序、配置、构建及测试文件，相对于 v0.0 实现前的仓库区分新增和更新；文档编辑不计入程序文件清单。文件状态按该版本首次交付判断，不因后续版本修改而改成“更新”。
+
+#### 新增文件
+
+| 文件 | 职责或变更点 |
+| --- | --- |
+| `.dockerignore` | 构建上下文或版本管理排除规则 |
+| `Cargo.lock` | 依赖版本锁定 |
+| `Cargo.toml` | workspace 成员、共享依赖与程序版本 |
+| `compose.yaml` | 容器服务、网络、挂载和启动约定 |
+| `config/query-api.toml` | 服务运行配置 |
+| `gateway/query-api/Cargo.toml` | crate 依赖与构建目标 |
+| `gateway/query-api/Dockerfile` | 应用镜像多阶段构建及运行入口 |
+| `gateway/query-api/src/bootstrap.rs` | 服务装配、配置加载及运行入口 |
+| `gateway/query-api/src/config.rs` | 配置类型与校验 |
+| `gateway/query-api/src/http/error.rs` | 错误结构及转换 |
+| `gateway/query-api/src/http/handlers/health.rs` | 健康接口 |
+| `gateway/query-api/src/http/handlers/mod.rs` | 模块声明、契约或业务实现 |
+| `gateway/query-api/src/http/handlers/version.rs` | 版本接口 |
+| `gateway/query-api/src/http/middleware.rs` | 请求追踪与日志 |
+| `gateway/query-api/src/http/mod.rs` | 模块声明、契约或业务实现 |
+| `gateway/query-api/src/http/response.rs` | 公共成功响应结构 |
+| `gateway/query-api/src/http/router.rs` | HTTP 路由注册 |
+| `gateway/query-api/src/lib.rs` | 模块导出和公共入口 |
+| `gateway/query-api/src/lifecycle.rs` | 运行生命周期与优雅退出 |
+| `gateway/query-api/src/logging.rs` | 日志初始化 |
+| `gateway/query-api/src/main.rs` | 可执行程序入口 |
+| `gateway/query-api/src/state.rs` | HTTP 应用共享状态 |
+| `rust-toolchain.toml` | 固定 Rust 工具链与检查组件 |
+| `tests/fixtures/config/valid.toml` | 测试样本 |
+| `tests/integration-tests/query_api.rs` | 行为及集成验证 |
+
+#### 更新文件
+
+无既有程序文件需要更新：v0.0 首次建立上述 Rust workspace、网关程序、运行配置、Docker 部署和测试文件。同一版本内对监听地址、端口发布等的修正，仍属于这些本版新增文件的完善。
+
 ## 8. 异常处理
 
 ### 8.1 进程错误
