@@ -334,6 +334,16 @@ query-api ──内部 HTTP──► trade-log-query ──► PostgreSQL
 
 本版同步 docs/api.md，并新增 docs/version0.4-acceptance.md 记录实际验收结果。不修改 README、roadmap、详细设计或历史版本文档。
 
+### 7.4 固定验收脚本补充文件（2026-10-06）
+
+| 文件 | 本次类型 | 职责 |
+| --- | --- | --- |
+| `scripts/verify-v0.4.sh` | 新增 | 本版本固定服务器验收入口 |
+| `scripts/verify-version.py` | 复用 | 四个版本共用的检查实现，按版本启用能力 |
+| `scripts/tests/test_verify_version.py` | 复用 | 验收脚本失败判定、跳过与恢复路径测试 |
+
+这是本次补充交付清单；不改变原版本首次交付文件的分类。
+
 ## 8. 配置与异常处理
 
 ### 8.1 配置校验和调度周期
@@ -545,11 +555,49 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 
 订阅超时、pong 缺失、错账户、队列溢出、失效租约和来源上限通过固定服务集成测试验证，不要求用户修改服务器防火墙或用真实账户碰巧制造。实际报告分别记录开发测试、真实来源观察和 Docker 部署结果。
 
+#### 10.2.1 固定服务器验收脚本
+
+新增 `scripts/verify-v0.4.sh`，共用 `scripts/verify-version.py`；版本入口固定，按版本启用相应能力。脚本测试位于 `scripts/tests/test_verify_version.py`。在项目根目录执行，需要 Python 3（标准库）、Docker 和 Compose，不需要 Rust、pip 或 jq。
+
+```sh
+sh scripts/verify-v0.4.sh
+```
+
+检查内容：库存、HTTP 推进及重放，并检查 WS 启用、pong 更新、缺口归零、WS 成功提交证据、跨通道观察关联和 WS 重放。UNKNOWN 允许正常保存，不当作错误；安静账户不要求出现新成交。
+
+默认读取唯一配置账户；需明确选择时使用 `--account <实际地址>`。每段观察默认最多 90 秒，约每 15 秒报告等待进度；较长轮询间隔或扫描追赶可增加等待上限。
+
+逐项输出 PASS、FAIL、SKIP 及汇总。退出码 0 表示所有已执行项目通过；1 表示检查失败；2 表示参数错误或缺少 Python。存在 SKIP 时明确提示非完整验收。无成交、库存不足以跨页、没有可重放任务或双通道共同事实，不伪报对应项目通过。接口失败、计数不符、重复事实或恢复超时均判 FAIL。
+
+默认不停止服务、不修改配置，不构建镜像或迁移。SQL 使用只读事务；reparse 只读取证据并比较。基础健康检查仅覆盖基础契约，需要完整 v0.0 验收时另执行 `sh scripts/verify-v0.0.sh`。
+
+仅在允许中断的独立验收环境执行：
+
+```sh
+sh scripts/verify-v0.4.sh --lifecycle
+sh scripts/verify-v0.4.sh --database-fault --fault-seconds 15
+```
+
+`--lifecycle` 停止并启动 trade-collector，检查正常退出和恢复，以及适用版本的旧事实保留与水位不回退；会短暂中断对应能力。 `--database-fault` 停止并恢复本项目 PostgreSQL，检查业务 503、网关 health 200 和恢复结果，影响所有使用该数据库的服务。 停止测试在 finally 中尝试恢复服务；启动失败或被强制终止时需人工确认。前置检查失败时跳过停止测试。
+
+部署参数可调整：
+
+```sh
+sh scripts/verify-v0.4.sh --base-url http://127.0.0.1:8080 --wait-seconds 180 --expected-version 0.4.0
+```
+
+不带 `--expected-version` 时允许在后续兼容版本上验收。URL、账户与本地 Compose 项目应指向同一部署。 `--live` 会主动访问官方来源，并保存证据和成交。
+
+来源限流、业务冲突、饱和毫秒及真实历史完整性仍由受控开发测试或独立明细对账覆盖。 订阅失败、pong 超时、队列溢出及关闭 WS 不自动制造，按本章手动步骤或开发测试验证。 HTTP_SCANNED 不表示所有历史交易完整。
+
+2026-10-06 开发验证：失败判定及恢复路径的 9 项标准库测试、shell 语法和帮助检查通过。v0.2 使用真实本机网关、查询服务及隔离 PostgreSQL 验证参数错误、stored 计数、去重 SQL 与 reparse=SAME；Docker 命令由临时替身衔接本机程序。开发机无 Docker，真实服务器 Docker 执行和停止测试仍待验收，不记为通过。
+
+
 ### 10.3 交付清单
 
 交付 WS 来源适配器、双通道运行监督、标准业务指纹、原始消息与会话/gap 迁移、原子提交与恢复、状态 DTO 扩展、配置、初始化脚本、必要测试及统一接口文档更新。
 
-本版不新增自动验收脚本；按本章逐步手动验证。后续 v0.5 在已保存的事实和 message_mode 基础上输出候选信号，不能把本版快照或 HTTP 回补当作新增实时交易自动发布。
+手动验证与固定服务器验收脚本按本章执行。后续 v0.5 在已保存的事实和 message_mode 基础上输出候选信号，不能把本版快照或 HTTP 回补当作新增实时交易自动发布。
 
 ## 11. bug记录
 

@@ -305,6 +305,16 @@ query-api ──内部 HTTP──► trade-log-query ──► PostgreSQL
 
 collector 解析合并要保留每页原始引用和页内 source_index；不能为方便合并把所有事实指向同一个 raw_log_id。existing_records/inserted_records 的业务计数沿用 v0.2 语义。
 
+### 7.4 固定验收脚本补充文件（2026-10-06）
+
+| 文件 | 本次类型 | 职责 |
+| --- | --- | --- |
+| `scripts/verify-v0.3.sh` | 新增 | 本版本固定服务器验收入口 |
+| `scripts/verify-version.py` | 复用 | 四个版本共用的检查实现，按版本启用能力 |
+| `scripts/tests/test_verify_version.py` | 复用 | 验收脚本失败判定、跳过与恢复路径测试 |
+
+这是本次补充交付清单；不改变原版本首次交付文件的分类。
+
 ## 8. 配置与异常处理
 
 ### 8.1 配置与权限
@@ -498,10 +508,48 @@ docker compose exec -T trade-log-query trade-log-query reparse --query-id query_
 
 来源满页、毫秒饱和、事务中断和租约竞争由固定来源集成测试验收，不要求用户靠真实账户碰巧发生这些情况；实际验收报告分别记录开发测试、真实来源观察和 Docker 部署结果，不把未执行项写为通过。
 
+#### 10.2.1 固定服务器验收脚本
+
+新增 `scripts/verify-v0.3.sh`，共用 `scripts/verify-version.py`；版本入口固定，按版本启用相应能力。脚本测试位于 `scripts/tests/test_verify_version.py`。在项目根目录执行，需要 Python 3（标准库）、Docker 和 Compose，不需要 Rust、pip 或 jq。
+
+```sh
+sh scripts/verify-v0.3.sh
+```
+
+检查内容：库存与去重基础能力、配置账户状态、观察期间新的 HTTP 成功轮次与水位推进、自动 HTTP 任务重放。默认不主动发起 live 查询，自动采集按原配置继续运行。
+
+默认读取唯一配置账户；需明确选择时使用 `--account <实际地址>`。每段观察默认最多 90 秒，约每 15 秒报告等待进度；较长轮询间隔或扫描追赶可增加等待上限。
+
+逐项输出 PASS、FAIL、SKIP 及汇总。退出码 0 表示所有已执行项目通过；1 表示检查失败；2 表示参数错误或缺少 Python。存在 SKIP 时明确提示非完整验收。无成交、库存不足以跨页、没有可重放任务或双通道共同事实，不伪报对应项目通过。接口失败、计数不符、重复事实或恢复超时均判 FAIL。
+
+默认不停止服务、不修改配置，不构建镜像或迁移。SQL 使用只读事务；reparse 只读取证据并比较。基础健康检查仅覆盖基础契约，需要完整 v0.0 验收时另执行 `sh scripts/verify-v0.0.sh`。
+
+仅在允许中断的独立验收环境执行：
+
+```sh
+sh scripts/verify-v0.3.sh --lifecycle
+sh scripts/verify-v0.3.sh --database-fault --fault-seconds 15
+```
+
+`--lifecycle` 停止并启动 trade-collector，检查正常退出和恢复，以及适用版本的旧事实保留与水位不回退；会短暂中断对应能力。 `--database-fault` 停止并恢复本项目 PostgreSQL，检查业务 503、网关 health 200 和恢复结果，影响所有使用该数据库的服务。 停止测试在 finally 中尝试恢复服务；启动失败或被强制终止时需人工确认。前置检查失败时跳过停止测试。
+
+部署参数可调整：
+
+```sh
+sh scripts/verify-v0.3.sh --base-url http://127.0.0.1:8080 --wait-seconds 180 --expected-version 0.3.0
+```
+
+不带 `--expected-version` 时允许在后续兼容版本上验收。URL、账户与本地 Compose 项目应指向同一部署。 `--live` 会主动访问官方来源，并保存证据和成交。
+
+来源限流、业务冲突、饱和毫秒及真实历史完整性仍由受控开发测试或独立明细对账覆盖。 HTTP_SCANNED 不表示所有历史交易完整。
+
+2026-10-06 开发验证：失败判定及恢复路径的 9 项标准库测试、shell 语法和帮助检查通过。v0.2 使用真实本机网关、查询服务及隔离 PostgreSQL 验证参数错误、stored 计数、去重 SQL 与 reparse=SAME；Docker 命令由临时替身衔接本机程序。开发机无 Docker，真实服务器 Docker 执行和停止测试仍待验收，不记为通过。
+
+
 ### 10.3 交付清单
 
 交付 collector 程序及镜像 target、单地址配置、检查点 migration、范围采集与调度、原子水位提交、租约恢复、只读状态接口、新初始化脚本、必要测试和统一接口文档更新。验收完成后提交独立验收记录，写明数据来源、观察时间、水位变化和未完成项。
 
-本版不新增自动验收脚本，手动验证按本章执行。后续版本继续沿用 trade-log 的 acquisition/checkpoint/persistence 和事实身份；新增 WebSocket 或信号发布时扩展适配器与提交能力，避免重建采集和存储基础。
+手动验证与固定服务器验收脚本按本章执行。后续版本继续沿用 trade-log 的 acquisition/checkpoint/persistence 和事实身份；新增 WebSocket 或信号发布时扩展适配器与提交能力，避免重建采集和存储基础。
 
 本地验证结果见 [v0.3 验收记录](version0.3-acceptance.md)，其中区分已执行的原生程序验证与待执行的 Docker 服务器验收。

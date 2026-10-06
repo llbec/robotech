@@ -282,6 +282,16 @@ scripts/
 
 网关的 `main.rs`、基础健康/版本 handler、公共响应和 trace 中间件不增加存储逻辑；`scripts/init-v0.1.sh` 保留，新版初始化另由新增的 `scripts/init-v0.2.sh` 提供。`rust-toolchain.toml` 继续固定已有工具链，部署构建减少检查组件下载由 Dockerfile 处理。
 
+### 7.4 固定验收脚本补充文件（2026-10-06）
+
+| 文件 | 本次类型 | 职责 |
+| --- | --- | --- |
+| `scripts/verify-v0.2.sh` | 新增 | 本版本固定服务器验收入口 |
+| `scripts/verify-version.py` | 复用 | 四个版本共用的检查实现，按版本启用能力 |
+| `scripts/tests/test_verify_version.py` | 复用 | 验收脚本失败判定、跳过与恢复路径测试 |
+
+这是本次补充交付清单；不改变原版本首次交付文件的分类。
+
 ## 8. 配置与异常处理
 
 ### 8.1 新增配置
@@ -526,3 +536,40 @@ docker compose start
 **通过标准：** 三个非法请求均 400；旧基础接口正常；两个应用正常退出、日志含 shutdown_completed；重启后基础接口和 stored 查询恢复。另手动验证 start_time=end_time、limit=0 和损坏 cursor 都返回 400。
 
 按以上各步记录实际结果、日期、执行人、代码版本及失败日志。其他冲突、并发和精度边界由固定样本集成测试验证，不能仅靠一次公网查询宣布全部通过。
+
+#### 10.4.1 固定服务器验收脚本
+
+新增 `scripts/verify-v0.2.sh`，共用 `scripts/verify-version.py`；版本入口固定，按版本启用相应能力。脚本测试位于 `scripts/tests/test_verify_version.py`。在项目根目录执行，需要 Python 3（标准库）、Docker 和 Compose，不需要 Rust、pip 或 jq。
+
+```sh
+sh scripts/verify-v0.2.sh --account 0x010461c14e146ac35fe42271bdc1134ee31c703a
+```
+
+检查内容：stored 契约、数据库快照计数、游标分页、半开时间区间、事实去重和 HTTP 任务重放。默认不主动访问官方来源；增加 --live 可检查真实查询、重复查询身份、文件证据及返回事实入库。
+
+`--account` 必填，示例地址可替换为实际验收账户。
+
+逐项输出 PASS、FAIL、SKIP 及汇总。退出码 0 表示所有已执行项目通过；1 表示检查失败；2 表示参数错误或缺少 Python。存在 SKIP 时明确提示非完整验收。无成交、库存不足以跨页、没有可重放任务或双通道共同事实，不伪报对应项目通过。接口失败、计数不符、重复事实或恢复超时均判 FAIL。
+
+默认不停止服务、不修改配置，不构建镜像或迁移。SQL 使用只读事务；reparse 只读取证据并比较。基础健康检查仅覆盖基础契约，需要完整 v0.0 验收时另执行 `sh scripts/verify-v0.0.sh`。
+
+仅在允许中断的独立验收环境执行：
+
+```sh
+sh scripts/verify-v0.2.sh --account 0x010461c14e146ac35fe42271bdc1134ee31c703a --lifecycle
+sh scripts/verify-v0.2.sh --account 0x010461c14e146ac35fe42271bdc1134ee31c703a --database-fault --fault-seconds 15
+```
+
+`--lifecycle` 停止并启动 trade-log-query，检查正常退出和恢复，以及适用版本的旧事实保留与水位不回退；会短暂中断对应能力。 `--database-fault` 停止并恢复本项目 PostgreSQL，检查业务 503、网关 health 200 和恢复结果，影响所有使用该数据库的服务。 停止测试在 finally 中尝试恢复服务；启动失败或被强制终止时需人工确认。前置检查失败时跳过停止测试。
+
+部署参数可调整：
+
+```sh
+sh scripts/verify-v0.2.sh --account 0x010461c14e146ac35fe42271bdc1134ee31c703a --base-url http://127.0.0.1:8080 --wait-seconds 180 --expected-version 0.2.0
+```
+
+不带 `--expected-version` 时允许在后续兼容版本上验收。URL、账户与本地 Compose 项目应指向同一部署。 `--live` 会主动访问官方来源，并保存证据和成交。
+
+来源限流、业务冲突、饱和毫秒及真实历史完整性仍由受控开发测试或独立明细对账覆盖。 HTTP_SCANNED 不表示所有历史交易完整。
+
+2026-10-06 开发验证：失败判定及恢复路径的 9 项标准库测试、shell 语法和帮助检查通过。v0.2 使用真实本机网关、查询服务及隔离 PostgreSQL 验证参数错误、stored 计数、去重 SQL 与 reparse=SAME；Docker 命令由临时替身衔接本机程序。开发机无 Docker，真实服务器 Docker 执行和停止测试仍待验收，不记为通过。
