@@ -1,0 +1,30 @@
+config_version = 1
+[server]
+host = "0.0.0.0"
+port = 8083
+shutdown_timeout_seconds = 25
+[logging]
+level = "info"
+format = "json"
+[internal]
+credential_file = "/run/secrets/trade-log-token"
+[database]
+url_file = "/run/secrets/trade-log-publisher-database-url"
+max_connections = 4
+connect_timeout_seconds = 5
+statement_timeout_seconds = 10
+[publishing]
+enabled = false
+collection_config_path = "/etc/robotech/trade-collector.toml"
+webhook_url = ""
+credential_file = "/run/secrets/webhook-token"
+allow_plain_http = false
+request_timeout_seconds = 10
+max_response_bytes = 65536
+lease_seconds = 30
+poll_interval_ms = 500
+retry_base_seconds = 5
+retry_max_seconds = 300
+max_event_age_seconds = 30
+signal_ttl_seconds = 60
+clock_skew_tolerance_seconds = 5

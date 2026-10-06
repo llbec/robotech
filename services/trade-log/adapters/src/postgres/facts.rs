@@ -117,6 +117,10 @@ impl Postgres {
                 return Err(QueryError::conflict());
             }
         }
+        let publishing = match stream {
+            Some(c) => Some(self.publishing_observation(&mut tx, id, c).await?),
+            None => None,
+        };
         let mut inserted = 0;
         let facts = collection.map_or(result.trades.as_slice(), |c| c.observations);
         for fact in facts {
@@ -165,6 +169,10 @@ impl Postgres {
                     .and_then(|v| i32::try_from(v).ok())
                     .ok_or_else(QueryError::storage)?;
                 sqlx::query("INSERT INTO trade_log.fact_observations VALUES($1,1,$2,$3) ON CONFLICT DO NOTHING").bind(&fact.fact_id).bind(raw).bind(index).execute(&mut *tx).await.map_err(db_error)?;
+                if let Some(o) = &publishing {
+                    self.enqueue_observation(&mut tx, o, fact, raw, index)
+                        .await?;
+                }
             }
         }
         sqlx::query("UPDATE trade_log.ingestion_state SET committed_seq=$1 WHERE id=1")
@@ -233,6 +241,7 @@ impl Postgres {
                     true,
                 ));
             }
+            sqlx::query("UPDATE trade_log.collection_stream_sessions SET snapshot_sequence=COALESCE(snapshot_sequence,$2) WHERE session_id=$1 AND EXISTS(SELECT 1 FROM trade_log.collection_jobs WHERE query_id=$3 AND message_mode='SNAPSHOT')").bind(c.session_id).bind(c.sequence).bind(id).execute(&mut *tx).await.map_err(db_error)?;
             sqlx::query("UPDATE trade_log.collection_stream_sessions SET last_committed_at=now(),committed_messages=committed_messages+1 WHERE session_id=$1").bind(c.session_id).execute(&mut *tx).await.map_err(db_error)?;
         }
         tx.commit().await.map_err(db_error)

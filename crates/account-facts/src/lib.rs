@@ -61,3 +61,19 @@ pub fn fact_id(network: &Network, account: &str, market: &str, tid: u64) -> Stri
     .expect("string serialization");
     format!("hl_fill_v1_{:x}", Sha256::digest(canonical))
 }
+
+/// Stable candidate event. Retry headers may change; serialized event bytes do not.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AccountFactEnvelope {
+    pub schema_version: u32,
+    pub event_type: String,
+    pub event_id: String,
+    pub partition_key: String,
+    pub occurred_at: String,
+    pub received_at: String,
+    pub stored_at: String,
+    pub published_at: Option<String>,
+    pub expires_at: String,
+    pub observation: serde_json::Value,
+    pub fact: AccountFact,
+}

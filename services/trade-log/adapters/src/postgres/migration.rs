@@ -8,6 +8,7 @@ impl Postgres {
             .map_err(|_| QueryError::unavailable("Trade database migration failed"))?;
         sqlx::raw_sql("DO $$ BEGIN IF EXISTS(SELECT FROM pg_roles WHERE rolname='trade_log_app') THEN GRANT USAGE ON SCHEMA trade_log TO trade_log_app; GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA trade_log TO trade_log_app; GRANT SELECT ON TABLE public._sqlx_migrations TO trade_log_app; END IF; END $$").execute(&self.pool).await.map_err(db_error)?;
         sqlx::raw_sql("DO $$ BEGIN IF EXISTS(SELECT FROM pg_roles WHERE rolname='trade_log_collector') THEN GRANT USAGE ON SCHEMA trade_log TO trade_log_collector; GRANT SELECT,INSERT,UPDATE ON ALL TABLES IN SCHEMA trade_log TO trade_log_collector; GRANT SELECT ON TABLE public._sqlx_migrations TO trade_log_collector; END IF; END $$").execute(&self.pool).await.map_err(db_error)?;
+        sqlx::raw_sql("DO $$ BEGIN IF EXISTS(SELECT FROM pg_roles WHERE rolname='trade_log_publisher') THEN GRANT USAGE ON SCHEMA trade_log TO trade_log_publisher; GRANT SELECT ON ALL TABLES IN SCHEMA trade_log TO trade_log_publisher; GRANT SELECT ON public._sqlx_migrations TO trade_log_publisher; GRANT INSERT,UPDATE ON trade_log.publishing_control,trade_log.outbox_events,trade_log.delivery_attempts TO trade_log_publisher; END IF; END $$").execute(&self.pool).await.map_err(db_error)?;
         Ok(())
     }
     pub async fn check_schema(&self) -> Result<(), QueryError> {

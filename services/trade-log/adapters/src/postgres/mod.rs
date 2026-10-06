@@ -47,3 +47,5 @@ impl Postgres {
 pub mod checkpoint;
 pub mod realtime;
 pub mod replay;
+
+pub mod publishing;

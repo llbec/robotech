@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Server acceptance shared by verify-v0.1.sh through verify-v0.4.sh.
+"""Server acceptance shared by verify-v0.1.sh through verify-v0.5.sh.
 Uses Python standard library, existing Compose containers and read-only SQL.
 """
 import argparse
@@ -113,6 +113,8 @@ class Verification:
             services.append('postgres')
         if self.minor >= 3:
             services.append('trade-collector')
+        if self.minor >= 5:
+            services.append('trade-parser-publisher')
         for service in services:
             ids = self.compose('ps', '-q', service).split()
             self.require(len(ids) == 1, service + ' 需要恰好一个运行容器')
@@ -446,6 +448,8 @@ class Verification:
         self.require(self.key, '库存检查未确定账户网络')
         self.require('postgres' in self.container_ids, '部署检查未确认数据库容器，不执行停库测试')
         baseline = self.status() if self.minor >= 3 else None
+        publishing_before = self.http('/api/v1/publishing-status') if self.minor >= 5 else None
+        queue_before = self.publishing_queue_snapshot() if self.minor >= 5 else []
         before = self.sql("SELECT COALESCE(json_agg(fact_id),'[]'::json) FROM (SELECT fact_id FROM trade_log.account_facts_current WHERE account_key='{}' ORDER BY occurred_at DESC LIMIT 5) q".format(self.key))
         try:
             self.compose('stop', '-t', '15', 'postgres', timeout=30)
@@ -453,14 +457,137 @@ class Verification:
             self.require(self.http('/api/v1/health')['status'] == 'ok', '数据库停止影响网关存活')
             if self.minor >= 3:
                 self.http('/api/v1/watch-accounts', expected=503)
+            if self.minor >= 5:
+                self.http('/api/v1/publishing-status', expected=503)
             print('[WAIT] 数据库保持停止 {} 秒'.format(self.args.fault_seconds), flush=True)
             time.sleep(self.args.fault_seconds)
         finally:
             self.compose('start', 'postgres', timeout=30)
         self.wait_restored(baseline, before)
+        if self.minor >= 5:
+            after = self.http('/api/v1/publishing-status')
+            self.require(after['activated_at'] == publishing_before['activated_at'] and after['activation_epoch'] == publishing_before['activation_epoch'], '数据库恢复改变激活边界')
+            self.publishing_queue_preserved(queue_before)
         return '停库期间业务 503、网关存活' + ('；抽样旧事实保留' if before else '；无库存样本，旧事实保留未验证') + ('，采集水位推进及错误清除' if baseline else '')
 
+    def publishing(self):
+        data = self.http('/api/v1/publishing-status')
+        self.require(data['account_key'] == self.key and data['account'] == self.account, '发布账户与采集配置不一致')
+        self.require(data['status'] in ('DISABLED', 'STARTING', 'RUNNING', 'DEGRADED', 'BLOCKED', 'STOPPED'), '发布状态未知')
+        self.require(isinstance(data['outbox'], dict) and all(type(n) is int and n >= 0 for n in data['outbox'].values()), '队列计数非法')
+        self.publishing_baseline = data
+        if not data['enabled']:
+            raise Skip('配置 publishing.enabled=false；状态接口正常，真实投递未启用')
+        self.require(data['status'] not in ('BLOCKED', 'STOPPED', 'STARTING'), '发布未正常运行：' + data['status'])
+        self.timestamp(data['activated_at'])
+        self.require(data['heartbeat_at'] and self.timestamp(data['heartbeat_at']) > dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=30), '发布心跳过旧')
+        return '状态 {}；激活代次 {}'.format(data['status'], data['activation_epoch'])
+
+    def outbox(self):
+        self.require(self.key, '尚未确定配置账户')
+        errors = self.sql("SELECT count(*) FROM trade_log.outbox_events o JOIN trade_log.account_fact_versions f USING(fact_id,revision) WHERE o.partition_key='{}' AND (o.event_id<>f.event_id OR o.payload->>'event_id'<>o.event_id OR o.payload->'fact'<>f.payload OR (o.payload->'observation'->>'transport') IS DISTINCT FROM 'WEBSOCKET' OR o.payload->'fact'->'payload'->>'copy_eligible'<>'true' OR o.payload->'fact'->'payload'->>'trigger_type'<>'USER' OR o.payload->'fact'->'payload'->>'instrument_type'<>'PERPETUAL')".format(self.key))
+        self.require(errors == 0, 'outbox 身份或候选契约不一致')
+        records = self.sql("SELECT COALESCE(json_agg(q),'[]'::json) FROM (SELECT event_id,payload,encode(wire_body,'hex') wire_body,body_sha256,status,attempts FROM trade_log.outbox_events WHERE partition_key='{}' ORDER BY created_at DESC LIMIT 100) q".format(self.key))
+        for row in records:
+            body = row['wire_body']
+            if body is not None:
+                raw = bytes.fromhex(body)
+                self.require(hashlib.sha256(raw).hexdigest() == row['body_sha256'], '发送正文摘要不一致')
+                self.require(json.loads(raw) == row['payload'], '发送正文与事件不一致')
+                self.require(row['payload']['published_at'], '缺少首次发送时间')
+            self.require(self.timestamp(row['payload']['expires_at']) >= self.timestamp(row['payload']['occurred_at']), '候选 TTL 非法')
+        self.outbox_sample = records
+        if not records:
+            raise Skip('当前账户没有候选事件；真实投递待验证，可用 --fixture-tests 验证固定行为')
+        return '候选身份、完整事实、发送正文和摘要；抽样 {} 条'.format(len(records))
+
+    def receiver_evidence(self):
+        records = getattr(self, 'outbox_sample', [])
+        delivered = [r for r in records if r['status'] == 'DELIVERED']
+        if not delivered:
+            raise Skip('没有已送达样本，不能核对接收记录')
+        target = self.sql("SELECT target_url FROM trade_log.publishing_control WHERE account_key='{}'".format(self.key))
+        if target != 'http://webhook-receiver:8080/events':
+            raise Skip('当前目标不是独立验收接收器；真实目标请提供其接收记录对账')
+        try:
+            with self.opener.open(self.args.receiver_url.rstrip('/') + '/receipts', timeout=self.args.request_timeout) as response:
+                raw = response.read(16777217)
+            self.require(len(raw) <= 16777216, '接收记录过大')
+            data = json.loads(raw)
+        except (urllib.error.URLError, TimeoutError):
+            raise Skip('验收接收器不可访问；送达结果尚未独立核对')
+        receipts = {r['event_id']: r for r in data['receipts']}
+        for row in delivered:
+            self.require(row['event_id'] in receipts, '已送达事件缺少接收记录')
+            self.require(receipts[row['event_id']]['sha256'] == row['body_sha256'], '接收正文摘要不一致')
+        return '已送达样本与接收器唯一事件及正文摘要一致'
+
+    def publishing_queue_snapshot(self):
+        return self.sql("SELECT COALESCE(json_agg(q),'[]'::json) FROM (SELECT event_id,body_sha256,payload->>'expires_at' expires_at FROM trade_log.outbox_events WHERE partition_key='{}' ORDER BY created_at DESC LIMIT 5) q".format(self.key))
+
+    def publishing_queue_preserved(self, before):
+        for row in before:
+            event_id = row['event_id'].replace("'", "''")
+            after = self.sql("SELECT json_build_object('body_sha256',body_sha256,'expires_at',payload->>'expires_at') FROM trade_log.outbox_events WHERE event_id='{}'".format(event_id))
+            self.require(after and after['expires_at'] == row['expires_at'], '旧队列事件丢失或 TTL 改变')
+            if row['body_sha256']:
+                self.require(after['body_sha256'] == row['body_sha256'], '重试改变旧事件正文')
+
+    def publishing_lifecycle(self):
+        if not self.args.lifecycle:
+            raise Skip('使用 --lifecycle 启用发布进程重启')
+        if self.results['FAIL']:
+            raise Skip('前置失败，不执行发布进程重启')
+        self.require('trade-parser-publisher' in self.container_ids, '未确认发布容器')
+        before = self.http('/api/v1/publishing-status')
+        queue = self.publishing_queue_snapshot()
+        try:
+            self.compose('stop', '-t', '30', 'trade-parser-publisher', timeout=40)
+            info = json.loads(self.command(['docker', 'inspect', self.container_ids['trade-parser-publisher']]))[0]
+            self.require(not info['State']['Running'] and info['State']['ExitCode'] == 0, '发布进程未正常退出')
+            self.http('/api/v1/publishing-status', expected=503)
+            self.require(self.http('/api/v1/health')['status'] == 'ok', '发布停止影响网关')
+            self.http('/api/v1/trade-events', {'account': self.account, 'source': 'stored', 'limit': '1'})
+        finally:
+            self.compose('start', 'trade-parser-publisher')
+        deadline = time.monotonic() + self.args.wait_seconds
+        while time.monotonic() < deadline:
+            try:
+                after = self.http('/api/v1/publishing-status')
+                self.require(after['activated_at'] == before['activated_at'] and after['activation_epoch'] == before['activation_epoch'], '重启改变激活边界')
+                self.publishing_queue_preserved(queue)
+                return '正常退出、恢复且激活边界、旧队列正文和 TTL 保留'
+            except Exception:
+                time.sleep(2)
+        raise AssertionError('发布进程恢复超时')
+
+    def fixture_tests(self):
+        if not self.args.fixture_tests:
+            raise Skip('使用 --fixture-tests 执行独立固定样本和故障场景')
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('v05_fixtures', Path(__file__).with_name('verify-v0.5-fixtures.py'))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.run()
+
+    def run_publishing(self):
+        print('v0.5 服务器验收；未启用或无真实成交记为 SKIP', flush=True)
+        self.check('基础健康、版本与信封', self.foundation)
+        self.check('Compose 运行、内部端口及挂载', self.deployment)
+        self.check('配置账户', self.choose_account)
+        self.check('发布状态和激活边界', self.publishing)
+        self.check('候选队列和固定正文', self.outbox)
+        self.check('接收端独立证据', self.receiver_evidence)
+        self.check('隔离固定样本和投递故障', self.fixture_tests)
+        self.check('发布进程重启', self.publishing_lifecycle)
+        self.check('数据库停止及恢复', self.database_fault)
+        print('结果：通过 {PASS} 项，失败 {FAIL} 项，跳过 {SKIP} 项'.format(**self.results))
+        print('结论：' + ('不通过' if self.results['FAIL'] else ('已执行项目通过；存在跳过项，非完整验收' if self.results['SKIP'] else '已执行项目通过')))
+        return 1 if self.results['FAIL'] else 0
+
     def run(self):
+        if self.minor == 5:
+            return self.run_publishing()
         print(self.args.version + ' 服务器验收；PASS/FAIL/SKIP，未覆盖项目不算通过', flush=True)
         self.check('基础健康、版本与信封', self.foundation)
         self.check('Compose 运行、内部端口及挂载', self.deployment)
@@ -493,20 +620,29 @@ class Verification:
 
 def main():
     parser = argparse.ArgumentParser(description='从项目根目录执行；使用现有容器，不构建或部署。')
-    parser.add_argument('--version', required=True, choices=['v0.1', 'v0.2', 'v0.3', 'v0.4'])
+    parser.add_argument('--version', required=True, choices=['v0.1', 'v0.2', 'v0.3', 'v0.4', 'v0.5'])
     parser.add_argument('--base-url', default='http://127.0.0.1:8080')
-    parser.add_argument('--account', help='验收账户；v0.1/v0.2 必填，v0.3/v0.4 默认读取配置账户')
+    parser.add_argument('--account', help='验收账户；v0.1/v0.2 必填，v0.3～v0.5 默认读取配置账户')
     parser.add_argument('--expected-version', help='可选精确核对，如 0.4.0；默认允许后续兼容版本')
     parser.add_argument('--live', action='store_true', help='主动查询官方来源并保存结果；v0.1 默认执行')
-    parser.add_argument('--lifecycle', action='store_true', help='停止并启动内部查询服务或采集服务，会中断对应能力')
+    parser.add_argument('--lifecycle', action='store_true', help='停止并启动对应查询、采集或发布服务，会中断对应能力')
     parser.add_argument('--database-fault', action='store_true', help='验收环境显式停库并恢复，影响全部数据库调用')
     parser.add_argument('--fault-seconds', type=int, default=15)
     parser.add_argument('--wait-seconds', type=int, default=90, help='每段采集或恢复观察上限，默认 90 秒')
     parser.add_argument('--request-timeout', type=int, default=60)
+    parser.add_argument('--fixture-tests', action='store_true', help='v0.5 独立数据库和接收器固定样本测试；会构建测试镜像')
+    parser.add_argument('--receiver-url', default='http://127.0.0.1:18080', help='v0.5 验收接收器只读查询地址')
     args = parser.parse_args()
+    if args.fixture_tests and args.version != 'v0.5':
+        parser.error('--fixture-tests 仅用于 v0.5')
     url = urllib.parse.urlsplit(args.base_url)
     if url.scheme not in ('http', 'https') or not url.netloc or url.username or url.query or url.fragment:
         parser.error('--base-url 必须是无凭证和查询参数的 HTTP(S) 地址')
+    receiver_url = urllib.parse.urlsplit(args.receiver_url)
+    if receiver_url.scheme not in ('http', 'https') or not receiver_url.netloc or receiver_url.username or receiver_url.query or receiver_url.fragment:
+        parser.error('--receiver-url 必须是无凭证和查询参数的 HTTP(S) 地址')
+    if args.version == 'v0.5' and args.live:
+        parser.error('v0.5 发布验收不使用 --live；HTTP 查询使用 v0.2～v0.4 脚本')
     if args.account and not re.fullmatch(r'0x[0-9a-fA-F]{40}', args.account):
         parser.error('--account 地址格式错误')
     if args.version in ('v0.1', 'v0.2') and not args.account:

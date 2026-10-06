@@ -1,6 +1,6 @@
 # 验收命令
 
-在服务器项目根目录，按顺序逐条执行；出现 FAIL 时先处理，再继续。v0.1、v0.2 的示例账户可替换；v0.3、v0.4 默认读取唯一配置账户。
+在服务器项目根目录，按顺序逐条执行；出现 FAIL 时先处理，再继续。v0.1、v0.2 的示例账户可替换；v0.3～v0.5 默认读取唯一配置账户。
 
 以下命令包含重启和停库测试，会短暂中断服务。
 
@@ -19,8 +19,12 @@ sh scripts/verify-v0.3.sh --live --lifecycle --database-fault --wait-seconds 180
 
 # v0.4
 sh scripts/verify-v0.4.sh --live --lifecycle --database-fault --wait-seconds 180
+
+# v0.5
+sh scripts/verify-v0.5.sh --fixture-tests --lifecycle --database-fault --wait-seconds 180
 ```
 
+- `--fixture-tests`：v0.5 独立数据库和接收器测试，首次会构建测试镜像。
 - `--account`：v0.1、v0.2 必填，指定验收账户。
 - `--live`：查询官方来源并保存结果；v0.1 默认执行。
 - `--lifecycle`：停止并重新启动对应应用服务。

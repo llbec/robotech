@@ -23,7 +23,8 @@ account-facts.workspace = true
 sqlx.workspace = true
 chrono.workspace = true
 
+reqwest.workspace = true
+
 [dev-dependencies]
 hyperliquid.workspace = true
 query-api = { path = "../../../gateway/query-api" }
-reqwest.workspace = true

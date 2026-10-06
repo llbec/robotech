@@ -17,6 +17,8 @@ pub struct Config {
     pub trade_log: Option<TradeLogConfig>,
     #[serde(default)]
     pub collector: Option<TradeLogConfig>,
+    #[serde(default)]
+    pub publisher: Option<TradeLogConfig>,
 }
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -47,10 +49,14 @@ impl Config {
             return Err(ConfigError("config_version must be 1".into()));
         }
         service_runtime::config::validate(&self.server, &self.logging).map_err(ConfigError)?;
-        for t in [self.trade_log.as_ref(), self.collector.as_ref()]
-            .into_iter()
-            .flatten()
-            .filter(|t| t.enabled)
+        for t in [
+            self.trade_log.as_ref(),
+            self.collector.as_ref(),
+            self.publisher.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|t| t.enabled)
         {
             let url = t
                 .base_url

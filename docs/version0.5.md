@@ -1,7 +1,7 @@
 # v0.5 开发文档：候选信号与 webhook 输出
 
 - 文档版本：0.5
-- 状态：设计稿，尚未实现或验收
+- 状态：已实现；本机开发验证通过，Docker 部署及真实来源投递待服务器验收
 - 更新日期：2026-10-06
 - 设计依据：[概要设计](overview-design.md)、[详细设计](detailed-design.md)、[版本路线图](roadmap.md)
 - 前置版本：[v0.4 开发文档](version0.4.md)，保留其续租并发及数据库故障恢复修复
@@ -43,7 +43,7 @@ docker compose up --build -d
 curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
 ```
 
-以上脚本和新接口属于本版待实现交付，不表示当前仓库已有。
+脚本执行增量 migration 并保留旧卷及凭证；发布默认关闭，需配置后启用。
 
 ### 3.2 查看结果
 
@@ -241,7 +241,7 @@ attempts 表示已领取的发送尝试，不表示成功送达次数。进程�
 
 trade-parser-publisher 使用详细设计中的进程名。本版先承担可靠发布职责，既有解析和事实提交仍复用 collector 的实现；不在新进程重复解析并保存第二套事实。候选策略属于 trade-log，数据库和网络实现放在 adapters，后续解析进程分离时沿用这些端口。
 
-### 7.2 新增文件（计划）
+### 7.2 新增文件
 
 | 文件 | 职责 |
 | --- | --- |
@@ -267,8 +267,11 @@ trade-parser-publisher 使用详细设计中的进程名。本版先承担可靠
 | `scripts/init-v0.5.sh` | 保留旧凭证、增量角色及 migration |
 | `scripts/verify-v0.5.sh` | 本版固定服务器验收入口 |
 | `scripts/webhook-receiver.py` | 独立验收接收器，持久化去重及可控响应 |
+| `scripts/verify-v0.5-fixtures.py`、`scripts/run-v05-fixtures.sh` | 独立测试数据库、接收器和测试镜像的执行及清理 |
+| `scripts/tests/test_verify_v05_fixtures.py` | 验证失败时仅清理本次创建资源 |
+| `docs/version0.5-acceptance.md` | 本机验证和服务器待验项目 |
 
-### 7.3 更新文件（计划）
+### 7.3 更新文件
 
 | 文件 | 修改 |
 | --- | --- |
@@ -276,20 +279,22 @@ trade-parser-publisher 使用详细设计中的进程名。本版先承担可靠
 | `crates/account-facts/src/lib.rs` | 增加标准事件信封，既有事实身份和字段不变 |
 | `services/trade-log/src/lib.rs` | 导出 publishing 模块 |
 | `services/trade-log/adapters/src/lib.rs` | 导出发布适配器与运行模块 |
+| `services/trade-log/adapters/Cargo.toml` | 将 webhook 所需 reqwest 纳入运行依赖 |
 | `services/trade-log/adapters/src/postgres/facts.rs` | 候选判定和 outbox 原子提交，兼容 HTTP 先入库 |
-| `services/trade-log/adapters/src/postgres/realtime.rs` | 成功快照边界和原观察上下文 |
-| `services/trade-log/adapters/src/websocket_runtime.rs` | 传递模式存在性及候选判定上下文 |
-| `services/trade-log/adapters/src/postgres/migration.rs` | 注册新 migration，检查版本和权限 |
+| `services/trade-log/adapters/src/postgres/mod.rs`、`migration.rs` | 导出发布数据库模块，增量 schema 校验和角色权限 |
+| `services/trade-log/adapters/tests/common/mod.rs` | 支持验收器指定独立数据库，避免创建未清理的嵌套测试库 |
 | `gateway/query-api/src/config.rs`、`src/bootstrap.rs` | 发布状态客户端配置与装配 |
-| `gateway/query-api/src/clients/mod.rs`、`src/http/handlers/mod.rs`、`src/http/mod.rs` | 模块导出及路由注册 |
+| `gateway/query-api/src/state.rs` | 保存发布状态客户端 |
+| `gateway/query-api/src/clients/mod.rs`、`src/http/handlers/mod.rs`、`src/http/router.rs` | 模块导出及路由注册 |
 | `config/query-api.toml` | 新内部发布状态服务地址及凭证文件路径 |
 | `gateway/query-api/Dockerfile` | 增加发布进程 build target |
 | `compose.yaml` | 新发布容器、凭证和 collector 配置只读挂载；验收接收器 profile |
 | `scripts/verify-version.py`、`scripts/tests/test_verify_version.py` | v0.5 检查及错误判定测试，旧版本入口保留 |
 | `docs/api.md` | 统一 webhook、状态、字段和错误契约 |
 | `docs/verify.md` | 追加 v0.5 执行命令，默认从配置读取账户 |
+| `docs/version0.5.md` | 同步实际交付文件、配置和验证状态 |
 
-文件清单是实现计划，落地时按实际模块名称修正，不能把未创建文件登记为已交付。旧版本验收入口、原数据库和证据卷直接复用；不修改 README、roadmap 或详细设计的入口。
+以上为实际新增和更新文件。原 realtime.rs、websocket_runtime.rs 直接复用；候选上下文从归档、会话和 checkpoint 在提交事务中读取，不改写消息模式。旧版本验收入口、原数据库和证据卷直接复用。
 
 ## 8. 配置与异常处理
 
@@ -301,7 +306,7 @@ config_version = 1
 [server]
 host = "0.0.0.0"
 port = 8083
-shutdown_timeout_seconds = 15
+shutdown_timeout_seconds = 25
 
 [logging]
 level = "info"
@@ -335,7 +340,7 @@ clock_skew_tolerance_seconds = 5
 
 启用时必须提供有效目标和非空凭证。默认要求 HTTPS；验收 Docker 内网接收器可显式 allow_plain_http=true。目标地址不接受用户名密码、查询参数或片段；不跟随重定向。凭证以只读单文件挂载，不提交仓库、不写事件或日志。
 
-超时须短于领取租约，关闭宽限须覆盖有界退出，TTL 不小于候选准入年龄。关闭 publishing 时允许目标为空，但状态接口及数据库版本校验仍应正常。发布角色只读事实与原始证据，写发布控制、队列和尝试；collector 获得候选判定及 outbox 入队权限，不能由发布角色改写事实或采集水位。
+领取租约须大于请求超时与数据库 statement_timeout 之和；关闭宽限须覆盖这两项，默认 25 秒，Compose stop_grace_period=30s。TTL 不小于候选准入年龄。关闭 publishing 时允许目标为空，但状态接口及数据库版本校验仍应正常。发布角色只读事实与原始证据，写发布控制、队列和尝试；collector 获得候选判定及 outbox 入队权限，不能由发布角色改写事实或采集水位。
 
 ### 8.2 异常可见性
 
@@ -372,7 +377,7 @@ clock_skew_tolerance_seconds = 5
 
 真实来源的新鲜主动成交能够追溯到 WS 原始消息、候选判定、标准事实和 webhook 接收记录；快照与回补不产生候选。接收端暂时故障、数据库故障及进程重启后队列恢复，重复交付不重复消费。实际没有新成交时，真实成交验收记为待验证，固定样本通过不能替代来源观察。
 
-所有报告区分开发测试、固定样本验收及真实来源验收。当前仅完成文档设计，本章不登记任何实现验证已通过。
+所有报告区分开发测试、固定样本验收及真实来源验收。本机开发验证及实际进程验证见 [v0.5 验证记录](version0.5-acceptance.md)。固定样本通过不替代服务器 Docker 或真实来源投递验收。
 
 ## 10. 交付、部署与手动验证
 
@@ -386,16 +391,17 @@ init-v0.5 保留已有数据库及内部服务凭证，生成缺失的发布角�
 
 ### 10.2 手动验证步骤
 
-以下命令、profile 和接收器控制接口是本版计划交付，实施时必须可直接执行。先在独立验收环境验证，不把固定样本注入生产账户。
+以下命令在服务器项目根目录执行。先在独立验收环境验证，不把固定样本注入生产账户。
 
 #### 第 1 步：启动接收器并配置
 
 ```sh
+sh scripts/init-v0.5.sh
 docker compose --profile verify-webhook up -d webhook-receiver
 curl --noproxy '*' -sS http://127.0.0.1:18080/health
 ```
 
-发布配置启用 publishing，webhook_url 填 `http://webhook-receiver:8080/events`，allow_plain_http=true；接收器和发布器挂载同一个 webhook-token。执行 init-v0.5 和 Compose 构建启动。
+发布配置启用 publishing，webhook_url 填 `http://webhook-receiver:8080/events`，allow_plain_http=true；接收器和发布器挂载同一个 webhook-token。初始化并修改发布配置后执行 `docker compose up --build -d`。
 
 **通过标准：** 发布状态 RUNNING，激活时间和账户正确，接收器健康；未迁移旧事实为候选。
 
@@ -495,7 +501,7 @@ docker compose exec -T trade-parser-publisher \
 
 ### 10.3 固定服务器验收脚本
 
-计划交付如下入口，默认从配置读取账户：
+验收入口默认从配置读取账户：
 
 ```sh
 sh scripts/verify-v0.5.sh --wait-seconds 180
@@ -515,8 +521,8 @@ fixture-tests 必须使用独立测试数据库、独立接收器和固定样本
 sh scripts/verify-v0.5.sh --lifecycle --database-fault --wait-seconds 180
 ```
 
-统一 PASS、FAIL、SKIP 和退出码；SKIP 明确区分未启用、条件不足、脚本未覆盖和缺少对账依据。脚本支持的测试参数与命令在实现时同步追加到 docs/verify.md，保持该文件简洁。本稿不修改当前尚不存在的脚本入口或登记服务器通过。
+统一 PASS、FAIL、SKIP 和退出码；SKIP 区分未启用、条件不足、未启用故障参数和缺少接收对账依据。执行命令见 [verify.md](verify.md)。fixture-tests 首次构建 verify-v05 测试镜像，需下载 Python 镜像并编译测试程序；使用当前 PostgreSQL 容器中新建的随机测试库和测试容器内独立接收器，结束后仅删除本次创建的库、容器和临时凭证。正常发布镜像不编译测试程序。
 
 ### 10.4 交付记录
 
-实施后新增 v0.5 验收记录，记录代码版本、迁移、接收器模式、激活时间、来源观察、事件及尝试 ID、失败恢复过程和未完成项目。实际 bug 按 v0.4 的七项格式记录：描述、影响、确认记录、修改逻辑、修改记录摘要、如何验证、验证记录。
+已建立 [v0.5 验证记录](version0.5-acceptance.md)，区分本机开发验证与服务器待验证项。服务器验收时补充代码版本、激活时间、来源观察、事件及尝试 ID 和失败恢复过程。实际 bug 按 v0.4 的七项格式记录：描述、影响、确认记录、修改逻辑、修改记录摘要、如何验证、验证记录。

@@ -21,6 +21,21 @@ pub async fn database() -> Postgres {
     let url = std::env::var("ROBOTECH_TEST_DATABASE_URL")
         .expect("Set ROBOTECH_TEST_DATABASE_URL to an isolated PostgreSQL administrator URL");
     let options = PgConnectOptions::from_str(&url).unwrap();
+    if std::env::var("ROBOTECH_TEST_DATABASE_EXACT").as_deref() == Ok("1") {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(8)
+            .connect_with(options)
+            .await
+            .unwrap();
+        let store = Postgres {
+            pool,
+            network: Network::Mainnet,
+            mirror: None,
+        };
+        store.migrate().await.unwrap();
+        store.check_schema().await.unwrap();
+        return store;
+    }
     let mut admin = PgConnection::connect_with(&options).await.unwrap();
     let name = format!("robotech_test_{}", uuid::Uuid::new_v4().simple());
     sqlx::query(&format!("CREATE DATABASE {name}"))

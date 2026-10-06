@@ -11,6 +11,10 @@ pub fn build(state: AppState) -> Router {
             "/api/v1/watch-accounts",
             get(handlers::watch_accounts::handle),
         )
+        .route(
+            "/api/v1/publishing-status",
+            get(handlers::publishing::handle),
+        )
         .fallback(error::not_found)
         .method_not_allowed_fallback(error::method_not_allowed)
         .layer(middleware::from_fn(trace_request))

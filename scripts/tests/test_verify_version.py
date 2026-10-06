@@ -131,6 +131,39 @@ class AcceptanceTests(unittest.TestCase):
         self.assertIn('[SKIP]', output.getvalue())
         self.assertIn('结论：不通过', output.getvalue())
 
+    def test_publishing_disabled_is_skip_and_bad_account_fails(self):
+        v = verification('v0.5')
+        data = dict(account=v.account, account_key=v.key, status='DISABLED', enabled=False, outbox={})
+        v.http = lambda *a, **k: data
+        with self.assertRaises(module.Skip):
+            v.publishing()
+        data['account_key'] = 'wrong'
+        with self.assertRaisesRegex(AssertionError, '账户'):
+            v.publishing()
+
+    def test_outbox_checksum_is_checked_and_empty_is_skip(self):
+        v = verification('v0.5')
+        values = iter([0, []])
+        v.sql = lambda *a: next(values)
+        with self.assertRaises(module.Skip):
+            v.outbox()
+        values = iter([0, [dict(event_id='fact:1', wire_body='7b7d', body_sha256='bad', payload={})]])
+        v.sql = lambda *a: next(values)
+        with self.assertRaisesRegex(AssertionError, '摘要'):
+            v.outbox()
+
+    def test_publisher_failure_always_restarts(self):
+        v = verification('v0.5', lifecycle=True)
+        v.container_ids['trade-parser-publisher'] = 'test-publisher'
+        v.http = lambda *a, **k: dict(activated_at='time', activation_epoch=1)
+        commands = []
+        v.publishing_queue_snapshot = lambda: []
+        v.compose = lambda *a, **k: commands.append(a)
+        v.command = lambda *a, **k: json.dumps([{'State': {'Running': False, 'ExitCode': 4}}])
+        with self.assertRaisesRegex(AssertionError, '正常退出'):
+            v.publishing_lifecycle()
+        self.assertEqual(commands[-1], ('start', 'trade-parser-publisher'))
+
 
 if __name__ == '__main__':
     unittest.main()

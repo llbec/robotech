@@ -1,6 +1,6 @@
 services:
   query-api:
-    image: robotech/query-api:0.4.0
+    image: robotech/query-api:0.5.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -25,7 +25,7 @@ services:
     restart: "no"
 
   trade-log-query:
-    image: robotech/trade-log-query:0.4.0
+    image: robotech/trade-log-query:0.5.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -55,7 +55,7 @@ services:
     restart: "no"
 
   trade-collector:
-    image: robotech/trade-collector:0.4.0
+    image: robotech/trade-collector:0.5.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -84,8 +84,74 @@ services:
     stop_grace_period: 15s
     restart: "no"
 
+  trade-parser-publisher:
+    image: robotech/trade-parser-publisher:0.5.0
+    build:
+      context: .
+      dockerfile: gateway/query-api/Dockerfile
+      target: trade-parser-publisher
+    volumes:
+      - type: bind
+        source: ./config/trade-parser-publisher.toml
+        target: /etc/robotech/trade-parser-publisher.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./config/trade-collector.toml
+        target: /etc/robotech/trade-collector.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/trade-log-token
+        target: /run/secrets/trade-log-token
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/trade-log-publisher-database-url
+        target: /run/secrets/trade-log-publisher-database-url
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/webhook-token
+        target: /run/secrets/webhook-token
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    stop_grace_period: 30s
+    restart: "no"
+
+  webhook-receiver:
+    image: python:3.13-slim-bookworm
+    profiles: ["verify-webhook"]
+    command: ["python3", "/app/webhook-receiver.py", "--database", "/data/receipts.sqlite", "--credential-file", "/run/secrets/webhook-token"]
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - type: bind
+        source: ./scripts/webhook-receiver.py
+        target: /app/webhook-receiver.py
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./secrets/webhook-token
+        target: /run/secrets/webhook-token
+        read_only: true
+        bind:
+          create_host_path: false
+      - webhook-verification:/data
+    read_only: true
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    restart: "no"
+
   evidence-init:
-    image: robotech/trade-log-query:0.4.0
+    image: robotech/trade-log-query:0.5.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -123,7 +189,7 @@ services:
     restart: "no"
 
   trade-log-migrate:
-    image: robotech/trade-log-query:0.4.0
+    image: robotech/trade-log-query:0.5.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -149,3 +215,4 @@ services:
 volumes:
   trade-log-evidence:
   trade-log-postgres:
+  webhook-verification:

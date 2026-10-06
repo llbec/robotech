@@ -20,3 +20,9 @@ enabled = true
 base_url = "http://trade-collector:8082"
 credential_file = "/run/secrets/trade-log-token"
 request_timeout_seconds = 5
+
+[publisher]
+enabled = true
+base_url = "http://trade-parser-publisher:8083"
+credential_file = "/run/secrets/trade-log-token"
+request_timeout_seconds = 5

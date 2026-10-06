@@ -1,0 +1,7 @@
+[
+ {"name":"explicit_update","mode":"LIVE_UPDATE","flag_absent":false,"snapshot":null,"reason":"EXPLICIT_LIVE_UPDATE"},
+ {"name":"post_snapshot_unflagged","mode":"UNKNOWN","flag_absent":true,"snapshot":1,"reason":"POST_SNAPSHOT_UNFLAGGED"},
+ {"name":"snapshot","mode":"SNAPSHOT","flag_absent":false,"snapshot":null,"suppression":"SNAPSHOT"},
+ {"name":"no_boundary","mode":"UNKNOWN","flag_absent":true,"snapshot":null,"suppression":"MODE_UNCONFIRMED"},
+ {"name":"illegal_flag","mode":"UNKNOWN","flag_absent":false,"snapshot":1,"suppression":"MODE_UNCONFIRMED"}
+]

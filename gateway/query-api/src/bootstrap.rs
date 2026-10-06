@@ -62,6 +62,13 @@ pub async fn run() -> Result<(), StartupError> {
         .transpose()
         .map_err(|e| StartupError::new(2, e))?
         .flatten();
+    state.publisher = config
+        .publisher
+        .as_ref()
+        .map(crate::clients::publisher::PublisherClient::from_config)
+        .transpose()
+        .map_err(|e| StartupError::new(2, e))?
+        .flatten();
     let signal = lifecycle::shutdown_signal()
         .map_err(|e| StartupError::new(3, format!("signal initialization failed: {e}")))?;
     let address = config.server.address();

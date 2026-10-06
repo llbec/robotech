@@ -10,3 +10,5 @@ pub mod realtime;
 pub mod replay;
 pub mod stored_query;
 pub mod validation;
+
+pub mod publishing;

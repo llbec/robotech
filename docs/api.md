@@ -2,7 +2,7 @@
 
 本文是项目统一的接口说明文档，集中维护所有对外接口和内部接口。后续版本在本文件中更新接口定义，并注明新增、变更或废弃的适用版本，不另建按开发版本命名的接口文档。
 
-当前对应程序版本：0.4.0；JSON schema_version：1。接口定义依据当前代码编写。
+当前对应程序版本：0.5.0；JSON schema_version：1。接口定义依据当前代码编写。
 
 ## 1. 地址和接口列表
 
@@ -14,12 +14,15 @@
 | 对外 | GET | [/api/v1/version](#42-版本接口) | 查询网关程序版本 |
 | 对外 | GET | [/api/v1/trade-events](#43-账户近期合约成交查询) | 实时查询并保存成交；[查询已保存成交](#44-已保存成交时间查询) |
 | 对外 | GET | [/api/v1/watch-accounts](#45-自动更新状态) | 查看配置账户的自动采集状态、水位和错误 |
+| 对外 | GET | [/api/v1/publishing-status](#46-webhook-发布状态) | 查看候选输出开关、队列、心跳和错误 |
+| 输出 | POST | [配置的 webhook 地址](#47-webhook-候选事件) | 发送标准账户事实候选，接收方按 event_id 去重 |
+| 内部 | GET | [/internal/v1/publishing-status](#36-内部发布状态) | 网关读取 publisher 状态，需要服务凭证 |
 | 内部 | GET | [/internal/v1/collection-status](#35-内部自动采集状态) | 网关读取 collector 状态，需要服务凭证 |
 | 内部 | GET | [/internal/v1/health](#33-内部健康接口) | 判断交易查询进程是否存活，需要服务凭证 |
 | 内部 | POST | [/internal/v1/trade-queries](#32-内部成交查询) | 网关调用交易查询服务，需要服务凭证 |
 | 内部 | POST | [/internal/v1/stored-trade-queries](#34-内部库存查询) | 查询数据库保存的成交，需要服务凭证 |
 
-对外接口当前不要求客户端提供身份凭证。交易查询服务默认监听 8081，collector 默认监听 8082；Compose 不发布这两个端口，网关分别通过 `http://trade-log-query:8081` 和 `http://trade-collector:8082` 调用。
+对外接口当前不要求客户端提供身份凭证。交易查询服务默认监听 8081，collector 默认监听 8082，publisher 默认监听 8083；Compose 不发布这些内部端口，网关分别通过 `http://trade-log-query:8081` 和 `http://trade-collector:8082` 调用。
 
 对外 GET 接口支持 HEAD：响应不包含 JSON 正文。未定义路径返回 404；已定义路径使用不支持的方法返回 405。
 
@@ -41,7 +44,7 @@
 | --- | --- | --- |
 | data | object | 对应接口的业务数据，具体字段见后文 |
 | meta.trace_id | string | 本次 HTTP 请求的追踪 ID，用于关联网关、内部服务日志及查询证据 |
-| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.4.0 分开管理 |
+| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.5.0 分开管理 |
 
 JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与响应体中的 trace_id 相同。网关为每次外部请求生成新 trace_id，不沿用客户端传入的值。
 
@@ -111,7 +114,7 @@ GET /internal/v1/health
 没有业务参数，需要 Authorization 请求头。成功返回 200，data 格式：
 
 ```json
-{"status":"ok","service":"trade-log-query","version":"0.4.0"}
+{"status":"ok","service":"trade-log-query","version":"0.5.0"}
 ```
 
 status 表示内部进程可响应，service 为服务名，version 为程序构建版本；完整响应使用 data/meta 包装。该接口不主动检查上游来源。
@@ -143,7 +146,11 @@ account 必填；limit 为整数，可省略但不可为 null。start_time、end
 
 请求没有正文或参数，必须携带内部 Bearer 服务凭证。成功 data 与第 4.5 节相同，meta 含内部请求 trace_id 和 schema_version=1。数据库读取默认时限 3 秒，失败或超时返回 503；未授权返回 401。能读取检查点而来源采集失败时返回 200，在业务状态中说明失败。
 
-collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.4.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
+collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.5.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
+
+### 3.6 内部发布状态
+
+v0.5 新增。网关向 `http://trade-parser-publisher:8083/internal/v1/publishing-status` 发送 GET，使用第 3.1 节的服务凭证及 trace 头，无查询参数。返回第 4.6 节的 data/meta 信封。发布器也提供认证的 `/internal/v1/health`，仅判断进程存活；数据库不可读时状态接口返回 503。
 
 ## 4. 外部接口
 
@@ -204,13 +211,13 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 成功返回 200；data 格式：
 
 ```json
-{"service":"query-api","version":"0.4.0"}
+{"service":"query-api","version":"0.5.0"}
 ```
 
 | data 字段 | 类型 | 含义 |
 | --- | --- | --- |
 | service | string | 服务名 query-api |
-| version | string | 当前运行程序的构建版本，v0.4 为 0.4.0 |
+| version | string | 当前运行程序的构建版本，v0.5 为 0.5.0 |
 
 实际 HTTP 响应仍使用第 2 节的 data/meta 包装。
 
@@ -585,6 +592,71 @@ WS 数据模式 SNAPSHOT、LIVE_UPDATE、UNKNOWN 保存在采集任务和原始�
 
 未启用 collector、collector 不可访问、检查点尚未建立或数据库不可读时返回 503，不返回成功空列表。服务可读而采集失败时返回 200，status/last_error 表示业务失败。来源可能限流或截断，失败可见不等于自动补齐完整历史。
 
+### 4.6 webhook 发布状态
+
+v0.5 新增：`GET /api/v1/publishing-status`，无查询参数，从挂载的 collector 配置选择账户。用于确认发布是否启用、候选是否入队以及投递是否失败。进程不可达或数据库不可读返回 503，不能把不可用解释为空队列。
+
+```sh
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
+```
+
+返回公共 data/meta 信封，data 字段如下：
+
+| 字段 | 类型 | 意义 |
+| --- | --- | --- |
+| enabled | boolean | 持久化业务开关；停止容器不等于停用候选生成 |
+| status | string | DISABLED、STARTING、RUNNING、DEGRADED、BLOCKED 或 STOPPED |
+| account / account_key | string | 配置账户及网络分区身份 |
+| target_id | string | 目标 URL 的 SHA-256 身份，不返回地址、凭证或数据库连接串 |
+| activation_epoch / activated_at | integer / RFC3339 string | 激活代次及起点；同配置重启保持，重新启用或改变策略创建新代次 |
+| heartbeat_at | RFC3339 string/null | 发布循环心跳；超过 30 秒表示 STOPPED，仍不能证明接收端已消费 |
+| policy | object | max_event_age_seconds、signal_ttl_seconds、clock_skew_tolerance_seconds、version |
+| outbox | object | PENDING、SENDING、RETRY_WAIT、DELIVERED、BLOCKED 的计数；不存在的状态按 0 理解 |
+| oldest_pending_at | RFC3339 string/null | 未送达队列的最老创建时间，包含 BLOCKED |
+| last_published_at / last_delivered_at | RFC3339 string/null | 最近事件的首次准备发送时间及最近确认时间；重试不改首次发布时间 |
+| last_error | string/null | 脱敏错误类别，或最近仍有错误的事件原因 |
+| expired_pending | integer | 已过 expires_at、仍未送达的事件数 |
+| suppression_counts | object | 各 SUPPRESSED 原因的累计数量；保存事实不等于发布候选 |
+
+### 4.7 webhook 候选事件
+
+发布器向配置 URL 发送 JSON POST，一个请求一个事件。默认要求 HTTPS，Docker 验收内网 HTTP 必须显式设置 allow_plain_http=true。凭证来自文件，不跟随重定向。
+
+| 请求头 | 意义 |
+| --- | --- |
+| Content-Type: application/json | JSON 事件正文 |
+| Authorization: Bearer `<凭证>` | 接收方验证的共享凭证；不进入事件或日志 |
+| X-Robotech-Event-Id | 与正文 event_id 相同的稳定事件身份 |
+| X-Robotech-Delivery-Attempt | 累计领取次数；重复发送时增加，可能包含领取后未发送的尝试 |
+
+正文为标准 `AccountFactEnvelope`：
+
+| 字段 | 类型 | 意义 |
+| --- | --- | --- |
+| schema_version | integer | 当前 1 |
+| event_type | string | account.fact.v1 |
+| event_id | string | `<fact_id>:1`，复用标准事实版本身份，全链路去重键 |
+| partition_key | string | 原 account_key |
+| occurred_at | RFC3339 string | 原成交时间 |
+| received_at | RFC3339 string | 首次准入 WS 观察接收时间，不能用回补或重试时间替代 |
+| stored_at | RFC3339 string | 事务内保存候选的时间，不是精确提交时刻 |
+| published_at | RFC3339 string | 首次领取时持久化的发送准备时间；实际 webhook 请求必有此值 |
+| expires_at | RFC3339 string | occurred_at 加固定 signal_ttl_seconds，默认 60 秒；重试不延期 |
+| observation | object | transport=WEBSOCKET；query_id、session_id、message_sequence、raw_log_id、原始 message_mode、realtime_reason、publishing_policy_version |
+| fact | object | 第 4.3.4～4.3.5 节的完整标准 AccountFact；金额继续使用十进制字符串 |
+
+`observation.raw_log_id` 引用准入 WS 的来源 ID；`fact.raw_log_id` 可保留更早 HTTP 观察的来源 ID。realtime_reason 为 EXPLICIT_LIVE_UPDATE，或同会话成功快照之后字段确实缺失时的 POST_SNAPSHOT_UNFLAGGED。原 message_mode 不改写。快照、HTTP、激活前、过期、强制成交、元数据陈旧和无法确认模式的观察不生成候选。
+
+接收方应先持久化 event_id 和原文，再返回 2xx；重复 event_id 成功返回且不重复触发下游决策。首次发送持久化最终字节及摘要，重试正文完全相同。过期事件仍可交付，接收方必须检查 expires_at，不能把候选直接当作下单授权。
+
+2xx 确认送达；网络错误、408/425/429/5xx 有界退避；429/503 的 Retry-After 支持秒数或 HTTP 日期，超过 24 小时标为 BLOCKED；3xx 和其他 4xx 标为 BLOCKED。临时失败不自动丢弃。修复拒绝原因后执行：
+
+```sh
+docker compose exec -T trade-parser-publisher trade-parser-publisher retry --event-id '<实际 event_id>'
+```
+
+只允许重试本配置账户的 BLOCKED 事件，不修改目标、身份、正文或 TTL。接收成功后发送方确认失败可能重复投递，这是至少一次语义。
+
 ## 5. HTTP 状态及错误码
 
 | HTTP 状态 | code | 意义 |
@@ -611,6 +683,7 @@ WS 数据模式 SNAPSHOT、LIVE_UPDATE、UNKNOWN 保存在采集任务和原始�
 
 | 日期 | 程序版本 | 类型 | 更新内容 |
 | --- | --- | --- | --- |
+| 2026-10-06 | 0.5.0 | 新增接口 | 发布状态内部及外部接口、标准候选 webhook 信封、投递头、时效和重试契约 |
 | 2026-10-06 | 0.4.0 | 兼容扩展 | 自动状态增加 monitoring_status、websocket、recovery；HTTP 水位与 WS 接收、提交位置独立；stored 路径及 schema_version 不变 |
 | 2026-10-06 | 0.3.0 | 新增接口 | 新增单地址自动采集状态、扫描水位和错误说明；collector 内部状态及健康接口 |
 | 2026-10-05 | 0.2.0 | 新增及兼容扩展 | 实时查询增加持久化回执；新增 source=stored 时间范围及快照游标分页、内部库存查询；数据库故障明确返回 503 |
