@@ -645,3 +645,84 @@ async fn bounded_queue_overflow_closes_socket_and_http_recovers_the_missing_fill
         .unwrap()
         .unwrap();
 }
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL via ROBOTECH_TEST_DATABASE_URL"]
+async fn successful_http_scan_clears_legacy_database_block_but_not_data_conflict() {
+    let db = database().await;
+    let (c, l, session) = start(&db).await;
+    let error = trade_log::query::QueryError::unavailable("Legacy database timeout");
+    db.end_stream(&l, &c, session, &error, false).await.unwrap();
+    db.stream_subscribed(&l, session).await.unwrap();
+    let end: i64 = sqlx::query_scalar("SELECT end_ms FROM trade_log.collection_gaps LIMIT 1")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    let mut tx = db.pool.begin().await.unwrap();
+    trade_log_adapters::postgres::realtime::http_recovered(&mut tx, &l.key, end - 1)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        db.collection_status(ACCOUNT).await.unwrap().items[0].recovery["status"],
+        "BLOCKED"
+    );
+    let mut tx = db.pool.begin().await.unwrap();
+    trade_log_adapters::postgres::realtime::http_recovered(&mut tx, &l.key, end)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        db.collection_status(ACCOUNT).await.unwrap().items[0].recovery["open_gap_count"],
+        0
+    );
+    sqlx::query("UPDATE trade_log.collection_gaps SET status='BLOCKED',last_error='{\"code\":\"VERSION_CONFLICT\"}'::jsonb")
+        .execute(&db.pool).await.unwrap();
+    let mut tx = db.pool.begin().await.unwrap();
+    trade_log_adapters::postgres::realtime::http_recovered(&mut tx, &l.key, end + 1)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        db.collection_status(ACCOUNT).await.unwrap().items[0].recovery["status"],
+        "BLOCKED"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL via ROBOTECH_TEST_DATABASE_URL"]
+async fn renewal_waiting_on_http_lock_does_not_stall_http_commit() {
+    let db = database().await;
+    sqlx::query("CREATE FUNCTION delay_checkpoint_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.position IS DISTINCT FROM OLD.position THEN PERFORM pg_sleep(3); END IF; RETURN NEW; END $$")
+        .execute(&db.pool).await.unwrap();
+    sqlx::query("CREATE TRIGGER delay_commit BEFORE UPDATE ON trade_log.collection_checkpoints FOR EACH ROW EXECUTE FUNCTION delay_checkpoint_commit()")
+        .execute(&db.pool).await.unwrap();
+    let mut c = collection_config();
+    c.start_time = trade_log::collection::time(chrono::Utc::now().timestamp_millis() - 5000);
+    c.lease_seconds = 6;
+    c.round_timeout_seconds = 20;
+    c.safety_delay_seconds = 0;
+    let rt = runtime(&db, c, json!([]));
+    let cancel = CancellationToken::new();
+    let wc = cancel.clone();
+    let worker = tokio::spawn(async move { rt.run(wc).await });
+    let observed = tokio::time::timeout(Duration::from_secs(7), async {
+        loop {
+            let completed: i64 = sqlx::query_scalar("SELECT count(*) FROM trade_log.collection_jobs WHERE transport='HTTP' AND status='COMPLETED'")
+                .fetch_one(&db.pool).await.unwrap();
+            if completed > 0 { break; }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }).await;
+    cancel.cancel();
+    tokio::time::timeout(Duration::from_secs(15), worker)
+        .await
+        .unwrap()
+        .unwrap();
+    observed.expect("HTTP must commit while renewal waits for its checkpoint lock");
+    let epoch: i64 = sqlx::query_scalar("SELECT lease_epoch FROM trade_log.collection_checkpoints")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(epoch, 1);
+}

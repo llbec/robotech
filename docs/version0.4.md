@@ -550,3 +550,121 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 交付 WS 来源适配器、双通道运行监督、标准业务指纹、原始消息与会话/gap 迁移、原子提交与恢复、状态 DTO 扩展、配置、初始化脚本、必要测试及统一接口文档更新。
 
 本版不新增自动验收脚本；按本章逐步手动验证。后续 v0.5 在已保存的事实和 message_mode 基础上输出候选信号，不能把本版快照或 HTTP 回补当作新增实时交易自动发布。
+
+## 11. bug记录
+
+每个 bug 按“描述、影响、确认记录、修改逻辑、修改记录摘要、如何验证、验证记录”七项记录。开发环境验证和服务器部署验证分别记录；未完成的验证不得记为通过。
+
+### 11.1 BUG-0.4-001：租约续期等待导致采集任务暂停
+
+#### 1 描述
+
+HTTP、WebSocket 与租约续期由同一个异步监督任务驱动。旧实现进入心跳分支后直接等待数据库续期，不再轮询 HTTP 和 WebSocket。若采集事务正在持有检查点锁，续期等待该锁，而采集任务无法继续提交释放锁，可能一直等待到数据库语句超时。旧实现退出时顺序等待两条任务，也存在类似的相互等待风险。
+
+#### 2 影响
+
+可能造成 HTTP 轮次失败、WebSocket 提交超时、租约重新获取和会话重建，增加补偿延迟。故障期间的数据是否缺失，需要结合持久化证据及来源明细判断；成功恢复连接不等于历史完整。
+
+#### 3 确认记录
+
+2026-10-06 收到服务器排查结果：租约 UPDATE、HTTP 检查点 SELECT FOR UPDATE、WebSocket INSERT 多次在约 10 秒后超时；PostgreSQL 同时记录 `canceling statement due to statement timeout`。例如北京时间 2026-10-06 08:45:02，HTTP 报 `DEPENDENCY_UNAVAILABLE`，随后 WebSocket 停止。
+
+故障后的 `pg_stat_activity` 快照显示连接为 idle，blockers 为空，只能说明检查时没有阻塞，不能排除此前的瞬时等待。代码检查确认旧监督循环会暂停采集任务；回归测试用延迟提交模拟检查点锁等待。服务器上每次超时是否均由此原因造成，尚未确认。
+
+#### 4 修改逻辑
+
+把心跳续期改为独立的异步 future，与 HTTP、WebSocket 一起参与 select。续期等待数据库时，监督循环继续轮询两条采集任务。任一任务结束、续期失败或收到停止信号后，取消本轮任务，并并发等待 HTTP 和 WebSocket 退出，再释放租约。新增 `collection_lease_renewal_failed` 日志，记录租约代数和错误码。
+
+#### 5 修改记录摘要
+
+| 日期 | 文件 | 类型 | 修改摘要 |
+| --- | --- | --- | --- |
+| 2026-10-06 | `services/trade-log/adapters/src/collector_runtime.rs` | 更新 | 并发驱动续期与采集；并发等待退出；记录续期失败 |
+| 2026-10-06 | `services/trade-log/adapters/tests/websocket_chain.rs` | 更新 | 增加 `renewal_waiting_on_http_lock_does_not_stall_http_commit` 回归测试 |
+
+#### 6 如何验证
+
+开发回归测试在隔离 PostgreSQL 中安装测试触发器，让 HTTP 更新检查点时延迟 3 秒；租约为 6 秒、续期间隔为 2 秒，令续期遇到未完成的 HTTP 事务。通过标准：HTTP 在测试期限内成功提交，租约代数保持 1，程序能够正常停止。触发器只用于独立测试数据库，不在部署数据库安装。
+
+部署修复后的采集程序：
+
+```sh
+docker compose up -d --build --no-deps trade-collector
+docker compose logs -f --tail=50 trade-collector
+```
+
+另一个终端执行以下命令，等待超过一分钟后重复查询：
+
+```sh
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/watch-accounts
+docker compose logs --no-color --since=10m trade-collector \
+  | grep -E 'collection_completed|collection_failed|collection_lease_renewal_failed|websocket_stopped|statement timeout'
+```
+
+通过标准：HTTP scanned_through 和 last_success_at 继续推进；WebSocket 心跳正常；没有反复出现同类续期等待超时。继续观察原先出现间歇性错误的运行时段；短时间没有错误不能证明所有数据库问题已消除。
+
+#### 7 验证记录
+
+- 2026-10-06，开发环境：新增的并发续租回归测试通过；模拟慢提交期间 HTTP 成功完成，租约代数未增加。
+- 2026-10-06，开发环境：HTTP 采集与 WebSocket 集成测试共 13 项通过，工作区常规测试通过，Clippy（`-D warnings`）及 diff 格式检查通过。
+- 服务器部署验证：待执行，尚未收到修复后观察结果。
+
+### 11.2 BUG-0.4-002：临时数据库错误导致恢复缺口永久 BLOCKED
+
+#### 1 描述
+
+旧数据库错误映射把 `DEPENDENCY_UNAVAILABLE` 标为不可重试。WebSocket 结束处理据此把恢复缺口标为 BLOCKED。后续 HTTP 成功提交仅关闭 OPEN、SCANNING 缺口，不能解除已有的数据库错误 BLOCKED 状态。
+
+#### 2 影响
+
+临时故障可能被当作不可恢复错误，造成恢复状态长期 BLOCKED、open_gap_count 无法归零。HTTP 水位已经越过缺口目标时，状态仍可能报告阻塞。这种状态不一致不能直接证明该范围没有成交数据，也不能作为历史完整的证据。
+
+#### 3 确认记录
+
+2026-10-06 服务器检查结果：北京时间 08:06:13.073 至 08:14:00.816 的缺口为 BLOCKED，错误码 DEPENDENCY_UNAVAILABLE；HTTP 水位已到 08:44:15.813，连续失败次数为 0，但 recovery.status 仍为 BLOCKED，open_gap_count 为 1。
+
+代码检查确认：数据库错误默认 retryable=false；`end_stream` 将不可重试错误对应的缺口阻塞；`http_recovered` 的更新条件排除了 BLOCKED。
+
+#### 4 修改逻辑
+
+数据库操作错误仍映射为 DEPENDENCY_UNAVAILABLE，但设置 retryable=true，允许恢复重试。兼容已有数据：在 HTTP 事实及水位成功提交的同一事务内，允许解除错误码为 DEPENDENCY_UNAVAILABLE 的旧 BLOCKED 缺口；必须已固定 end_ms，且成功扫描水位达到该目标。
+
+VERSION_CONFLICT 等真实数据错误的 BLOCKED 缺口不自动解除。未达到目标时不关闭缺口，不通过手工修改状态宣称补偿完成。HTTP_SCANNED 仍只表示完成来源可查询范围的扫描，不承诺来源历史完整。
+
+#### 5 修改记录摘要
+
+| 日期 | 文件 | 类型 | 修改摘要 |
+| --- | --- | --- | --- |
+| 2026-10-06 | `services/trade-log/adapters/src/postgres/mod.rs` | 更新 | 数据库操作错误设置为可重试 |
+| 2026-10-06 | `services/trade-log/adapters/src/postgres/realtime.rs` | 更新 | HTTP 成功提交时兼容解除旧数据库错误 BLOCKED 缺口 |
+| 2026-10-06 | `services/trade-log/adapters/tests/websocket_chain.rs` | 更新 | 增加 `successful_http_scan_clears_legacy_database_block_but_not_data_conflict` 回归测试 |
+
+#### 6 如何验证
+
+开发测试构造旧数据库错误 BLOCKED 缺口，分别验证：水位未到目标时保持 BLOCKED；到达目标后变为 HTTP_SCANNED，open_gap_count 归零；将错误改为 VERSION_CONFLICT 后，即使水位超过目标仍保持 BLOCKED。
+
+按第 11.1 节部署后，等待一个成功 HTTP 轮次，再执行：
+
+```sh
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/watch-accounts
+docker compose exec -T postgres psql -U robotech_admin -d robotech <<'SQL'
+\pset pager off
+SET TIME ZONE 'Asia/Shanghai';
+SELECT checkpoint_key, reason, status,
+       to_timestamp(start_ms / 1000.0) AS gap_start,
+       to_timestamp(end_ms / 1000.0) AS gap_end,
+       scanned_at, last_error
+FROM trade_log.collection_gaps
+ORDER BY detected_at DESC LIMIT 10;
+SQL
+```
+
+通过标准：已有数据库错误缺口在成功扫描覆盖目标后变为 HTTP_SCANNED，scanned_at 有值、last_error 清空；没有其他待恢复缺口时 open_gap_count 为 0。真实业务冲突保持 BLOCKED。
+
+独立验收环境可继续执行第 10.2 节第 6 步，验证新的数据库故障恢复后，两通道恢复、旧记录保留、HTTP 水位推进、临时数据库错误不永久阻塞缺口。不要在生产环境为验证而停止数据库。
+
+#### 7 验证记录
+
+- 2026-10-06，开发环境：旧数据库错误缺口回归测试通过，覆盖目标之前不关闭，达到目标后关闭，VERSION_CONFLICT 仍阻塞。
+- 2026-10-06，开发环境：本次两项新增回归测试及既有 HTTP/WebSocket 集成测试共 13 项通过；工作区常规测试、Clippy 和 diff 格式检查通过。
+- 服务器旧缺口恢复及部署后故障验证：待执行。此次修复不自动回补 HTTP 配置起点之前的历史记录。

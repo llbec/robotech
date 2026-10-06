@@ -14,7 +14,9 @@ pub struct Postgres {
     pub mirror: Option<Arc<FileEvidence>>,
 }
 fn db_error(_: sqlx::Error) -> QueryError {
-    QueryError::unavailable("Trade database unavailable or operation failed")
+    let mut error = QueryError::unavailable("Trade database unavailable or operation failed");
+    error.retryable = true;
+    error
 }
 impl Postgres {
     pub async fn connect(

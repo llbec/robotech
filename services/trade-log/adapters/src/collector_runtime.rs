@@ -178,32 +178,52 @@ impl CollectorRuntime {
                             workers.cancelled().await;
                         }
                     };
-                    tokio::pin!(http, ws);
-                    let mut heartbeat = tokio::time::interval(Duration::from_secs(
-                        (self.config.lease_seconds / 3).max(1),
-                    ));
-                    heartbeat.tick().await;
-                    let mut http_done = false;
-                    let mut ws_done = false;
-                    loop {
-                        tokio::select! {
-                            biased;
-                            _=cancel.cancelled()=>break,
-                            _=&mut http=>{http_done=true;break;},
-                            _=&mut ws=>{ws_done=true;break;},
-                            _=heartbeat.tick()=>{
-                                let renewed=tokio::select! { _=cancel.cancelled()=>false,result=self.store.renew_collection(&lease,self.config.lease_seconds)=>result.is_ok() };
-                                if !renewed { break; }
+                    // Keep polling both workers while a renewal waits for a lock they
+                    // may hold. Awaiting renewal inside a select branch stalls them.
+                    let renewal = async {
+                        let mut heartbeat = tokio::time::interval(Duration::from_secs(
+                            (self.config.lease_seconds / 3).max(1),
+                        ));
+                        heartbeat.tick().await;
+                        loop {
+                            tokio::select! {
+                                _=workers.cancelled()=>break,
+                                _=heartbeat.tick()=>{}
+                            }
+                            let renewed = tokio::select! {
+                                _=workers.cancelled()=>break,
+                                result=self.store.renew_collection(&lease,self.config.lease_seconds)=>result
+                            };
+                            if let Err(e) = renewed {
+                                tracing::warn!(service="trade-collector",lease_epoch=lease.epoch,code=%e.code,"collection_lease_renewal_failed");
+                                break;
                             }
                         }
+                    };
+                    tokio::pin!(http, ws, renewal);
+                    let mut http_done = false;
+                    let mut ws_done = false;
+                    tokio::select! {
+                        _=cancel.cancelled()=>{},
+                        _=&mut http=>{http_done=true;},
+                        _=&mut ws=>{ws_done=true;},
+                        _=&mut renewal=>{}
                     }
                     workers.cancel();
-                    if !http_done {
-                        http.await;
-                    }
-                    if !ws_done {
-                        ws.await;
-                    }
+                    // Drain concurrently too: either worker may be releasing a lock
+                    // needed by the other during shutdown.
+                    tokio::join!(
+                        async {
+                            if !http_done {
+                                http.await;
+                            }
+                        },
+                        async {
+                            if !ws_done {
+                                ws.await;
+                            }
+                        }
+                    );
                 }
                 let _ = tokio::time::timeout(
                     Duration::from_secs(2),

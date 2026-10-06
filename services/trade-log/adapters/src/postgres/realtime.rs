@@ -315,7 +315,7 @@ pub async fn http_recovered(
     key: &str,
     end: i64,
 ) -> Result<(), QueryError> {
-    sqlx::query("UPDATE trade_log.collection_gaps SET status='HTTP_SCANNED',scanned_at=now(),last_error=NULL WHERE checkpoint_key=$1 AND status IN ('OPEN','SCANNING') AND end_ms IS NOT NULL AND end_ms<=$2").bind(key).bind(end).execute(&mut **tx).await.map_err(db_error)?;
+    sqlx::query("UPDATE trade_log.collection_gaps SET status='HTTP_SCANNED',scanned_at=now(),last_error=NULL WHERE checkpoint_key=$1 AND (status IN ('OPEN','SCANNING') OR (status='BLOCKED' AND last_error->>'code'='DEPENDENCY_UNAVAILABLE')) AND end_ms IS NOT NULL AND end_ms<=$2").bind(key).bind(end).execute(&mut **tx).await.map_err(db_error)?;
     refresh_recovery(tx, key).await
 }
 pub async fn refresh_recovery(tx: &mut Transaction<'_, Pg>, key: &str) -> Result<(), QueryError> {
