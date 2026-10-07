@@ -602,8 +602,14 @@ struct ChildProcess(std::process::Child);
 impl ChildProcess {
     fn stop(&mut self) {
         assert!(
-            std::process::Command::new("kill")
-                .args(["-TERM", &self.0.id().to_string()])
+            // Python is already required by the fixture receiver; slim images
+            // need not provide the external `kill` utility.
+            std::process::Command::new("python3")
+                .args([
+                    "-c",
+                    "import os, signal, sys; os.kill(int(sys.argv[1]), signal.SIGTERM)",
+                    &self.0.id().to_string(),
+                ])
                 .status()
                 .unwrap()
                 .success()
