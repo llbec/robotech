@@ -675,31 +675,43 @@ async fn executable_restart(
     let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = socket.local_addr().unwrap().port();
     drop(socket);
-    let config = include_str!("../../../../config/trade-parser-publisher.toml")
-        .replace("host = \"0.0.0.0\"", "host = \"127.0.0.1\"")
-        .replace("port = 8083", &format!("port = {port}"))
-        .replace("enabled = false", "enabled = true")
-        .replace(
-            "webhook_url = \"\"",
-            &format!("webhook_url = \"{url}/events\""),
-        )
-        .replace("allow_plain_http = false", "allow_plain_http = true")
-        .replace(
-            "/run/secrets/trade-log-token",
-            directory.join("token").to_str().unwrap(),
-        )
-        .replace(
-            "/run/secrets/webhook-token",
-            directory.join("token").to_str().unwrap(),
-        )
-        .replace(
-            "/run/secrets/trade-log-publisher-database-url",
-            directory.join("publisher-db-url").to_str().unwrap(),
-        )
-        .replace(
-            "/etc/robotech/trade-collector.toml",
-            directory.join("collector.toml").to_str().unwrap(),
-        );
+    // Fixtures must not inherit the server's account, endpoint, or credentials.
+    let config = format!(
+        r#"config_version = 1
+[server]
+host = "127.0.0.1"
+port = {port}
+shutdown_timeout_seconds = 25
+[logging]
+level = "info"
+format = "json"
+[internal]
+credential_file = {token_path:?}
+[database]
+url_file = {database_path:?}
+max_connections = 4
+connect_timeout_seconds = 5
+statement_timeout_seconds = 10
+[publishing]
+enabled = true
+collection_config_path = {collector_path:?}
+webhook_url = "{url}/events"
+credential_file = {token_path:?}
+allow_plain_http = true
+request_timeout_seconds = 10
+max_response_bytes = 65536
+lease_seconds = 30
+poll_interval_ms = 500
+retry_base_seconds = 5
+retry_max_seconds = 300
+max_event_age_seconds = 30
+signal_ttl_seconds = 60
+clock_skew_tolerance_seconds = 5
+"#,
+        token_path = directory.join("token").to_str().unwrap(),
+        database_path = directory.join("publisher-db-url").to_str().unwrap(),
+        collector_path = directory.join("collector.toml").to_str().unwrap(),
+    );
     std::fs::write(directory.join("publisher.toml"), config).unwrap();
     let spawn = || {
         ChildProcess(
