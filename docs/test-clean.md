@@ -1,6 +1,6 @@
 # 测试环境存储清理
 
-在服务器项目根目录执行，按以下顺序逐步操作。
+在服务器项目根目录执行。全部清理按第 1–5 节顺序操作；仅清理 Webhook 接收器记录时，单独执行第 6 节。
 
 **本流程会永久删除本项目全部测试数据。代码、config 和 secrets 保留。**
 
@@ -104,3 +104,33 @@ df -h
 日志轮转只限制容器输出日志。数据库、原始证据和投递记录仍会增长，后续需要单独设计保留期限和定期清理机制。
 
 命令范围参考：[Compose down](https://docs.docker.com/reference/cli/docker/compose/down/)、[容器清理](https://docs.docker.com/reference/cli/docker/container/prune/)、[镜像清理](https://docs.docker.com/reference/cli/docker/image/prune/)、[日志轮转](https://docs.docker.com/engine/logging/drivers/json-file/)。
+
+## 6. 单独清理 Webhook 接收器记录
+
+适用于测试接收器记录需要重置，或 `/receipts` 返回 `Empty reply`，且接收器日志确认存在 `sqlite3.OperationalError: disk I/O error` 的情况。先用 `df -h` 确认磁盘有可用空间；这类错误不一定意味着数据库损坏，清空是测试环境的重置操作。
+
+**此操作永久删除接收器的接收记录和推送尝试记录，不影响 PostgreSQL 中的交易、采集水位及发布队列。** 已标记为成功送达的旧信号不会自动重发，清空后无法再用接收器记录核对这些旧信号。需要保留证据时，应先停止接收器并备份其数据卷。
+
+```sh
+# 停止接收器
+docker compose --profile verify-webhook stop webhook-receiver
+
+# 删除 SQLite 数据库及相关文件
+docker compose --profile verify-webhook run --rm --no-deps \
+  webhook-receiver python3 -c \
+  'from pathlib import Path; [p.unlink() for p in Path("/data").glob("receipts.sqlite*")]'
+
+# 启动接收器，自动创建空数据库
+docker compose --profile verify-webhook up -d webhook-receiver
+
+# 查询接收记录
+curl --noproxy '*' -sS http://127.0.0.1:18080/receipts
+```
+
+尚未收到新推送时，预期返回：
+
+```json
+{"receipts":[],"attempts":[]}
+```
+
+收到新推送后，记录会重新增加。如果仍然失败，查看 `docker compose logs --tail=100 webhook-receiver`，继续检查存储问题，不要反复删除数据库。当前 `/health` 只检查 HTTP 服务存活，不能证明 SQLite 可用。
