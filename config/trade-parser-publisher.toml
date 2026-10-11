@@ -1,31 +1,66 @@
+# trade-parser-publisher.toml：运行配置；修改后重启对应服务生效。
+# 以下路径均为容器内路径；自定义路径时同步修改 compose.yaml 挂载。
+# 监听地址、端口、退出超时、日志还可通过 ROBOTECH_SERVER_HOST/PORT、ROBOTECH_SHUTDOWN_TIMEOUT_SECONDS、ROBOTECH_LOG_LEVEL/FORMAT 覆盖。
+
+# 配置格式版本，当前只支持 1；不是程序版本号。
 config_version = 1
+# 发布处理的网络：mainnet 或 testnet；须与 collector 相同，不再从 collector 配置文件读取。
 network = "mainnet"
+# HTTP 服务监听及退出
 [server]
+# 进程监听 IP；Docker 内保持 0.0.0.0。仅绑定 127.0.0.1 会导致其他容器无法访问。
 host = "0.0.0.0"
+# 进程监听端口，1–65535；修改后同步修改网关 base_url，网关端口还需同步 Compose ports。
 port = 8083
+# 优雅退出最多等待秒数，1–60；Compose stop_grace_period 应更长。 必须不小于 publishing.request_timeout_seconds 与 database.statement_timeout_seconds 之和。
 shutdown_timeout_seconds = 25
+# 日志输出
 [logging]
+# 日志级别：trace/debug/info/warn/error；日常使用 info，排障临时使用 debug。
 level = "info"
+# 日志格式：json 或 text；Docker 部署建议 json，方便检索。
 format = "json"
+# 内部接口认证
 [internal]
+# 容器内服务间认证令牌文件；由初始化脚本生成，需与网关使用同一 trade-log-token。
 credential_file = "/run/secrets/trade-log-token"
+# PostgreSQL 连接
 [database]
+# 容器内数据库连接串文件，内容为 postgresql://用户:密码@postgres:5432/robotech；使用本服务专属角色，由初始化脚本生成。
 url_file = "/run/secrets/trade-log-publisher-database-url"
+# 本进程数据库连接池上限，1–64；多账户可按负载调整，同时考虑 PostgreSQL 总连接数。
 max_connections = 4
+# 获取/建立数据库连接的超时秒数，1–60；建议保持 5。
 connect_timeout_seconds = 5
+# 数据库单条 SQL 执行超时秒数，1–120；过短可能打断写入，过长可能延迟故障恢复。
 statement_timeout_seconds = 10
+# 所有账户共用的候选发布及 webhook 投递策略
 [publishing]
+# 是否生成并投递实时跟单候选；true 前必须配置可用 webhook_url 和令牌，false 不影响成交采集入库。
 enabled = false
+# 所有账户共享的同时投递数，1–10；默认 2，按账户轮转领取，避免单账户占满。
 max_inflight = 2
+# 接收候选的完整 URL；关闭发布时可留空。正式环境填 https://你的域名/路径；本项目验收可填 http://webhook-receiver:8080/events 并开启 allow_plain_http。URL 不允许带用户名、密码、查询参数或片段。
 webhook_url = ""
+# 向接收方发送 Bearer 认证的令牌文件；接收方须验证同一令牌，初始化脚本生成 webhook-token。
 credential_file = "/run/secrets/webhook-token"
+# 是否允许非加密 HTTP；正式部署建议 false，Compose 内验收接收器使用 HTTP 时设 true。
 allow_plain_http = false
+# 一次 webhook 投递总超时秒数，1–120；失败按重试策略处理。
 request_timeout_seconds = 10
+# 读取接收方响应体的最大字节数，1024–1048576；65536 为 64 KiB，避免异常大响应占用内存。
 max_response_bytes = 65536
+# 投递任务租约秒数，不超过 7200，必须大于投递请求超时与数据库 SQL 超时之和。
 lease_seconds = 30
+# 检查账户及待投递队列的间隔毫秒数，50–60000；500 为半秒，过短会增加数据库负载。
 poll_interval_ms = 500
+# 可重试投递的初始退避秒数，大于 0 且不超过 retry_max_seconds；建议 5。
 retry_base_seconds = 5
+# 可重试投递的最大退避秒数，不超过 86400；事件到期后停止重试，不保证重试持续到此时长。
 retry_max_seconds = 300
+# 成交生成实时候选时允许的最大年龄秒数，1–3600；旧成交仍入库但不生成候选。
 max_event_age_seconds = 30
+# 候选信号有效期秒数，不小于 max_event_age_seconds 且不超过 86400；到期后不再投递。
 signal_ttl_seconds = 60
+# 允许成交时间领先本机时钟的秒数，0–60；建议 5，服务器仍需保持时间同步。
 clock_skew_tolerance_seconds = 5

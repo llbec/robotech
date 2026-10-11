@@ -1,224 +1,426 @@
+# 容器服务清单；在项目根目录执行 docker compose up --build -d 启动常驻服务。
 services:
+  # 外部 HTTP 网关；只有此业务服务映射宿主机端口。
   query-api:
+    # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
     image: robotech/query-api:0.6.0
+    # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
+      # 构建上下文为项目根目录，保持 .。
       context: .
+      # 相对于构建上下文的 Dockerfile 路径。
       dockerfile: gateway/query-api/Dockerfile
+      # Dockerfile 构建阶段名称，须对应本服务的可执行程序。
       target: query-api
+    # 宿主机端口:容器端口；左侧可改对外端口，右侧须匹配 TOML 监听端口。
     ports:
       - "8080:8080"
+    # 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
     volumes:
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./config/query-api.toml
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /etc/robotech/query-api.toml
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/trade-log-token
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/trade-log-token
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/watch-management-token
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/watch-management-token
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+    # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
     read_only: true
+    # Docker 停止容器的等待时长；应用服务应大于 TOML 的退出超时，之后会强制终止。
     stop_grace_period: 15s
+    # no 表示不自动重启，便于测试定位退出原因；需要自动恢复时可改 unless-stopped。
     restart: "no"
 
+  # 成交 live/stored 查询服务，仅供 Compose 网络内访问。
   trade-log-query:
+    # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
     image: robotech/trade-log-query:0.6.0
+    # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
+      # 构建上下文为项目根目录，保持 .。
       context: .
+      # 相对于构建上下文的 Dockerfile 路径。
       dockerfile: gateway/query-api/Dockerfile
+      # Dockerfile 构建阶段名称，须对应本服务的可执行程序。
       target: trade-log-query
+    # 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
     volumes:
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./config/trade-log.toml
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /etc/robotech/trade-log.toml
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/trade-log-token
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/trade-log-token
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/trade-log-database-url
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/trade-log-database-url
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # 证据持久卷挂载到 TOML evidence.directory，供多个服务共享。
       - trade-log-evidence:/var/lib/robotech/trade-log
+    # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
     read_only: true
+    # Docker 停止容器的等待时长；应用服务应大于 TOML 的退出超时，之后会强制终止。
     stop_grace_period: 15s
+    # no 表示不自动重启，便于测试定位退出原因；需要自动恢复时可改 unless-stopped。
     restart: "no"
 
+  # 多账户 HTTP/WS 采集服务，账户清单通过管理接口维护。
   trade-collector:
+    # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
     image: robotech/trade-collector:0.6.0
+    # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
+      # 构建上下文为项目根目录，保持 .。
       context: .
+      # 相对于构建上下文的 Dockerfile 路径。
       dockerfile: gateway/query-api/Dockerfile
+      # Dockerfile 构建阶段名称，须对应本服务的可执行程序。
       target: trade-collector
+    # 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
     volumes:
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./config/trade-collector.toml
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /etc/robotech/trade-collector.toml
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/trade-log-token
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/trade-log-token
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/trade-log-collector-database-url
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/trade-log-collector-database-url
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # 证据持久卷挂载到 TOML evidence.directory，供多个服务共享。
       - trade-log-evidence:/var/lib/robotech/trade-log
+    # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
     read_only: true
+    # Docker 停止容器的等待时长；应用服务应大于 TOML 的退出超时，之后会强制终止。
     stop_grace_period: 15s
+    # no 表示不自动重启，便于测试定位退出原因；需要自动恢复时可改 unless-stopped。
     restart: "no"
 
+  # 候选发布服务；network 在自身配置中指定，无需挂载 collector 配置。
   trade-parser-publisher:
+    # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
     image: robotech/trade-parser-publisher:0.6.0
+    # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
+      # 构建上下文为项目根目录，保持 .。
       context: .
+      # 相对于构建上下文的 Dockerfile 路径。
       dockerfile: gateway/query-api/Dockerfile
+      # Dockerfile 构建阶段名称，须对应本服务的可执行程序。
       target: trade-parser-publisher
+    # 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
     volumes:
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./config/trade-parser-publisher.toml
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /etc/robotech/trade-parser-publisher.toml
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
-        source: ./config/trade-collector.toml
-        target: /etc/robotech/trade-collector.toml
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/trade-log-token
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/trade-log-token
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/trade-log-publisher-database-url
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/trade-log-publisher-database-url
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/webhook-token
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/webhook-token
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+    # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
     read_only: true
+    # Docker 停止容器的等待时长；应用服务应大于 TOML 的退出超时，之后会强制终止。
     stop_grace_period: 30s
+    # no 表示不自动重启，便于测试定位退出原因；需要自动恢复时可改 unless-stopped。
     restart: "no"
 
+  # 可选验收接收器，不是正式对外信号服务；显式启用 verify-webhook profile。
   webhook-receiver:
+    # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
     image: python:3.13-slim-bookworm
+    # 可选服务分组；仅显式指定对应 --profile 时启动。
     profiles: ["verify-webhook"]
+    # 覆盖镜像启动参数；接收器数据库放在持久卷，迁移命令使用迁移凭证。
     command: ["python3", "/app/webhook-receiver.py", "--database", "/data/receipts.sqlite", "--credential-file", "/run/secrets/webhook-token"]
+    # 宿主机端口:容器端口；左侧可改对外端口，右侧须匹配 TOML 监听端口。
     ports:
       - "127.0.0.1:18080:8080"
+    # 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
     volumes:
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./scripts/webhook-receiver.py
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /app/webhook-receiver.py
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/webhook-token
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/webhook-token
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # 接收器记录持久保存到 /data，删除容器不会清除记录。
       - webhook-verification:/data
+    # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
     read_only: true
+    # 容器环境变量；不在此明文填写密码。
     environment:
+      # 1 禁止生成 Python 字节码，适配只读根文件系统。
       PYTHONDONTWRITEBYTECODE: "1"
+    # no 表示不自动重启，便于测试定位退出原因；需要自动恢复时可改 unless-stopped。
     restart: "no"
 
+  # 一次性证据卷权限初始化；由初始化脚本通过 init profile 执行。
   evidence-init:
+    # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
     image: robotech/trade-log-query:0.6.0
+    # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
+      # 构建上下文为项目根目录，保持 .。
       context: .
+      # 相对于构建上下文的 Dockerfile 路径。
       dockerfile: gateway/query-api/Dockerfile
+      # Dockerfile 构建阶段名称，须对应本服务的可执行程序。
       target: trade-log-query
+    # 可选服务分组；仅显式指定对应 --profile 时启动。
     profiles: ["init"]
+    # 初始化以 root 执行 chown；常驻业务服务使用镜像中的非 root 用户。
     user: "0:0"
+    # 覆盖镜像入口；此处执行一次性卷权限初始化命令。
     entrypoint: ["/bin/sh", "-c"]
+    # 覆盖镜像启动参数；接收器数据库放在持久卷，迁移命令使用迁移凭证。
     command: ["chown 10001:10001 /var/lib/robotech/trade-log && chmod 750 /var/lib/robotech/trade-log"]
+    # 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
     volumes:
+      # 证据持久卷挂载到 TOML evidence.directory，供多个服务共享。
       - trade-log-evidence:/var/lib/robotech/trade-log
+    # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
     read_only: true
+    # no 表示不自动重启，便于测试定位退出原因；需要自动恢复时可改 unless-stopped。
     restart: "no"
 
+  # 本项目 PostgreSQL；未映射宿主机端口，应用使用 postgres:5432 连接。
   postgres:
+    # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
     image: postgres:18.0-bookworm@sha256:3f55f8895c4ed50603e2fbdfc72fffeeaba3173321fee5cb825bbbeb30d9d854
+    # 容器环境变量；不在此明文填写密码。
     environment:
+      # 首次创建空数据库卷时使用的管理员用户名；已有卷修改此值不会重建用户。
       POSTGRES_USER: robotech_admin
+      # 首次初始化的数据库名；修改时同步数据库连接串和初始化脚本。
       POSTGRES_DB: robotech
+      # 管理员密码的容器内文件路径；由 secrets/postgres-password 挂载。
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+      # PostgreSQL 18 数据目录，位于持久卷内；保持与当前镜像目录布局一致。
       PGDATA: /var/lib/postgresql/18/docker
+    # 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
     volumes:
+      # PostgreSQL 18 持久卷挂载到父目录，保留数据库及 WAL。
       - trade-log-postgres:/var/lib/postgresql
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/postgres-password
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/postgres-password
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+    # 数据库存活探测；初始化脚本等待 healthy 后再迁移。
     healthcheck:
+      # 执行 pg_isready 检查服务是否接受连接，不检查业务表和查询结果。
       test: ["CMD-SHELL", "pg_isready -U robotech_admin -d robotech"]
+      # 健康检查间隔；2s 表示每两秒检查一次。
       interval: 2s
+      # 单次健康检查超时。
       timeout: 3s
+      # 连续失败次数达到此值时标记 unhealthy。
       retries: 30
+    # Docker 停止容器的等待时长；应用服务应大于 TOML 的退出超时，之后会强制终止。
     stop_grace_period: 15s
+    # no 表示不自动重启，便于测试定位退出原因；需要自动恢复时可改 unless-stopped。
     restart: "no"
 
+  # 一次性增量数据库迁移；由初始化脚本通过 init profile 执行。
   trade-log-migrate:
+    # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
     image: robotech/trade-log-query:0.6.0
+    # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
+      # 构建上下文为项目根目录，保持 .。
       context: .
+      # 相对于构建上下文的 Dockerfile 路径。
       dockerfile: gateway/query-api/Dockerfile
+      # Dockerfile 构建阶段名称，须对应本服务的可执行程序。
       target: trade-log-query
+    # 可选服务分组；仅显式指定对应 --profile 时启动。
     profiles: ["init"]
+    # 覆盖镜像启动参数；接收器数据库放在持久卷，迁移命令使用迁移凭证。
     command: ["--config", "/etc/robotech/trade-log.toml", "migrate"]
+    # 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
     volumes:
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./config/trade-log.toml
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /etc/robotech/trade-log.toml
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+      # bind 表示挂载宿主机文件；下方 source/target 分别是宿主机和容器路径。
       - type: bind
+        # 宿主机文件路径，相对于项目目录；凭证由初始化脚本生成。
         source: ./secrets/trade-log-migration-url
+        # 容器内文件路径；文件挂载须匹配 TOML 或启动命令引用的路径。
         target: /run/secrets/trade-log-migration-url
+        # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
         read_only: true
+        # 宿主机文件挂载策略。
         bind:
+          # false：文件缺失时直接报错，避免把缺失文件自动创建为目录。
           create_host_path: false
+    # true 禁止容器修改此挂载/自身根文件系统；命名数据卷仍可写入。
     read_only: true
+    # no 表示不自动重启，便于测试定位退出原因；需要自动恢复时可改 unless-stopped。
     restart: "no"
 
+# 挂载配置、凭证或持久化数据；bind 的宿主机文件需预先存在。
 volumes:
+  # 命名卷：原始文件证据；实际宿主机位置由 Docker 管理，通常带 Compose 项目前缀。
   trade-log-evidence:
+  # 命名卷：数据库全部业务数据及监控账户；down --volumes 会永久删除。
   trade-log-postgres:
+  # 命名卷：验收接收器 SQLite 记录；独立于业务数据库。
   webhook-verification:

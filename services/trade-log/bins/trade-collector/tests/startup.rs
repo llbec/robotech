@@ -1,15 +1,10 @@
 use std::collections::BTreeMap;
 use trade_collector::config::Config;
 fn valid() -> String {
-    include_str!("../../../../../config/trade-collector.toml")
-        .replace(
-            r#"account = """#,
-            r#"account = "0x0000000000000000000000000000000000000001""#,
-        )
-        .replace(
-            r#"start_time = """#,
-            r#"start_time = "2026-10-04T07:00:00Z""#,
-        )
+    include_str!("../../../../../config/trade-collector.toml").replace(
+        "[collection]",
+        "[collection]\naccount = \"0x0000000000000000000000000000000000000001\"\nstart_time = \"2026-10-04T07:00:00Z\"",
+    )
 }
 #[test]
 fn configuration_and_process_failure_contract() {

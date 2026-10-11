@@ -1,31 +1,60 @@
+# query-api.toml：运行配置；修改后重启对应服务生效。
+# 以下路径均为容器内路径；自定义路径时同步修改 compose.yaml 挂载。
+# 监听地址、端口、退出超时、日志还可通过 ROBOTECH_SERVER_HOST/PORT、ROBOTECH_SHUTDOWN_TIMEOUT_SECONDS、ROBOTECH_LOG_LEVEL/FORMAT 覆盖。
+
+# 配置格式版本，当前只支持 1；不是程序版本号。
 config_version = 1
 
+# HTTP 服务监听及退出
 [server]
+# 进程监听 IP；Docker 内保持 0.0.0.0。仅绑定 127.0.0.1 会导致其他容器无法访问。
 host = "0.0.0.0"
+# 进程监听端口，1–65535；修改后同步修改网关 base_url，网关端口还需同步 Compose ports。
 port = 8080
+# 优雅退出最多等待秒数，1–60；Compose stop_grace_period 应更长。
 shutdown_timeout_seconds = 10
 
+# 日志输出
 [logging]
+# 日志级别：trace/debug/info/warn/error；日常使用 info，排障临时使用 debug。
 level = "info"
+# 日志格式：json 或 text；Docker 部署建议 json，方便检索。
 format = "json"
 
+# trade_log
 [trade_log]
+# 是否启用网关到成交查询服务的调用；当前完整部署保持 true，false 时相关接口不可用。
 enabled = true
+# 成交查询服务的内部 HTTP 地址；Compose 使用服务名和容器端口，不填宿主机公网地址。
 base_url = "http://trade-log-query:8081"
+# 调用内部服务的 Bearer 令牌文件；与目标服务 internal.credential_file 使用相同令牌。
 credential_file = "/run/secrets/trade-log-token"
+# 网关等待内部服务的超时秒数，1–120；查询服务应大于其 query.timeout_seconds，状态接口建议 5。
 request_timeout_seconds = 45
 
+# collector
 [collector]
+# 是否启用网关到账户管理与采集状态服务的调用；当前完整部署保持 true，false 时相关接口不可用。
 enabled = true
+# 账户管理与采集状态服务的内部 HTTP 地址；Compose 使用服务名和容器端口，不填宿主机公网地址。
 base_url = "http://trade-collector:8082"
+# 调用内部服务的 Bearer 令牌文件；与目标服务 internal.credential_file 使用相同令牌。
 credential_file = "/run/secrets/trade-log-token"
+# 网关等待内部服务的超时秒数，1–120；查询服务应大于其 query.timeout_seconds，状态接口建议 5。
 request_timeout_seconds = 5
 
+# publisher
 [publisher]
+# 是否启用网关到候选发布状态服务的调用；当前完整部署保持 true，false 时相关接口不可用。
 enabled = true
+# 候选发布状态服务的内部 HTTP 地址；Compose 使用服务名和容器端口，不填宿主机公网地址。
 base_url = "http://trade-parser-publisher:8083"
+# 调用内部服务的 Bearer 令牌文件；与目标服务 internal.credential_file 使用相同令牌。
 credential_file = "/run/secrets/trade-log-token"
+# 网关等待内部服务的超时秒数，1–120；查询服务应大于其 query.timeout_seconds，状态接口建议 5。
 request_timeout_seconds = 5
 
+# 外部账户管理认证
 [management]
+# 账户管理写接口的独立令牌文件；客户端以 Authorization: Bearer <文件内容> 调用；不要使用服务间令牌代替。
 credential_file = "/run/secrets/watch-management-token"

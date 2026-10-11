@@ -1,33 +1,63 @@
+# trade-log.toml：运行配置；修改后重启对应服务生效。
+# 以下路径均为容器内路径；自定义路径时同步修改 compose.yaml 挂载。
+# 监听地址、端口、退出超时、日志还可通过 ROBOTECH_SERVER_HOST/PORT、ROBOTECH_SHUTDOWN_TIMEOUT_SECONDS、ROBOTECH_LOG_LEVEL/FORMAT 覆盖。
+
+# 配置格式版本，当前只支持 1；不是程序版本号。
 config_version = 1
 
+# HTTP 服务监听及退出
 [server]
+# 进程监听 IP；Docker 内保持 0.0.0.0。仅绑定 127.0.0.1 会导致其他容器无法访问。
 host = "0.0.0.0"
+# 进程监听端口，1–65535；修改后同步修改网关 base_url，网关端口还需同步 Compose ports。
 port = 8081
+# 优雅退出最多等待秒数，1–60；Compose stop_grace_period 应更长。
 shutdown_timeout_seconds = 10
 
+# 日志输出
 [logging]
+# 日志级别：trace/debug/info/warn/error；日常使用 info，排障临时使用 debug。
 level = "info"
+# 日志格式：json 或 text；Docker 部署建议 json，方便检索。
 format = "json"
 
+# Hyperliquid 来源连接
 [hyperliquid]
+# 来源网络：mainnet（正式网）或 testnet（测试网）；collector、query、publisher 应一致。
 network = "mainnet"
+# 连接官方 HTTP 服务的超时秒数，1–60；不能大于 request_timeout_seconds。
 connect_timeout_seconds = 5
+# 单次官方 HTTP 请求总超时秒数，1–60；包含连接和读取，建议保持 10。
 request_timeout_seconds = 10
 
+# 查询容量与响应保护
 [query]
+# 单轮查询处理超时秒数，1–120；网关 trade_log.request_timeout_seconds 应更长。
 timeout_seconds = 40
+# 查询进程同时处理的查询数量上限，1–64；超过容量会拒绝请求，增大前考虑数据库和来源预算。
 max_concurrency = 4
+# 单份来源 HTTP 响应体最大字节数，1024–67108864；16777216 为 16 MiB。
 max_response_bytes = 16777216
 
+# 原始文件证据存储
 [evidence]
+# 容器内原始证据文件目录；需有写权限，并与 Compose 的证据数据卷挂载路径一致。
 directory = "/var/lib/robotech/trade-log"
 
+# 内部接口认证
 [internal]
+# 容器内服务间认证令牌文件；由初始化脚本生成，需与网关使用同一 trade-log-token。
 credential_file = "/run/secrets/trade-log-token"
 
+# PostgreSQL 连接
 [database]
+# 容器内数据库连接串文件，内容为 postgresql://用户:密码@postgres:5432/robotech；使用本服务专属角色，由初始化脚本生成。
 url_file = "/run/secrets/trade-log-database-url"
+# 仅 migrate 命令使用的数据库迁移凭证文件；初始化必需，普通查询进程不读取；不要替换成业务角色凭证。
 migration_url_file = "/run/secrets/trade-log-migration-url"
+# 本进程数据库连接池上限，1–64；多账户可按负载调整，同时考虑 PostgreSQL 总连接数。
 max_connections = 8
+# 获取/建立数据库连接的超时秒数，1–60；建议保持 5。
 connect_timeout_seconds = 5
+# 数据库单条 SQL 执行超时秒数，1–120；过短可能打断写入，过长可能延迟故障恢复。
 statement_timeout_seconds = 10

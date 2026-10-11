@@ -1,71 +1,128 @@
+# trade-collector.toml：运行配置；修改后重启对应服务生效。
+# 以下路径均为容器内路径；自定义路径时同步修改 compose.yaml 挂载。
+# 监听地址、端口、退出超时、日志还可通过 ROBOTECH_SERVER_HOST/PORT、ROBOTECH_SHUTDOWN_TIMEOUT_SECONDS、ROBOTECH_LOG_LEVEL/FORMAT 覆盖。
+
+# 配置格式版本，当前只支持 1；不是程序版本号。
 config_version = 1
 
+# HTTP 服务监听及退出
 [server]
+# 进程监听 IP；Docker 内保持 0.0.0.0。仅绑定 127.0.0.1 会导致其他容器无法访问。
 host = "0.0.0.0"
+# 进程监听端口，1–65535；修改后同步修改网关 base_url，网关端口还需同步 Compose ports。
 port = 8082
+# 优雅退出最多等待秒数，1–60；Compose stop_grace_period 应更长。
 shutdown_timeout_seconds = 10
 
+# 日志输出
 [logging]
+# 日志级别：trace/debug/info/warn/error；日常使用 info，排障临时使用 debug。
 level = "info"
+# 日志格式：json 或 text；Docker 部署建议 json，方便检索。
 format = "json"
 
+# Hyperliquid 来源连接
 [hyperliquid]
+# 来源网络：mainnet（正式网）或 testnet（测试网）；collector、query、publisher 应一致。
 network = "mainnet"
+# 连接官方 HTTP 服务的超时秒数，1–60；不能大于 request_timeout_seconds。
 connect_timeout_seconds = 5
+# 单次官方 HTTP 请求总超时秒数，1–60；包含连接和读取，建议保持 10。
 request_timeout_seconds = 10
+# 采集来源单份 HTTP 响应体最大字节数，1024–67108864；16777216 为 16 MiB。
 max_response_bytes = 16777216
 
+# 原始文件证据存储
 [evidence]
+# 容器内原始证据文件目录；需有写权限，并与 Compose 的证据数据卷挂载路径一致。
 directory = "/var/lib/robotech/trade-log"
 
+# 内部接口认证
 [internal]
+# 容器内服务间认证令牌文件；由初始化脚本生成，需与网关使用同一 trade-log-token。
 credential_file = "/run/secrets/trade-log-token"
 
+# PostgreSQL 连接
 [database]
+# 容器内数据库连接串文件，内容为 postgresql://用户:密码@postgres:5432/robotech；使用本服务专属角色，由初始化脚本生成。
 url_file = "/run/secrets/trade-log-collector-database-url"
+# 本进程数据库连接池上限，1–64；多账户可按负载调整，同时考虑 PostgreSQL 总连接数。
 max_connections = 8
+# 获取/建立数据库连接的超时秒数，1–60；建议保持 5。
 connect_timeout_seconds = 5
+# 数据库单条 SQL 执行超时秒数，1–120；过短可能打断写入，过长可能延迟故障恢复。
 statement_timeout_seconds = 10
 
+# 所有账户通用 HTTP 采集策略；账户和采集起点通过管理接口设置并保存在数据库
 [collection]
-# Optional one-time legacy import. Leave both empty for API-managed startup.
-account = ""
-start_time = ""
+# 每个账户成功采集后的 HTTP 轮询间隔秒数，1–86400；实际间隔还受本轮耗时和共享预算影响。
 interval_seconds = 30
+# 每轮从水位向前重复扫描的秒数，1–86400，必须小于 max_window_seconds；用于覆盖迟到记录，重复事实自动去重。
 overlap_seconds = 60
+# 扫描终点距当前时间的安全延迟秒数，0–3600；给来源数据落地留时间。
 safety_delay_seconds = 2
+# 一次 HTTP 扫描窗口最大秒数，1–86400；积压历史分窗口补偿，不是总历史范围。
 max_window_seconds = 3600
+# 每账户每轮最多发起的来源请求数，1–1000；达到上限保留进度后后续继续，避免大窗口长期占用资源。
 max_requests_per_round = 20
+# 每账户采集轮次总超时秒数，1–3600；包含预算等待，必须小于 lease_seconds。
 round_timeout_seconds = 120
+# 账户采集租约有效秒数，1–7200，必须大于 round_timeout_seconds；运行中自动续租，避免多个 worker 重复采集。
 lease_seconds = 180
+# HTTP 采集失败重试的初始退避秒数，1–3600；与 WebSocket 重连策略独立。
 retry_base_seconds = 5
+# HTTP 采集失败重试的最大退避秒数，1–86400，不能小于 retry_base_seconds。
 retry_max_seconds = 300
 
-# Disable this section to keep the v0.3 HTTP-only behavior.
+# 每个活动账户的实时订阅及故障恢复
 [websocket]
+# 是否开启实时 WebSocket 采集；false 时仍保留 HTTP 轮询与补偿，无法产生依赖实时消息的候选。
 enabled = true
+# 一次 WebSocket 连接尝试超时秒数，1–60；包含共享连接预算等待。
 connect_timeout_seconds = 10
+# 连接成功后等待订阅确认的超时秒数，1–60；超时会关闭连接并重连。
 subscribe_timeout_seconds = 10
+# 主动发送 ping 的间隔秒数，必须大于 0；与 pong_timeout_seconds 之和必须小于 60。
 ping_interval_seconds = 20
+# 发送 ping 后等待 pong 的超时秒数，必须大于 0；超时关闭连接并触发恢复。
 pong_timeout_seconds = 10
+# WebSocket 失败重连的初始退避秒数，大于 0；建议 5，后续指数增长。
 reconnect_base_seconds = 5
+# WebSocket 重连最大退避秒数，不小于初始值且不超过 60；与 HTTP 重试间隔独立。
 reconnect_max_seconds = 60
+# 重连等待的随机抖动百分比，0–20；建议 20，避免多账户同时重连。
 reconnect_jitter_percent = 20
+# 连接稳定后重置连续退避所需秒数，60–3600；还需订阅和心跳成功，累计重连次数不清零。
 reconnect_reset_after_seconds = 60
+# 单条 WebSocket 消息最大字节数，1024–67108864；超限断开并由 HTTP 补偿。
 max_message_bytes = 16777216
+# 每账户待处理消息队列条数上限，1–4096；满队列会停止连接并记录恢复需求。
 max_pending_messages = 256
+# 每账户待处理消息字节数上限，至少 max_message_bytes，最大 268435456；33554432 为 32 MiB。
 max_pending_bytes = 33554432
+# 交易市场元数据缓存刷新间隔秒数，1–86400；建议 300，避免频繁请求来源。
 metadata_refresh_seconds = 300
+# 单条 WebSocket 消息提交处理超时秒数，1–60，必须小于采集 lease_seconds；超时触发恢复。
 commit_timeout_seconds = 10
 
+# 多账户容量与共享资源；collector 启动时同步到数据库
 [monitoring]
+# 允许同时 ACTIVE 的账户数，1–10；故障账户仍占额度，PAUSED 不占；默认 5。
 max_active_accounts = 5
+# 总登记账户上限，包含 ACTIVE 和 PAUSED；不小于活动上限且不超过 10000；默认 100。
 max_registered_accounts = 100
+# 重新读取账户清单并调整 worker 的间隔秒数，1–30；默认 2，影响添加/恢复后的生效速度。
 reconcile_interval_seconds = 2
+# worker 心跳超过此秒数视为过期，10–180；用于状态判断，默认 30。
 worker_stale_after_seconds = 30
+# 本部署 collector 和 live 查询共享的来源 HTTP 并发上限，1–10；默认 2，仍受每分钟权重预算限制。
 max_concurrent_http_requests = 2
+# 所有账户 WebSocket 队列共享内存字节上限，16777216–1073741824；67108864 为 64 MiB，不是进程总内存上限。
 max_total_pending_bytes = 67108864
 
+# 本部署共享来源限流预算；collector 与 live 查询共同使用
 [source_budget]
+# 本部署来源 HTTP 滚动一分钟权重预算，120–1200，默认 600；是请求权重而非请求次数，同 IP 其他程序需另外预留额度。
 http_weight_per_minute = 600
+# 本部署滚动一分钟 WebSocket 新连接尝试预算，1–30，默认 15；首次连接与重连均计入，不是同时在线连接数。
 websocket_connections_per_minute = 15
