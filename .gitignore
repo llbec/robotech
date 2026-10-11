@@ -60,3 +60,4 @@ build/
 # Local deployment credentials and query evidence
 /secrets/
 /var/
+__pycache__/
