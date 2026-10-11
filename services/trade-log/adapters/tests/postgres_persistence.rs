@@ -123,6 +123,7 @@ async fn migration_role_and_application_permissions() {
         pool,
         network: db.network.clone(),
         mirror: None,
+        stream_memory: None,
     };
     app_store.check_schema().await.unwrap();
     collect(&app_store, "query_role", fills(1), 100)
@@ -250,6 +251,7 @@ async fn default_migration_role_can_initialize_and_app_role_cannot_migrate() {
         pool,
         network: shared_types::Network::Mainnet,
         mirror: None,
+        stream_memory: None,
     };
     migrator.migrate().await.unwrap();
     migrator.migrate().await.unwrap();
@@ -262,6 +264,7 @@ async fn default_migration_role_can_initialize_and_app_role_cannot_migrate() {
         pool,
         network: shared_types::Network::Mainnet,
         mirror: None,
+        stream_memory: None,
     };
     app.check_schema().await.unwrap();
     collect(&app, "query_app_role", fills(1), 100)

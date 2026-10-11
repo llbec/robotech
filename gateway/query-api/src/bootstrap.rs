@@ -48,6 +48,15 @@ pub async fn run() -> Result<(), StartupError> {
     logging::init(&config.logging)
         .map_err(|e| StartupError::new(3, format!("logging initialization failed: {e}")))?;
     let mut state = AppState::new();
+    if let Some(m) = &config.management {
+        let token = std::fs::read_to_string(&m.credential_file)
+            .map_err(|_| StartupError::new(2, "Cannot read management credential"))?;
+        let token = token.trim();
+        if token.len() < 32 || !token.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return Err(StartupError::new(2, "Invalid management credential"));
+        }
+        state.management_credential = Some(std::sync::Arc::new(token.into()));
+    }
     state.trade_log = config
         .trade_log
         .as_ref()

@@ -33,6 +33,7 @@ struct Queued {
     message: StreamMessage,
     rejected: Option<QueryError>,
     _bytes: OwnedSemaphorePermit,
+    _global_bytes: Option<OwnedSemaphorePermit>,
 }
 struct Metadata {
     meta: Vec<u8>,
@@ -246,7 +247,8 @@ impl WebsocketRuntime {
                         // Both envelope and extracted fills occupy memory until the consumer finishes.
                         let length=message.body.len().saturating_add(message.fills.len());
                         let permit=bytes.clone().try_acquire_many_owned(u32::try_from(length).map_err(|_|stream_error("MESSAGE_TOO_LARGE","Message too large"))?).map_err(|_|stream_error("QUEUE_OVERFLOW","Websocket byte queue is full"))?;
-                        sender.try_send(Queued{sequence,message,rejected,_bytes:permit}).map_err(|_|stream_error("QUEUE_OVERFLOW","Websocket message queue is full"))?;
+                        let global_permit=match &self.store.stream_memory {Some(memory)=>Some(memory.clone().try_acquire_many_owned(u32::try_from(length).map_err(|_|stream_error("MESSAGE_TOO_LARGE","Message too large"))?).map_err(|_|stream_error("QUEUE_OVERFLOW","Global websocket byte queue is full"))?),None=>None};
+                        sender.try_send(Queued{sequence,message,rejected,_bytes:permit,_global_bytes:global_permit}).map_err(|_|stream_error("QUEUE_OVERFLOW","Websocket message queue is full"))?;
                         self.bounded(self.store.stream_state(l,serde_json::json!({"pending_messages":self.config.max_pending_messages-sender.capacity(),"pending_bytes":self.config.max_pending_bytes-bytes.available_permits()}))).await?;
                     }
                 }

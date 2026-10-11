@@ -43,8 +43,7 @@ pub async fn run() -> Result<(), (u8, String)> {
     };
     let env = service_runtime::config::environment().map_err(|e| (2, e))?;
     let c = crate::config::Config::load(&args.config, &env).map_err(|e| (2, e))?;
-    let (account, network) = c.account().map_err(|e| (2, e))?;
-    let key = format!("hyperliquid:{}:hyperliquid:{}", network.name(), account);
+    let network = c.network().map_err(|e| (2, e))?;
     let token = read_token(&c.internal.credential_file)?;
     let url = std::fs::read_to_string(&c.database.url_file)
         .map_err(|_| (2, "Cannot read database credential".into()))?;
@@ -78,6 +77,9 @@ pub async fn run() -> Result<(), (u8, String)> {
     .map_err(|e| (3, e.message))?;
     store.check_schema().await.map_err(|e| (3, e.message))?;
     if let Some(Command::Retry { event_id }) = args.command {
+        let key = sqlx_event_key(&store, &event_id)
+            .await
+            .map_err(|e| (3, e.message))?;
         store
             .retry_publication(&key, &event_id)
             .await
@@ -89,15 +91,21 @@ pub async fn run() -> Result<(), (u8, String)> {
         store.pool.close().await;
         return Ok(());
     }
-    store
-        .configure_publishing(
-            &key,
-            &c.publishing.webhook_url,
-            c.publishing.enabled,
-            &c.policy(),
-        )
-        .await
-        .map_err(|e| (3, format!("{}: {}", e.code, e.message)))?;
+    // Validate durable targets before accepting traffic; never silently change a destination.
+    for row in store.watch_rows().await.map_err(|e| (3, e.message))? {
+        let key = row["account_key"]
+            .as_str()
+            .ok_or_else(|| (3, "Invalid account registry".into()))?;
+        store
+            .configure_publishing(
+                key,
+                &c.publishing.webhook_url,
+                c.publishing.enabled,
+                &c.policy(),
+            )
+            .await
+            .map_err(|e| (3, format!("{}: {}", e.code, e.message)))?;
+    }
     let listener = tokio::net::TcpListener::bind(c.server.address())
         .await
         .map_err(|_| (3, "Cannot bind publisher address".into()))?;
@@ -106,14 +114,19 @@ pub async fn run() -> Result<(), (u8, String)> {
     let cancel = CancellationToken::new();
     let runtime = PublisherRuntime {
         store: store.clone(),
-        key: key.clone(),
         webhook,
         lease_seconds: c.publishing.lease_seconds,
         poll_interval_ms: c.publishing.poll_interval_ms,
         retry_base_seconds: c.publishing.retry_base_seconds,
         retry_max_seconds: c.publishing.retry_max_seconds,
     };
-    let mut worker = tokio::spawn(runtime.run(cancel.clone()));
+    let mut worker = tokio::spawn(runtime.run_multi(
+        cancel.clone(),
+        c.publishing.webhook_url.clone(),
+        c.publishing.enabled,
+        c.policy(),
+        c.publishing.max_inflight,
+    ));
     let signal_cancel = cancel.clone();
     tracing::info!(service="trade-parser-publisher",version=env!("CARGO_PKG_VERSION"),address=%c.server.address(),"server_started");
     let result = service_runtime::lifecycle::serve(
@@ -121,7 +134,7 @@ pub async fn run() -> Result<(), (u8, String)> {
         listener,
         publisher_http::router(PublisherState {
             reader: Arc::new(store.clone()),
-            account_key: key,
+            account_key: String::new(),
             credential: Arc::new(token),
         }),
         async move {
@@ -152,4 +165,11 @@ fn read_token(path: &std::path::Path) -> Result<String, (u8, String)> {
         return Err((2, "Invalid credential".into()));
     }
     Ok(s.into())
+}
+
+async fn sqlx_event_key(
+    store: &Postgres,
+    event: &str,
+) -> Result<String, trade_log::query::QueryError> {
+    store.publication_event_key(event).await
 }

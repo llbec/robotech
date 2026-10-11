@@ -2,6 +2,7 @@ use chrono::{SecondsFormat, Utc};
 
 #[derive(Clone)]
 pub struct AppState {
+    pub management_credential: Option<std::sync::Arc<String>>,
     pub publisher: Option<std::sync::Arc<crate::clients::publisher::PublisherClient>>,
     pub collector: Option<std::sync::Arc<crate::clients::collector::CollectorClient>>,
     pub started_at: String,
@@ -11,6 +12,7 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         Self {
+            management_credential: None,
             trade_log: None,
             collector: None,
             publisher: None,

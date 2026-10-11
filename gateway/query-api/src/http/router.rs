@@ -9,7 +9,15 @@ pub fn build(state: AppState) -> Router {
         .route("/api/v1/trade-events", get(handlers::trade_events::handle))
         .route(
             "/api/v1/watch-accounts",
-            get(handlers::watch_accounts::handle),
+            get(handlers::watch_accounts::handle).post(handlers::watch_accounts::add),
+        )
+        .route(
+            "/api/v1/watch-accounts/{id}",
+            get(handlers::watch_accounts::detail).delete(handlers::watch_accounts::pause),
+        )
+        .route(
+            "/api/v1/watch-accounts/{id}/resume",
+            axum::routing::post(handlers::watch_accounts::resume),
         )
         .route(
             "/api/v1/publishing-status",

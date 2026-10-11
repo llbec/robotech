@@ -10,6 +10,8 @@ pub struct ConfigError(String);
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    #[serde(default)]
+    pub management: Option<ManagementConfig>,
     pub config_version: u32,
     pub server: ServerConfig,
     pub logging: LoggingConfig,
@@ -92,4 +94,10 @@ impl Config {
 }
 pub fn environment() -> Result<BTreeMap<String, String>, ConfigError> {
     service_runtime::config::environment().map_err(ConfigError)
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ManagementConfig {
+    pub credential_file: PathBuf,
 }

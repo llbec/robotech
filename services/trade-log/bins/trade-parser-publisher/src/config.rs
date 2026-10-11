@@ -7,6 +7,8 @@ use std::{
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    #[serde(default)]
+    pub network: Option<shared_types::Network>,
     pub config_version: u32,
     pub server: ServerConfig,
     pub logging: LoggingConfig,
@@ -31,7 +33,10 @@ pub struct Database {
 #[serde(deny_unknown_fields)]
 pub struct Publishing {
     pub enabled: bool,
+    #[serde(default)]
     pub collection_config_path: PathBuf,
+    #[serde(default = "default_inflight")]
+    pub max_inflight: usize,
     pub webhook_url: String,
     pub credential_file: PathBuf,
     pub allow_plain_http: bool,
@@ -64,7 +69,8 @@ impl Config {
             || !(1..=120).contains(&c.database.statement_timeout_seconds)
             || c.database.url_file.as_os_str().is_empty()
             || c.internal.credential_file.as_os_str().is_empty()
-            || p.collection_config_path.as_os_str().is_empty()
+            || (c.network.is_none() && p.collection_config_path.as_os_str().is_empty())
+            || !(1..=10).contains(&p.max_inflight)
         {
             return Err("Invalid publisher database or credential configuration".into());
         }
@@ -100,26 +106,21 @@ impl Config {
         }
         Ok(c)
     }
-    pub fn account(&self) -> Result<(String, shared_types::Network), String> {
+    pub fn network(&self) -> Result<shared_types::Network, String> {
+        if let Some(n) = &self.network {
+            return Ok(n.clone());
+        }
         let text = std::fs::read_to_string(&self.publishing.collection_config_path)
-            .map_err(|_| "Cannot read collector configuration")?;
+            .map_err(|_| "Cannot read legacy collector configuration")?;
         let value: toml::Value =
             toml::from_str(&text).map_err(|_| "Invalid collector configuration")?;
-        let account = shared_types::account(
-            value
-                .get("collection")
-                .and_then(|v| v.get("account"))
-                .and_then(|v| v.as_str())
-                .ok_or("Collector account required")?,
-        )?;
-        let network: shared_types::Network = value
+        value
             .get("hyperliquid")
             .and_then(|v| v.get("network"))
             .ok_or("Collector network required")?
             .clone()
             .try_into()
-            .map_err(|_| "Invalid collector network")?;
-        Ok((account, network))
+            .map_err(|_| "Invalid collector network".into())
     }
     pub fn policy(&self) -> trade_log::publishing::CandidatePolicy {
         let p = &self.publishing;
@@ -142,4 +143,8 @@ impl Config {
             },
         }
     }
+}
+
+fn default_inflight() -> usize {
+    2
 }

@@ -213,7 +213,11 @@ pub async fn run() -> Result<(), StartupError> {
     let store = Arc::new(store);
     let service = Arc::new(QueryService {
         network: config.hyperliquid.network,
-        source: Arc::new(source),
+        source: Arc::new(trade_log_adapters::source_budget::BudgetSource {
+            store: store.as_ref().clone(),
+            inner: Arc::new(source),
+            concurrent: Arc::new(Semaphore::new(2)),
+        }),
         parser: Arc::new(HyperliquidParser),
         evidence: store.clone(),
     });

@@ -1,6 +1,6 @@
 services:
   query-api:
-    image: robotech/query-api:0.5.0
+    image: robotech/query-api:0.6.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -20,12 +20,18 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ./secrets/watch-management-token
+        target: /run/secrets/watch-management-token
+        read_only: true
+        bind:
+          create_host_path: false
     read_only: true
     stop_grace_period: 15s
     restart: "no"
 
   trade-log-query:
-    image: robotech/trade-log-query:0.5.0
+    image: robotech/trade-log-query:0.6.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -55,7 +61,7 @@ services:
     restart: "no"
 
   trade-collector:
-    image: robotech/trade-collector:0.5.0
+    image: robotech/trade-collector:0.6.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -85,7 +91,7 @@ services:
     restart: "no"
 
   trade-parser-publisher:
-    image: robotech/trade-parser-publisher:0.5.0
+    image: robotech/trade-parser-publisher:0.6.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -151,7 +157,7 @@ services:
     restart: "no"
 
   evidence-init:
-    image: robotech/trade-log-query:0.5.0
+    image: robotech/trade-log-query:0.6.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile
@@ -189,7 +195,7 @@ services:
     restart: "no"
 
   trade-log-migrate:
-    image: robotech/trade-log-query:0.5.0
+    image: robotech/trade-log-query:0.6.0
     build:
       context: .
       dockerfile: gateway/query-api/Dockerfile

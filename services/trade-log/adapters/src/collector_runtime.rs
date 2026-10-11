@@ -126,7 +126,7 @@ impl CollectorRuntime {
         Ok(true)
     }
     pub async fn run(&self, cancel: CancellationToken) {
-        self.supervise(cancel, None).await;
+        self.supervise(cancel, None, None).await;
     }
     pub async fn run_with_realtime(
         &self,
@@ -135,7 +135,21 @@ impl CollectorRuntime {
         source: Arc<dyn trade_log::realtime::RealtimeSource>,
     ) {
         let stream = config.enabled.then_some((config, source));
-        self.supervise(cancel, stream).await;
+        self.supervise(cancel, stream, None).await;
+    }
+    pub async fn run_owned(
+        &self,
+        cancel: CancellationToken,
+        config: trade_log::realtime::WebsocketConfig,
+        source: Arc<dyn trade_log::realtime::RealtimeSource>,
+        owner: uuid::Uuid,
+    ) {
+        self.supervise(
+            cancel,
+            config.enabled.then_some((config, source)),
+            Some(owner),
+        )
+        .await;
     }
     async fn supervise(
         &self,
@@ -144,8 +158,9 @@ impl CollectorRuntime {
             trade_log::realtime::WebsocketConfig,
             Arc<dyn trade_log::realtime::RealtimeSource>,
         )>,
+        owner: Option<uuid::Uuid>,
     ) {
-        let instance = uuid::Uuid::new_v4();
+        let instance = owner.unwrap_or_else(uuid::Uuid::new_v4);
         let reconnect_schedule = Arc::new(tokio::sync::Mutex::new(
             trade_log::realtime::ReconnectSchedule::default(),
         ));
@@ -156,6 +171,12 @@ impl CollectorRuntime {
             }
             let acquired = tokio::select! { _=cancel.cancelled()=>break, result=self.store.acquire_collection(&self.config,instance)=>result };
             if let Ok(Some(lease)) = acquired {
+                if let Some(generation) = lease.generation {
+                    let _ = self
+                        .store
+                        .watch_worker_error(&lease.key, generation, None)
+                        .await;
+                }
                 let ready = tokio::select! { _=cancel.cancelled()=>false,result=self.store.prepare_stream(&lease,&self.config,stream.is_some())=>result.is_ok() };
                 if ready {
                     let workers = cancel.child_token();
@@ -182,7 +203,7 @@ impl CollectorRuntime {
                     // may hold. Awaiting renewal inside a select branch stalls them.
                     let renewal = async {
                         let mut heartbeat = tokio::time::interval(Duration::from_secs(
-                            (self.config.lease_seconds / 3).max(1),
+                            (self.config.lease_seconds / 3).clamp(1, 5),
                         ));
                         heartbeat.tick().await;
                         loop {

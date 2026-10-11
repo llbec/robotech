@@ -28,9 +28,9 @@ connect_timeout_seconds = 5
 statement_timeout_seconds = 10
 
 [collection]
-# Fill these two values before first startup. Existing checkpoints take precedence.
-account = "<实际账户地址>"
-start_time = "<RFC3339起点>"
+# Optional one-time legacy import. Leave both empty for API-managed startup.
+account = ""
+start_time = ""
 interval_seconds = 30
 overlap_seconds = 60
 safety_delay_seconds = 2
@@ -57,3 +57,15 @@ max_pending_messages = 256
 max_pending_bytes = 33554432
 metadata_refresh_seconds = 300
 commit_timeout_seconds = 10
+
+[monitoring]
+max_active_accounts = 5
+max_registered_accounts = 100
+reconcile_interval_seconds = 2
+worker_stale_after_seconds = 30
+max_concurrent_http_requests = 2
+max_total_pending_bytes = 67108864
+
+[source_budget]
+http_weight_per_minute = 600
+websocket_connections_per_minute = 15

@@ -58,3 +58,16 @@ COPY --from=builder /out/trade-parser-publisher /app/trade-parser-publisher
 COPY scripts/webhook-receiver.py scripts/run-v05-fixtures.sh /app/
 ENV PYTHONDONTWRITEBYTECODE=1 ROBOTECH_RECEIVER_SCRIPT=/app/webhook-receiver.py ROBOTECH_TEST_DATABASE_EXACT=1 ROBOTECH_PUBLISHER_BINARY=/app/trade-parser-publisher
 ENTRYPOINT ["/bin/sh", "/app/run-v05-fixtures.sh"]
+
+FROM builder AS multi-fixture-builder
+RUN --mount=type=cache,id=robotech-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=robotech-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=robotech-cargo-target,target=/workspace/target,sharing=locked \
+    cargo test --locked --release -p trade-log-adapters --test multi_account_chain --no-run --message-format=json > /tmp/v06-fixture-build.json && \
+    v06_test_executable=$(sed -n 's/.*"executable":"\([^" ]*multi_account_chain-[^" ]*\)".*/\1/p' /tmp/v06-fixture-build.json | tail -n 1) && \
+    test -n "$v06_test_executable" && cp "$v06_test_executable" /out/multi-account-fixtures
+FROM python:3.13-slim-bookworm AS verify-v06
+COPY --from=multi-fixture-builder /out/multi-account-fixtures /app/multi-account-fixtures
+COPY scripts/run-v06-fixtures.sh /app/
+ENV PYTHONDONTWRITEBYTECODE=1 ROBOTECH_TEST_DATABASE_EXACT=1
+ENTRYPOINT ["/bin/sh", "/app/run-v06-fixtures.sh"]

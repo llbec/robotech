@@ -383,6 +383,7 @@ async fn incremental_migration_preserves_legacy_facts_and_collector_role_is_limi
         pool,
         network: shared_types::Network::Mainnet,
         mirror: None,
+        stream_memory: None,
     };
     let saved = legacy_collect(&db, "query_v02_upgrade", fills(2))
         .await
@@ -417,6 +418,7 @@ async fn incremental_migration_preserves_legacy_facts_and_collector_role_is_limi
         pool,
         network: db.network.clone(),
         mirror: None,
+        stream_memory: None,
     };
     collector.check_schema().await.unwrap();
     let c = collection_config();

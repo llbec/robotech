@@ -153,6 +153,7 @@ async fn gateway_status_authentication_and_database_fault_mapping() {
     db.acquire_collection(&c, uuid::Uuid::new_v4())
         .await
         .unwrap();
+    db.import_watch(ACCOUNT, &c.start_time).await.unwrap();
     let token = "0123456789abcdef0123456789abcdef";
     let (internal, si, hi) = serve(trade_log_adapters::collector_http::router(
         trade_log_adapters::collector_http::CollectorState {
@@ -196,11 +197,20 @@ async fn gateway_status_authentication_and_database_fault_mapping() {
     let body: serde_json::Value = r.json().await.unwrap();
     assert_eq!(body["meta"]["trace_id"], trace);
     assert_eq!(body["data"]["items"][0]["account"], ACCOUNT);
-    assert_eq!(body["data"]["items"][0]["monitoring_status"], "HTTP_ONLY");
-    assert_eq!(body["data"]["items"][0]["websocket"]["status"], "DISABLED");
-    assert_eq!(body["data"]["items"][0]["recovery"]["open_gap_count"], 0);
     assert_eq!(
-        body["data"]["items"][0]["coverage"],
+        body["data"]["items"][0]["collection"]["monitoring_status"],
+        "HTTP_ONLY"
+    );
+    assert_eq!(
+        body["data"]["items"][0]["collection"]["websocket"]["status"],
+        "DISABLED"
+    );
+    assert_eq!(
+        body["data"]["items"][0]["collection"]["recovery"]["open_gap_count"],
+        0
+    );
+    assert_eq!(
+        body["data"]["items"][0]["collection"]["coverage"],
         "SOURCE_HISTORY_NOT_VERIFIED"
     );
     assert_eq!(
@@ -210,7 +220,7 @@ async fn gateway_status_authentication_and_database_fault_mapping() {
             .await
             .unwrap()
             .status(),
-        405
+        401
     );
     db.pool.close().await;
     assert_eq!(

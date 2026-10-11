@@ -11,7 +11,7 @@ use std::{sync::Arc, time::Duration};
 use trade_log::checkpoint::CollectionStatusReader;
 #[derive(Clone)]
 pub struct CollectorState {
-    pub reader: Arc<dyn CollectionStatusReader>,
+    pub reader: Arc<crate::postgres::Postgres>,
     pub account: String,
     pub credential: Arc<String>,
 }
@@ -75,6 +75,18 @@ pub fn router(state: CollectorState) -> Router {
     Router::new()
         .route("/internal/v1/health", get(health))
         .route("/internal/v1/collection-status", get(status))
+        .route(
+            "/internal/v1/watch-accounts",
+            get(list_watch).post(add_watch),
+        )
+        .route(
+            "/internal/v1/watch-accounts/{id}",
+            get(detail_watch).delete(pause_watch),
+        )
+        .route(
+            "/internal/v1/watch-accounts/{id}/resume",
+            axum::routing::post(resume_watch),
+        )
         .fallback(not_found)
         .method_not_allowed_fallback(method_not_allowed)
         .layer(middleware::from_fn_with_state(
@@ -82,4 +94,80 @@ pub fn router(state: CollectorState) -> Router {
             authentication,
         ))
         .with_state(state)
+}
+
+fn answer(
+    result: Result<serde_json::Value, trade_log::query::QueryError>,
+    trace: String,
+    status: StatusCode,
+) -> Response {
+    match result {
+        Ok(data) => (
+            status,
+            Json(json!({"data":data,"meta":{"trace_id":trace,"schema_version":1}})),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::from_u16(e.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            Json(json!({"code":e.code,"message":e.message,"trace_id":trace})),
+        )
+            .into_response(),
+    }
+}
+async fn list_watch(
+    State(s): State<CollectorState>,
+    axum::Extension(trace): axum::Extension<String>,
+    p: Result<
+        axum::extract::Query<trade_log::watch::ListParams>,
+        axum::extract::rejection::QueryRejection,
+    >,
+) -> Response {
+    let result = match p {
+        Ok(axum::extract::Query(p)) => s.reader.watch_list(p).await,
+        Err(_) => Err(trade_log::watch::invalid("Invalid list parameters")),
+    };
+    answer(result, trace, StatusCode::OK)
+}
+async fn add_watch(
+    State(s): State<CollectorState>,
+    axum::Extension(trace): axum::Extension<String>,
+    p: Result<Json<trade_log::watch::AddAccount>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let result = match p {
+        Ok(Json(p)) => s.reader.add_watch(p).await,
+        Err(_) => Err(trade_log::watch::invalid("Invalid JSON request")),
+    };
+    answer(result, trace, StatusCode::CREATED)
+}
+async fn detail_watch(
+    State(s): State<CollectorState>,
+    axum::Extension(trace): axum::Extension<String>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    let result = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => s.reader.watch_detail(id).await,
+        Err(_) => Err(trade_log::watch::invalid("Invalid account ID")),
+    };
+    answer(result, trace, StatusCode::OK)
+}
+async fn pause_watch(
+    State(s): State<CollectorState>,
+    axum::Extension(trace): axum::Extension<String>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    change_watch(s, trace, id, false).await
+}
+async fn resume_watch(
+    State(s): State<CollectorState>,
+    axum::Extension(trace): axum::Extension<String>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Response {
+    change_watch(s, trace, id, true).await
+}
+async fn change_watch(s: CollectorState, trace: String, id: String, active: bool) -> Response {
+    let result = match uuid::Uuid::parse_str(&id) {
+        Ok(id) => s.reader.set_watch(id, active).await,
+        Err(_) => Err(trade_log::watch::invalid("Invalid account ID")),
+    };
+    answer(result, trace, StatusCode::ACCEPTED)
 }

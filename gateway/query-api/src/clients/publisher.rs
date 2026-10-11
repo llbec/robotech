@@ -1,6 +1,6 @@
 use crate::config::TradeLogConfig;
 use std::{sync::Arc, time::Duration};
-use trade_log::publishing::PublishingStatus;
+
 use trade_log::query::QueryError;
 #[derive(Clone)]
 pub struct PublisherClient {
@@ -47,15 +47,23 @@ impl PublisherClient {
             authorization,
         })))
     }
-    pub async fn status(&self, trace: &str) -> Result<PublishingStatus, QueryError> {
+    pub async fn status(
+        &self,
+        trace: &str,
+        account: Option<&str>,
+    ) -> Result<serde_json::Value, QueryError> {
         let mut response = self
             .client
             .get(&self.url)
+            .query(&account.map(|a| vec![("account", a)]).unwrap_or_default())
             .header("authorization", self.authorization.clone())
             .header("x-trace-id", trace)
             .send()
             .await
             .map_err(|_| QueryError::unavailable("Publisher unavailable or timed out"))?;
+        if response.status() == 400 {
+            return Err(trade_log::watch::invalid("Invalid publishing account"));
+        }
         if response.status() != 200 {
             return Err(QueryError::unavailable("Publisher status unavailable"));
         }
@@ -65,14 +73,14 @@ impl PublisherClient {
             .await
             .map_err(|_| QueryError::unavailable("Publisher response failed"))?
         {
-            if bytes.len() + chunk.len() > 65536 {
+            if bytes.len() + chunk.len() > 1048576 {
                 return Err(QueryError::unavailable("Publisher response too large"));
             }
             bytes.extend_from_slice(&chunk);
         }
         #[derive(serde::Deserialize)]
         struct Success {
-            data: PublishingStatus,
+            data: serde_json::Value,
         }
         serde_json::from_slice::<Success>(&bytes)
             .map(|v| v.data)

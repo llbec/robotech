@@ -357,6 +357,12 @@ async fn receipts(url: &str) -> Value {
 #[ignore = "requires isolated PostgreSQL and Python3; deterministic server acceptance suite"]
 async fn server_fixture_suite() {
     let db = database().await;
+    db.import_watch(
+        ACCOUNT,
+        &trade_log::collection::time(chrono::Utc::now().timestamp_millis()),
+    )
+    .await
+    .unwrap();
     let (_receiver, url, token) = receiver().await;
     let mut config = collection_config();
     config.lease_seconds = 120;
@@ -730,7 +736,8 @@ clock_skew_tolerance_seconds = 5
     };
     let mut process = spawn();
     let client = reqwest::Client::new();
-    let status_url = format!("http://127.0.0.1:{port}/internal/v1/publishing-status");
+    let status_url =
+        format!("http://127.0.0.1:{port}/internal/v1/publishing-status?account={ACCOUNT}");
     let baseline = wait_publisher(&client, &status_url, token).await;
     assert_eq!(baseline["data"]["status"], "RUNNING");
     send(db, l, session, 11, fresh(30), Some(false)).await;

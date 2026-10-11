@@ -12,6 +12,7 @@ pub struct Postgres {
     pub pool: PgPool,
     pub network: Network,
     pub mirror: Option<Arc<FileEvidence>>,
+    pub stream_memory: Option<Arc<tokio::sync::Semaphore>>,
 }
 fn db_error(_: sqlx::Error) -> QueryError {
     let mut error = QueryError::unavailable("Trade database unavailable or operation failed");
@@ -36,6 +37,7 @@ impl Postgres {
             pool,
             network,
             mirror: None,
+            stream_memory: None,
         })
     }
     pub async fn interrupt(&self) -> Result<(), QueryError> {
@@ -49,3 +51,6 @@ pub mod realtime;
 pub mod replay;
 
 pub mod publishing;
+
+pub mod source_budget;
+pub mod watch;

@@ -7,7 +7,9 @@ use std::collections::BTreeMap;
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CollectionConfig {
+    #[serde(default)]
     pub account: String,
+    #[serde(default)]
     pub start_time: String,
     pub interval_seconds: u64,
     pub overlap_seconds: u64,

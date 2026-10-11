@@ -1,11 +1,11 @@
 # v0.6 开发文档：多地址监控
 
 - 文档版本：0.6
-- 状态：待实现；本文定义开发和验收要求，不表示功能已交付
+- 状态：已实现，本机开发验证通过；Docker 和真实来源多账户验收待服务器执行
 - 更新日期：2026-10-11
 - 设计依据：[概要设计](overview-design.md)、[详细设计](detailed-design.md)、[版本路线图](roadmap.md)
 - 前置版本：[v0.5 开发文档](version0.5.md)
-- 实现时将接口契约补充到 [统一接口说明](api.md)，不另建版本接口文档
+- 接口契约见 [统一接口说明](api.md)，不另建版本接口文档
 
 ## 1. 版本目标
 
@@ -58,7 +58,7 @@ webhook 继续接收 v0.5 标准事件，从事件中的账户身份区分来源
 
 每个活动账户复用既有独立 WS 连接，默认 5 个活动账户，为共享 IP 上的其他调用保留余量。max_active_accounts 允许 1–10，但上限不是来源容量保证；同 IP 的其他部署、人工 live 查询和外部程序也会占用配额。
 
-collector 与 trade-log-query 的所有官方 HTTP 请求共用 PostgreSQL 中的权重预算，默认 600/分钟，硬配置上限 1200；预算是本部署的保守调度值，不声称管理同 IP 的外部程序。请求基础权重和返回条数附加权重按官方规则计算；发送前按请求可能返回的最大条数预留，成功后依据实际条数结算，失败或响应不确定时保留预留消耗。预算不足等待下个可用窗口，状态显示等待限流，不推进水位。
+collector 与 trade-log-query 的所有官方 HTTP 请求共用 PostgreSQL 中的权重预算，默认 600/分钟，硬配置上限 1200；预算是本部署的保守调度值，不声称管理同 IP 的外部程序。请求基础权重和返回条数附加权重按官方规则计算；发送前按请求可能返回的最大条数预留，成功后依据实际条数结算，失败或响应不确定时保留预留消耗。预算不足等待下个可用窗口，日志记录 source_budget_wait 及账户、传输类型，不推进水位；等待达到轮次上限时状态记录 ROUND_TIMEOUT。
 
 预算使用数据库时间、跨进程原子预留和滚动 60 秒计量，不能由进程重启清空。官方规则可能变化，权重表应集中定义并有固定测试；实现时重新核对官方说明。
 
@@ -87,7 +87,7 @@ HTTP 每个账户最多一个采集轮次，全局默认最多 2 个并发来源
 | id、account、account_key | 管理 ID、规范地址及既有统一账户身份 |
 | start_time | 首次登记时请求的历史起点，已有水位不回退 |
 | desired_state | 用户期望状态 ACTIVE 或 PAUSED |
-| observed_state | STARTING、RUNNING、DEGRADED、PAUSING、PAUSED；带观测时间 |
+| observed_state | STARTING、RUNNING、DEGRADED、PAUSED；带观测时间，PAUSED 表示旧租约已撤销，旧连接可能仍在关闭 |
 | generation | 每次有效暂停或恢复递增的管理代次 |
 | created_at、updated_at、paused_at、resumed_at | 管理时间，UTC RFC3339 |
 | last_error、last_error_at | 脱敏的账户级错误；不替代原采集错误字段 |
@@ -143,7 +143,7 @@ collector 角色可管理 watch_accounts、账户租约及共享预算，publish
 
 在同一事务中锁定账户，设置 PAUSED、递增 generation 并关闭候选准入；事实提交和候选判定取得同一账户锁并校验 generation，保证暂停边界有明确先后顺序。暂停事务之前已提交的事实和候选保留，之后旧 generation 的提交必须拒绝。
 
-调度器通知 worker 取消请求、停止 WS 消费并释放租约。暂停接口返回 202；详情达到 PAUSED 表示 worker 已退出或旧租约失效，未退出时显示 PAUSING。再次恢复可以先登记新代次，但不得同时持有两个有效 worker，旧任务始终受 generation 和 lease_epoch 双重约束。
+暂停事务立即撤销旧租约，接口返回 202 和 PAUSED；调度器随后取消请求并关闭连接。PAUSED 表示已无有效提交权限，不承诺物理连接已关闭。再次恢复不得同时持有两个有效 worker，旧任务始终受 generation 和 lease_epoch 双重约束。
 
 ### 6.4 恢复账户
 
@@ -175,7 +175,7 @@ collector 角色可管理 watch_accounts、账户租约及共享预算，publish
 
 不新增常驻容器，不按账户复制 Compose 服务。业务状态和端口位于 trade-log，数据库与网络实现位于 adapters，binary 只负责配置和装配。
 
-### 7.2 新增文件（计划）
+### 7.2 新增文件
 
 | 文件 | 职责 |
 | --- | --- |
@@ -183,40 +183,45 @@ collector 角色可管理 watch_accounts、账户租约及共享预算，publish
 | services/trade-log/src/acquisition/budget.rs | 来源预算和权重策略端口 |
 | services/trade-log/adapters/src/postgres/watch.rs | 注册、容量、代次及暂停事务 |
 | services/trade-log/adapters/src/postgres/source_budget.rs | 跨进程滚动预算预留和结算 |
+| services/trade-log/adapters/src/source_budget.rs | SourceReader/RealtimeSource 预算包装、共享 HTTP 在途槽位和取消释放 |
 | services/trade-log/adapters/src/collector_supervisor.rs | 多账户调度、任务回收及资源上限 |
 | services/trade-log/migrations/0005_multi_account_monitoring.sql | 增量表、generation、索引和角色权限 |
 | services/trade-log/tests/watch.rs | 管理状态、参数及幂等测试 |
 | services/trade-log/adapters/tests/multi_account_chain.rs | 隔离、容量竞争、暂停恢复和迁移测试 |
 | scripts/init-v0.6.sh | 增量迁移、管理凭证和旧账户导入 |
 | scripts/verify-v0.6.sh | 服务器验收入口 |
+| scripts/verify-v0.6.py | 多账户状态、持续更新、重启和停库验证 |
 | scripts/verify-v0.6-fixtures.py | 复用隔离资源方式运行多账户固定测试 |
+| scripts/run-v06-fixtures.sh | 精简测试镜像中的固定样本入口 |
+| scripts/tests/test_verify_v06_fixtures.py | 验收异常时只清理本次测试资源 |
 | docs/version0.6.md | 本开发文档 |
-| docs/version0.6-acceptance.md | 实现时建立验证记录 |
+| docs/version0.6-acceptance.md | 开发验证及服务器待验记录 |
 
-### 7.3 更新文件（计划）
+### 7.3 更新文件
 
 | 文件 | 修改 |
 | --- | --- |
 | Cargo.toml、Cargo.lock | 版本 0.6.0 和必要依赖 |
-| services/trade-log/src/lib.rs、src/acquisition/mod.rs | 导出监控与预算端口 |
+| services/trade-log/src/lib.rs、src/acquisition/mod.rs | 导出监控配置与预算权重策略 |
 | services/trade-log/adapters/src/lib.rs、src/postgres/mod.rs、src/postgres/migration.rs | 模块导出、迁移及权限 |
 | services/trade-log/adapters/src/collector_runtime.rs、src/websocket_runtime.rs | 账户级取消、预算等待及 generation 传递 |
-| services/trade-log/adapters/src/postgres/checkpoint.rs、src/postgres/realtime.rs、src/postgres/facts.rs | 提交 fencing、账户状态及暂停原子边界 |
+| services/trade-log/adapters/src/postgres/checkpoint.rs、src/postgres/realtime.rs | 提交 fencing、账户状态及暂停原子边界 |
 | services/trade-log/adapters/src/collector_http.rs | 管理、列表、详情内部接口 |
 | services/trade-log/adapters/src/publisher_runtime.rs、src/publisher_http.rs、src/postgres/publishing.rs | 多账户公平发布、控制同步及状态 |
 | services/trade-log/bins/trade-collector/src/config.rs、src/bootstrap.rs | 默认策略、容量及 supervisor 装配 |
 | services/trade-log/bins/trade-parser-publisher/src/config.rs、src/bootstrap.rs | 移除固定账户选择，装配多账户控制和调度 |
 | services/trade-log/bins/trade-log-query/src/bootstrap.rs | live 来源请求预算装配 |
-| gateway/query-api/src/config.rs、src/bootstrap.rs、src/state.rs | 管理凭证及客户端装配 |
+| gateway/query-api/Cargo.toml、src/config.rs、src/bootstrap.rs、src/state.rs | 管理凭证、恒定时间校验依赖及客户端装配 |
 | gateway/query-api/src/clients/collector.rs、src/clients/publisher.rs | 管理调用、错误码及多账户状态 |
 | gateway/query-api/src/http/handlers/watch_accounts.rs、src/http/handlers/publishing.rs、src/http/router.rs | 外部管理及状态路由 |
+| gateway/query-api/src/http/error.rs | 支持服务透传错误码 |
 | config/trade-collector.toml、config/trade-parser-publisher.toml、config/query-api.toml | 新配置、旧字段兼容和凭证引用 |
 | compose.yaml、gateway/query-api/Dockerfile | 版本、管理凭证、测试 target；保留原数据卷 |
-| scripts/verify-version.py、scripts/tests/test_verify_version.py | 多账户验收和旧版本脚本兼容 |
+| scripts/verify-version.py | 旧版本脚本读取 collection 嵌套，显式查询所选账户发布状态 |
 | services/trade-log/adapters/tests/publishing_chain.rs 及既有启动/集成测试 | 覆盖多账户后的原行为回归 |
 | docs/api.md、docs/verify.md | 实现时更新统一契约和简洁执行命令 |
 
-清单为实现计划；开发完成后核对实际新增与更新文件。旧版本验收默认读取迁移的原账户，必要时显式 --account，不因多账户列表改变而全部失效。
+以上为本版文件归属。既有测试中 Postgres 构造增加共享内存资源字段；collector 启动测试支持空账户清单，旧集成测试适配新列表结构。旧版本验收默认选择首个登记账户，必要时显式 --account；v0.6 验收读取全部账户。
 
 ## 8. 配置与异常处理
 
@@ -242,7 +247,7 @@ websocket_connections_per_minute = 15
 
 旧 collection.account/start_time 仅用于一次性导入原账户，完成后标记导入记录；重启不重新添加或恢复该账户。新部署可以没有导入账户，以空清单启动后通过接口登记。旧字段保留一个兼容周期，显式废弃，不静默改变含义。
 
-publisher 保留全局目标、策略和 enabled，新增 max_inflight=2；不再依赖 collector 配置文件选择固定账户。管理凭证配置位于 query-api 的独立 management 段，默认路径 /run/secrets/watch-management-token。
+publisher 保留全局目标、策略和 enabled，新增 max_inflight=2；顶层 network 默认为示例中的 mainnet，须与 collector/query 的来源网络一致。不再从 collector 配置选择固定账户；旧 collection_config_path 仅作为未设置 network 时读取网络的兼容路径。管理凭证配置位于 query-api 的独立 management 段，默认路径 /run/secrets/watch-management-token。
 
 ### 8.2 错误及处理
 
@@ -254,10 +259,11 @@ publisher 保留全局目标、策略和 enabled，新增 max_inflight=2；不�
 | 重复登记 | 409 WATCH_ACCOUNT_EXISTS，返回既有 ID |
 | 活动或登记容量已满 | 409 WATCH_ACCOUNT_LIMIT_REACHED，不创建半完成记录 |
 | 参数未知或试图修改原起点 | 400，拒绝未支持字段 |
-| 来源 429 或共享预算不足 | 保留水位和任务，等待并展示原因，不变为管理接口容量错误 |
+| 来源 429 或共享预算不足 | 保留水位和任务，等待；预算等待记录 source_budget_wait，来源错误保留原错误原因，不变为管理接口容量错误 |
 | 单账户异常 | 账户 DEGRADED，其他账户继续运行 |
 | 数据库故障 | 依赖该库的接口 503 DEPENDENCY_UNAVAILABLE；网关基础 health 存活 |
 | 旧代次提交 | 拒绝提交，终止旧 worker；不算来源数据已保存 |
+| 旧会话归档恢复 | 可恢复事实，候选判定记录 MONITORING_GENERATION_UNCONFIRMED；不冒充新信号 |
 | webhook 失败 | 分账户队列和错误可见，不阻塞其他账户采集或可发送事件 |
 
 ## 9. 验证与验收
@@ -291,7 +297,7 @@ publisher 保留全局目标、策略和 enabled，新增 max_inflight=2；不�
 
 升级前检查原账户水位和发布目标，升级后核对原账户仍为活动状态且数据保留。原本已关闭发布时保持关闭。回退前停止新版本写入并备份；旧程序不保证兼容多账户 schema，不提供破坏性自动降级。
 
-以下命令是实现后应交付的入口，目前尚未提供 v0.6 脚本：
+初始化会生成缺失的管理凭证，并复用原初始化流程运行当前迁移；保留旧凭证和数据卷。执行：
 
 ```sh
 sh scripts/init-v0.6.sh
@@ -365,7 +371,7 @@ docker compose start postgres
 
 通过标准：重启保留清单、暂停状态和活动账户激活边界；数据库恢复后各账户续采，outbox 保留；不重复导入、不超额启动、不把回补当新信号。
 
-### 10.3 固定服务器验收脚本（待实现）
+### 10.3 固定服务器验收脚本
 
 ```sh
 # 当前部署：检查清单、分账户状态、水位和队列
@@ -382,4 +388,4 @@ sh scripts/verify-v0.6.sh --lifecycle --database-fault --wait-seconds 180
 
 ### 10.4 交付和 bug 记录
 
-实现完成后建立 version0.6-acceptance.md，记录代码版本、测试环境、迁移结果、固定样本输出、真实账户验证和未完成项，不预填“通过”。发现 bug 时按既有七项格式记录：描述、影响、确认记录、修改逻辑、修改记录摘要、如何验证、验证记录。
+验证记录见 [version0.6-acceptance.md](version0.6-acceptance.md)，区分本机开发测试和服务器待验，不将固定样本通过记作真实来源通过。发现 bug 时按既有七项格式记录：描述、影响、确认记录、修改逻辑、修改记录摘要、如何验证、验证记录。

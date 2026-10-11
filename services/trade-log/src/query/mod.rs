@@ -67,7 +67,9 @@ impl QueryError {
     }
     pub fn status(&self) -> u16 {
         match self.code.as_str() {
-            "VALIDATION_ERROR" => 400,
+            "VALIDATION_ERROR" | "INVALID_ARGUMENT" => 400,
+            "WATCH_ACCOUNT_NOT_FOUND" => 404,
+            "WATCH_ACCOUNT_EXISTS" | "WATCH_ACCOUNT_LIMIT_REACHED" => 409,
             "INCOMPLETE_DATA" => 422,
             "RATE_LIMITED" => 429,
             "VERSION_CONFLICT" => 409,

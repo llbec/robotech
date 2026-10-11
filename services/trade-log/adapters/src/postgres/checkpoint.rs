@@ -43,23 +43,42 @@ impl Postgres {
         owner: Uuid,
     ) -> Result<Option<Lease>, QueryError> {
         let key = self.checkpoint_key(&c.account);
+        let mut tx = self.pool.begin().await.map_err(db_error)?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,6))")
+            .bind(&key)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_error)?;
+        let registered=sqlx::query("SELECT generation,desired_state FROM trade_log.watch_accounts WHERE account_key=$1 FOR UPDATE").bind(&key).fetch_optional(&mut *tx).await.map_err(db_error)?;
+        if registered
+            .as_ref()
+            .is_some_and(|r| r.get::<String, _>("desired_state") != "ACTIVE")
+        {
+            return Ok(None);
+        }
+        let generation = registered.map(|r| r.get::<i64, _>("generation"));
         let initial = trade_log::collection::start_ms(&c.start_time)?;
         sqlx::query("INSERT INTO trade_log.collection_checkpoints(chain_id,partition_key,position) VALUES($1,$2,$3) ON CONFLICT DO NOTHING")
-   .bind(format!("hyperliquid:{}",self.network.name())).bind(&key).bind(json!({"initial_start_ms":initial,"scanned_through_ms":null,"last_trade_at_ms":null})).execute(&self.pool).await.map_err(db_error)?;
+   .bind(format!("hyperliquid:{}",self.network.name())).bind(&key).bind(json!({"initial_start_ms":initial,"scanned_through_ms":null,"last_trade_at_ms":null})).execute(&mut *tx).await.map_err(db_error)?;
         let epoch:Option<i64>=sqlx::query_scalar("UPDATE trade_log.collection_checkpoints SET lease_epoch=CASE WHEN lease_owner=$2 AND lease_expires_at>now() THEN lease_epoch ELSE lease_epoch+1 END,status=CASE WHEN lease_owner=$2 AND lease_expires_at>now() THEN status ELSE 'STARTING' END,lease_owner=$2,lease_expires_at=now()+make_interval(secs=>$3),heartbeat_at=now(),updated_at=now() WHERE partition_key=$1 AND source_id='official_http' AND (lease_owner=$2 OR lease_expires_at IS NULL OR lease_expires_at<=now()) RETURNING lease_epoch")
-   .bind(&key).bind(owner).bind(c.lease_seconds as f64).fetch_optional(&self.pool).await.map_err(db_error)?;
+   .bind(&key).bind(owner).bind(c.lease_seconds as f64).fetch_optional(&mut *tx).await.map_err(db_error)?;
+        tx.commit().await.map_err(db_error)?;
         Ok(epoch.map(|epoch| Lease {
+            generation,
             key,
             owner: owner.to_string(),
             epoch,
         }))
     }
     pub async fn renew_collection(&self, l: &Lease, seconds: u64) -> Result<(), QueryError> {
+        let mut tx = self.pool.begin().await.map_err(db_error)?;
+        self.lock_watch(&mut tx, l).await?;
         let changed=sqlx::query("UPDATE trade_log.collection_checkpoints SET heartbeat_at=now(),lease_expires_at=now()+make_interval(secs=>$4),updated_at=now() WHERE partition_key=$1 AND source_id='official_http' AND lease_owner=$2 AND lease_epoch=$3 AND lease_expires_at>now()")
-   .bind(&l.key).bind(owner(l)?).bind(l.epoch).bind(seconds as f64).execute(&self.pool).await.map_err(db_error)?;
+   .bind(&l.key).bind(owner(l)?).bind(l.epoch).bind(seconds as f64).execute(&mut *tx).await.map_err(db_error)?;
         if changed.rows_affected() != 1 {
             return Err(lost());
         }
+        tx.commit().await.map_err(db_error)?;
         Ok(())
     }
     pub async fn lock_collection(
@@ -67,6 +86,7 @@ impl Postgres {
         tx: &mut Transaction<'_, Pg>,
         l: &Lease,
     ) -> Result<Value, QueryError> {
+        self.lock_watch(tx, l).await?;
         let position:Option<Value>=sqlx::query_scalar("SELECT position FROM trade_log.collection_checkpoints WHERE partition_key=$1 AND source_id='official_http' AND lease_owner=$2 AND lease_epoch=$3 AND lease_expires_at>now() FOR UPDATE")
    .bind(&l.key).bind(owner(l)?).bind(l.epoch).fetch_optional(&mut **tx).await.map_err(db_error)?;
         position.ok_or_else(lost)

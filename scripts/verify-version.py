@@ -76,6 +76,8 @@ class Verification:
         return json.loads(text.strip())
 
     def http(self, path, params=None, expected=200):
+        if path == '/api/v1/publishing-status' and self.account and self.minor <= 5:
+            params = dict(params or {}, account=self.account)
         if params:
             path += '?' + urllib.parse.urlencode(params)
         req = urllib.request.Request(self.base + path)
@@ -95,7 +97,10 @@ class Verification:
         if status == 200:
             self.require(body['meta']['schema_version'] == 1 and body['meta']['trace_id'] == trace,
                          '成功信封或 trace 不一致')
-            return body['data']
+            data = body['data']
+            if path.split('?')[0] == '/api/v1/watch-accounts' and self.minor <= 5:
+                data = dict(data, items=[dict(row['collection'], account=row['account'], network=row['network']) if 'collection' in row and row['collection'] else row for row in data['items']])
+            return data
         self.require(body.get('trace_id') == trace and isinstance(body.get('message'), str),
                      '错误信封或 trace 不一致')
         return body
@@ -146,7 +151,7 @@ class Verification:
         if self.minor >= 3:
             items = self.http('/api/v1/watch-accounts')['items']
             if not self.account:
-                self.require(len(items) == 1, '不能自动选择账户，请指定 --account')
+                self.require(items, '尚未登记监控账户')
                 self.account = items[0]['account']
             selected = [s for s in items if s['account'] == self.account]
             self.require(len(selected) == 1, '指定账户不在采集配置中')

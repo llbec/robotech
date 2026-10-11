@@ -1,3 +1,4 @@
+pub mod budget;
 use crate::query::QueryError;
 use async_trait::async_trait;
 use protocol_api::QueryKind;

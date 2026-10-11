@@ -3,10 +3,13 @@ use trade_collector::config::Config;
 fn valid() -> String {
     include_str!("../../../../../config/trade-collector.toml")
         .replace(
-            "<实际账户地址>",
-            "0x0000000000000000000000000000000000000001",
+            r#"account = """#,
+            r#"account = "0x0000000000000000000000000000000000000001""#,
         )
-        .replace("<RFC3339起点>", "2026-10-04T07:00:00Z")
+        .replace(
+            r#"start_time = """#,
+            r#"start_time = "2026-10-04T07:00:00Z""#,
+        )
 }
 #[test]
 fn configuration_and_process_failure_contract() {
@@ -31,7 +34,7 @@ fn configuration_and_process_failure_contract() {
             include_str!("../../../../../config/trade-collector.toml"),
             &BTreeMap::new()
         )
-        .is_err()
+        .is_ok()
     );
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_trade-collector"))
         .args(["--config", "/nonexistent/collector.toml"])

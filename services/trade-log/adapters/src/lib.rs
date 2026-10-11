@@ -9,3 +9,6 @@ pub mod websocket_runtime;
 pub mod publisher_http;
 pub mod publisher_runtime;
 pub mod webhook;
+
+pub mod collector_supervisor;
+pub mod source_budget;

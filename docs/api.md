@@ -2,7 +2,7 @@
 
 本文是项目统一的接口说明文档，集中维护所有对外接口和内部接口。后续版本在本文件中更新接口定义，并注明新增、变更或废弃的适用版本，不另建按开发版本命名的接口文档。
 
-当前对应程序版本：0.5.0；JSON schema_version：1。接口定义依据当前代码编写。
+当前对应程序版本：0.6.0；JSON schema_version：1。接口定义依据当前代码编写。
 
 ## 1. 地址和接口列表
 
@@ -13,7 +13,10 @@
 | 对外 | GET | [/api/v1/health](#41-网关健康接口) | 判断网关进程是否存活 |
 | 对外 | GET | [/api/v1/version](#42-版本接口) | 查询网关程序版本 |
 | 对外 | GET | [/api/v1/trade-events](#43-账户近期合约成交查询) | 实时查询并保存成交；[查询已保存成交](#44-已保存成交时间查询) |
-| 对外 | GET | [/api/v1/watch-accounts](#45-自动更新状态) | 查看配置账户的自动采集状态、水位和错误 |
+| 对外 | GET | [/api/v1/watch-accounts](#45-自动更新状态) | 分页查看监控账户及采集状态 |
+| 对外 | POST | [/api/v1/watch-accounts](#48-监控账户管理) | 添加监控，需要管理凭证 |
+| 对外 | GET/DELETE | [/api/v1/watch-accounts/{id}](#48-监控账户管理) | 查询详情或暂停；暂停需要管理凭证 |
+| 对外 | POST | [/api/v1/watch-accounts/{id}/resume](#48-监控账户管理) | 恢复监控，需要管理凭证 |
 | 对外 | GET | [/api/v1/publishing-status](#46-webhook-发布状态) | 查看候选输出开关、队列、心跳和错误 |
 | 输出 | POST | [配置的 webhook 地址](#47-webhook-候选事件) | 发送标准账户事实候选，接收方按 event_id 去重 |
 | 内部 | GET | [/internal/v1/publishing-status](#36-内部发布状态) | 网关读取 publisher 状态，需要服务凭证 |
@@ -22,7 +25,7 @@
 | 内部 | POST | [/internal/v1/trade-queries](#32-内部成交查询) | 网关调用交易查询服务，需要服务凭证 |
 | 内部 | POST | [/internal/v1/stored-trade-queries](#34-内部库存查询) | 查询数据库保存的成交，需要服务凭证 |
 
-对外接口当前不要求客户端提供身份凭证。交易查询服务默认监听 8081，collector 默认监听 8082，publisher 默认监听 8083；Compose 不发布这些内部端口，网关分别通过 `http://trade-log-query:8081` 和 `http://trade-collector:8082` 调用。
+对外读接口不要求客户端提供身份凭证；账户添加、暂停和恢复要求独立管理凭证，见第 4.8 节。交易查询服务默认监听 8081，collector 默认监听 8082，publisher 默认监听 8083；Compose 不发布这些内部端口，网关通过容器网络调用。
 
 对外 GET 接口支持 HEAD：响应不包含 JSON 正文。未定义路径返回 404；已定义路径使用不支持的方法返回 405。
 
@@ -44,7 +47,7 @@
 | --- | --- | --- |
 | data | object | 对应接口的业务数据，具体字段见后文 |
 | meta.trace_id | string | 本次 HTTP 请求的追踪 ID，用于关联网关、内部服务日志及查询证据 |
-| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.5.0 分开管理 |
+| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.6.0 分开管理 |
 
 JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与响应体中的 trace_id 相同。网关为每次外部请求生成新 trace_id，不沿用客户端传入的值。
 
@@ -114,7 +117,7 @@ GET /internal/v1/health
 没有业务参数，需要 Authorization 请求头。成功返回 200，data 格式：
 
 ```json
-{"status":"ok","service":"trade-log-query","version":"0.5.0"}
+{"status":"ok","service":"trade-log-query","version":"0.6.0"}
 ```
 
 status 表示内部进程可响应，service 为服务名，version 为程序构建版本；完整响应使用 data/meta 包装。该接口不主动检查上游来源。
@@ -142,15 +145,17 @@ account 必填；limit 为整数，可省略但不可为 null。start_time、end
 
 ### 3.5 内部自动采集状态
 
-新增于 v0.3。`GET /internal/v1/collection-status`，服务地址 `http://trade-collector:8082`。网关收到 watch-accounts 请求时调用；不会触发立即采集，不直接查询业务数据库。
+新增于 v0.3。`GET /internal/v1/collection-status`，服务地址 `http://trade-collector:8082`，保留为旧单账户状态读取入口。v0.6 网关改用下面的监控账户路由，不调用此旧入口。
 
-请求没有正文或参数，必须携带内部 Bearer 服务凭证。成功 data 与第 4.5 节相同，meta 含内部请求 trace_id 和 schema_version=1。数据库读取默认时限 3 秒，失败或超时返回 503；未授权返回 401。能读取检查点而来源采集失败时返回 200，在业务状态中说明失败。
+旧入口读取首次导入的配置账户，成功 data.items 每项仍为原采集状态，不包含管理对象。未配置原账户或检查点不存在时返回 503。必须携带内部服务凭证，未授权返回 401。
 
-collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.5.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
+v0.6 新增 `/internal/v1/watch-accounts` 及 `{id}`、`{id}/resume`，方法、参数和响应分别与第 4.5、4.8 节一致。调用方为网关，使用内部服务凭证；外部管理凭证由网关验证，不转发给 collector。读取状态只访问数据库，不查询官方来源。
+
+collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.6.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
 
 ### 3.6 内部发布状态
 
-v0.5 新增。网关向 `http://trade-parser-publisher:8083/internal/v1/publishing-status` 发送 GET，使用第 3.1 节的服务凭证及 trace 头，无查询参数。返回第 4.6 节的 data/meta 信封。发布器也提供认证的 `/internal/v1/health`，仅判断进程存活；数据库不可读时状态接口返回 503。
+v0.5 新增。网关向 `http://trade-parser-publisher:8083/internal/v1/publishing-status` 发送 GET，使用第 3.1 节的服务凭证及 trace 头。v0.6 支持可选 account 参数，返回第 4.6 节的账户级或汇总 data/meta 信封。发布器也提供认证的 `/internal/v1/health`，仅判断进程存活；数据库不可读时状态接口返回 503。
 
 ## 4. 外部接口
 
@@ -211,13 +216,13 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 成功返回 200；data 格式：
 
 ```json
-{"service":"query-api","version":"0.5.0"}
+{"service":"query-api","version":"0.6.0"}
 ```
 
 | data 字段 | 类型 | 含义 |
 | --- | --- | --- |
 | service | string | 服务名 query-api |
-| version | string | 当前运行程序的构建版本，v0.5 为 0.5.0 |
+| version | string | 当前运行程序的构建版本，v0.6 为 0.6.0 |
 
 实际 HTTP 响应仍使用第 2 节的 data/meta 包装。
 
@@ -474,66 +479,96 @@ curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
 
 ### 4.5 自动更新状态
 
-新增于 v0.3。`GET /api/v1/watch-accounts`，没有业务参数或请求正文。本版只读当前配置的一个账户；不提供添加、删除、暂停或恢复账户的管理接口。采集由独立 trade-collector 运行；v0.4 可同时启用 WebSocket 实时接收与 HTTP 补偿，读取状态不会执行来源查询。
+新增于 v0.3，v0.6 改为多账户分页列表。`GET /api/v1/watch-accounts`，无请求正文。支持 state=ACTIVE/PAUSED、limit（默认 20，最大 100）和不透明 cursor；非法或未知参数返回 400。添加、暂停和恢复见第 4.8 节。采集由独立 trade-collector 运行；读取状态不会执行来源查询。
 
 ```sh
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 ```
 
-成功 data 为 `{ "items": [状态对象] }`，外层仍为第 2.1 节的 data/meta 信封，正常 items 只有一个对象：
+成功 data 包含 items、next_cursor、total（本网络登记总数）、active_count 和 max_active_accounts。每项为管理对象，原采集字段移至 collection；这是需要调用方适配的结构变更，schema_version 仍为 1：
 
 ```json
 {
   "data": {
-    "items": [{
-      "account": "0x0000000000000000000000000000000000000001",
-      "account_key": "hyperliquid:mainnet:hyperliquid:0x0000000000000000000000000000000000000001",
-      "network": "mainnet",
-      "status": "WAITING",
-      "coverage": "SOURCE_HISTORY_NOT_VERIFIED",
-      "initial_start_time": "2026-10-05T00:00:00.000Z",
-      "scanned_through": "2026-10-05T00:01:00.000Z",
-      "last_trade_at": null,
-      "last_attempt_at": "2026-10-05T00:01:02.000Z",
-      "last_success_at": "2026-10-05T00:01:03.000Z",
-      "consecutive_failures": 0,
-      "next_run_at": "2026-10-05T00:01:33.000Z",
-      "pending_range": null,
-      "last_query_id": "query_example",
-      "last_success_query_id": "query_example",
-      "last_error": null,
-      "heartbeat_at": "2026-10-05T00:01:03.000Z",
-      "lease_expires_at": "2026-10-05T00:04:03.000Z",
-      "monitoring_status": "LIVE",
-      "websocket": {
-        "enabled": true,
-        "status": "LIVE",
-        "session_id": "00000000-0000-4000-8000-000000000001",
-        "connected_at": "2026-10-05T00:00:01.000Z",
-        "subscribed_at": "2026-10-05T00:00:02.000Z",
-        "last_received_at": "2026-10-05T00:00:02.100Z",
-        "last_committed_at": "2026-10-05T00:00:02.200Z",
-        "last_trade_at": null,
-        "last_pong_at": "2026-10-05T00:01:02.000Z",
-        "reconnect_count": 0,
-        "connection_count": 1,
-        "next_retry_at": null,
+    "items": [
+      {
+        "account": "0x0000000000000000000000000000000000000001",
+        "account_key": "hyperliquid:mainnet:hyperliquid:0x0000000000000000000000000000000000000001",
+        "network": "mainnet",
+        "id": "00000000-0000-4000-8000-000000000010",
+        "start_time": "2026-10-05T00:00:00.000Z",
+        "desired_state": "ACTIVE",
+        "observed_state": "RUNNING",
+        "generation": 1,
+        "created_at": "2026-10-05T00:00:00Z",
+        "updated_at": "2026-10-05T00:00:00Z",
+        "paused_at": null,
+        "resumed_at": null,
         "last_error": null,
-        "pending_messages": 0,
-        "pending_bytes": 0,
-        "metadata_stale": false
-      },
-      "recovery": {
-        "status": "HTTP_SCANNED",
-        "target_through": null,
-        "open_gap_count": 0,
-        "last_scanned_at": "2026-10-05T00:01:03.000Z",
-        "last_error": null
-      },
-      "warnings": ["SOURCE_HISTORY_NOT_VERIFIED", "LATE_DATA_OUTSIDE_OVERLAP_NOT_VERIFIED"]
-    }]
+        "last_error_at": null,
+        "observed_at": "2026-10-05T00:01:03Z",
+        "collection": {
+          "account": "0x0000000000000000000000000000000000000001",
+          "account_key": "hyperliquid:mainnet:hyperliquid:0x0000000000000000000000000000000000000001",
+          "network": "mainnet",
+          "status": "WAITING",
+          "coverage": "SOURCE_HISTORY_NOT_VERIFIED",
+          "initial_start_time": "2026-10-05T00:00:00.000Z",
+          "scanned_through": "2026-10-05T00:01:00.000Z",
+          "last_trade_at": null,
+          "last_attempt_at": "2026-10-05T00:01:02.000Z",
+          "last_success_at": "2026-10-05T00:01:03.000Z",
+          "consecutive_failures": 0,
+          "next_run_at": "2026-10-05T00:01:33.000Z",
+          "pending_range": null,
+          "last_query_id": "query_example",
+          "last_success_query_id": "query_example",
+          "last_error": null,
+          "heartbeat_at": "2026-10-05T00:01:03.000Z",
+          "lease_expires_at": "2026-10-05T00:04:03.000Z",
+          "monitoring_status": "LIVE",
+          "websocket": {
+            "enabled": true,
+            "status": "LIVE",
+            "session_id": "00000000-0000-4000-8000-000000000001",
+            "connected_at": "2026-10-05T00:00:01.000Z",
+            "subscribed_at": "2026-10-05T00:00:02.000Z",
+            "last_received_at": "2026-10-05T00:00:02.100Z",
+            "last_committed_at": "2026-10-05T00:00:02.200Z",
+            "last_trade_at": null,
+            "last_pong_at": "2026-10-05T00:01:02.000Z",
+            "reconnect_count": 0,
+            "connection_count": 1,
+            "next_retry_at": null,
+            "last_error": null,
+            "pending_messages": 0,
+            "pending_bytes": 0,
+            "metadata_stale": false
+          },
+          "recovery": {
+            "status": "HTTP_SCANNED",
+            "target_through": null,
+            "open_gap_count": 0,
+            "last_scanned_at": "2026-10-05T00:01:03.000Z",
+            "last_error": null
+          },
+          "warnings": [
+            "SOURCE_HISTORY_NOT_VERIFIED",
+            "LATE_DATA_OUTSIDE_OVERLAP_NOT_VERIFIED"
+          ]
+        },
+        "publishing": null
+      }
+    ],
+    "next_cursor": null,
+    "total": 1,
+    "active_count": 1,
+    "max_active_accounts": 5
   },
-  "meta": {"trace_id": "trace_0123456789abcdef0123456789abcdef", "schema_version": 1}
+  "meta": {
+    "trace_id": "trace_0123456789abcdef0123456789abcdef",
+    "schema_version": 1
+  }
 }
 ```
 
@@ -541,7 +576,7 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 
 | 字段 | 类型 | 意义 |
 | --- | --- | --- |
-| items | array | 当前配置中的采集账户，包含下列状态字段 |
+| items | array | 已登记监控账户；以下采集字段位于每项的 collection 对象内，尚无检查点时 collection=null |
 | account/account_key/network | string | 规范地址、链协议账户身份、来源环境 |
 | status | string | HTTP 调度状态：STARTING 初始化；RUNNING 本轮采集中；WAITING 成功后等待；RETRY_WAIT 退避或预算暂停；FAILED 无法继续或租约心跳过期；STOPPED 正常停止 |
 | coverage | string | 固定 SOURCE_HISTORY_NOT_VERIFIED，不证明官方历史完整 |
@@ -559,7 +594,7 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 | heartbeat_at/lease_expires_at | string/null | 实例心跳与租约到期时间；数据库持久化值 |
 | warnings | array of string | 来源历史、重叠区间外迟到数据、预算或心跳等限制说明 |
 
-v0.4 增加以下字段，接口路径和 schema_version=1 保持不变。顶层水位、轮次失败计数、任务标识和调度时间仍表示 HTTP；WS 与 HTTP 的错误独立记录。
+v0.4 增加以下字段，v0.6 中这些字段位于 collection，接口路径和 schema_version=1 保持不变。collection 内的水位、轮次失败计数、任务标识和调度时间仍表示 HTTP；WS 与 HTTP 的错误独立记录。
 
 | 字段 | 类型 | 意义 |
 | --- | --- | --- |
@@ -590,11 +625,11 @@ WS 数据模式 SNAPSHOT、LIVE_UPDATE、UNKNOWN 保存在采集任务和原始�
 
 所有时间为 UTC、最大毫秒精度。无成交也可以成功推进扫描水位。原 live 查询和旧证据导入不会推进自动水位；stored 查询沿用 v0.2 行为。
 
-未启用 collector、collector 不可访问、检查点尚未建立或数据库不可读时返回 503，不返回成功空列表。服务可读而采集失败时返回 200，status/last_error 表示业务失败。来源可能限流或截断，失败可见不等于自动补齐完整历史。
+未启用 collector、collector 不可访问或数据库不可读时返回 503。服务可用但尚未登记账户时返回 200 和空 items；已登记但尚无检查点时 collection=null。单账户采集失败仍返回 200，通过状态和错误说明原因。来源可能限流或截断，失败可见不等于完整历史。
 
 ### 4.6 webhook 发布状态
 
-v0.5 新增：`GET /api/v1/publishing-status`，无查询参数，从挂载的 collector 配置选择账户。用于确认发布是否启用、候选是否入队以及投递是否失败。进程不可达或数据库不可读返回 503，不能把不可用解释为空队列。
+v0.5 新增，v0.6 支持多账户：`GET /api/v1/publishing-status`，可选 account 查询参数。指定 account 返回下表的账户级对象；不指定返回 `{ "items": [账户级对象], "outbox": {状态: 总数} }`，不自动选择第一个账户。进程不可达或数据库不可读返回 503，不能把不可用解释为空队列。
 
 ```sh
 curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
@@ -604,7 +639,7 @@ curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
 
 | 字段 | 类型 | 意义 |
 | --- | --- | --- |
-| enabled | boolean | 持久化业务开关；停止容器不等于停用候选生成 |
+| enabled | boolean | 当前候选准入开关；全局发布关闭或账户暂停时为 false；暂停账户的既有 outbox 仍可交付 |
 | status | string | DISABLED、STARTING、RUNNING、DEGRADED、BLOCKED 或 STOPPED |
 | account / account_key | string | 配置账户及网络分区身份 |
 | target_id | string | 目标 URL 的 SHA-256 身份，不返回地址、凭证或数据库连接串 |
@@ -657,6 +692,41 @@ docker compose exec -T trade-parser-publisher trade-parser-publisher retry --eve
 
 只允许重试本配置账户的 BLOCKED 事件，不修改目标、身份、正文或 TTL。接收成功后发送方确认失败可能重复投递，这是至少一次语义。
 
+### 4.8 监控账户管理
+
+v0.6 新增。添加、暂停、恢复要求 `Authorization: Bearer <管理凭证>`，凭证文件为 secrets/watch-management-token；与内部服务及 webhook 凭证分别管理。缺失或错误返回 JSON 401，读接口不要求管理凭证。
+
+| 方法与路径 | 请求 | 成功状态及含义 |
+| --- | --- | --- |
+| POST /api/v1/watch-accounts | JSON account、start_time；拒绝未知字段 | 201，登记成功，尚不保证已订阅或追平 |
+| GET /api/v1/watch-accounts/{id} | UUID 管理 ID，无正文 | 200，返回与列表项一致的账户对象 |
+| DELETE /api/v1/watch-accounts/{id} | UUID 管理 ID，无正文 | 202，持久暂停并撤销旧租约，不删除数据 |
+| POST /api/v1/watch-accounts/{id}/resume | UUID 管理 ID，无正文 | 202，从旧水位恢复，建立新监控代次和发布边界 |
+
+添加正文示例：
+
+```json
+{"account":"0x0000000000000000000000000000000000000001","start_time":"2026-10-01T00:00:00Z"}
+```
+
+| 字段 | 类型 | 含义 |
+| --- | --- | --- |
+| account | string | 规范化地址，网络取服务配置 |
+| start_time | RFC3339 string | 非未来、非负、最多毫秒精度的首次采集起点；不证明来源历史完整 |
+| id | UUID string | 稳定管理 ID，用于详情、暂停和恢复 |
+| desired_state | string | ACTIVE 或 PAUSED，数据库持久保存 |
+| observed_state / observed_at | string / timestamp | STARTING、RUNNING、DEGRADED 或 PAUSED，及本次观测时间；PAUSED 表示无有效采集租约，旧连接可能仍在关闭过程中 |
+| generation | integer | 初始 1，有效暂停或恢复递增；重复同状态操作不递增 |
+| created_at / updated_at | timestamp | 登记和最近管理变更时间 |
+| paused_at / resumed_at | timestamp/null | 最近一次有效暂停和恢复时间 |
+| last_error / last_error_at | string/null、timestamp/null | supervisor 错误及时间；通道错误仍在 collection 内 |
+| collection | object/null | 原采集状态；历史观测值不代表暂停账户仍在采集 |
+| publishing | object/null | 发布控制已初始化时的账户级状态，否则为 null |
+
+重复添加返回 409 WATCH_ACCOUNT_EXISTS，message 包含 existing_id，不覆盖原起点或自动恢复。达到容量上限返回 409 WATCH_ACCOUNT_LIMIT_REACHED。默认 5 个活动账户、100 个登记账户；暂停账户不占活动额度，异常中的 ACTIVE 账户仍占额度。管理 ID 不存在返回 404，非法 UUID 返回 400。
+
+暂停停止新采集和新候选，既有 outbox 继续交付；不撤回信号或控制下游跟单。恢复时 HTTP、初始快照和旧会话归档只补存事实，不冒充新实时信号。管理成功不保证历史完整，详情须结合覆盖、缺口和 warnings 判断。
+
 ## 5. HTTP 状态及错误码
 
 | HTTP 状态 | code | 意义 |
@@ -666,6 +736,10 @@ docker compose exec -T trade-parser-publisher trade-parser-publisher retry --eve
 | 404 | RESOURCE_NOT_FOUND | 请求路径不存在 |
 | 405 | METHOD_NOT_ALLOWED | 路径存在但不支持当前 HTTP 方法 |
 | 409 | VERSION_CONFLICT | 相同来源市场和成交 tid 对应不同内容 |
+| 400 | INVALID_ARGUMENT | 监控管理或发布状态参数非法 |
+| 404 | WATCH_ACCOUNT_NOT_FOUND | 监控管理 ID 不存在 |
+| 409 | WATCH_ACCOUNT_EXISTS | 同一账户已经登记，message 含 existing_id |
+| 409 | WATCH_ACCOUNT_LIMIT_REACHED | 活动账户或登记总量达到上限 |
 | 422 | INCOMPLETE_DATA | 来源数据无法可靠解析，无法给出可用标准结果 |
 | 429 | RATE_LIMITED | 内部并发容量已满，或来源限流在有限重试后仍未解除 |
 | 500 | INTERNAL_INVARIANT_VIOLATION | 证据存储等内部处理失败 |
@@ -683,6 +757,7 @@ docker compose exec -T trade-parser-publisher trade-parser-publisher retry --eve
 
 | 日期 | 程序版本 | 类型 | 更新内容 |
 | --- | --- | --- | --- |
+| 2026-10-11 | 0.6.0 | 新增及结构变更 | 多账户管理、管理认证、列表分页与 collection 嵌套；发布状态支持 account 和汇总；原成交查询及 webhook 信封不变 |
 | 2026-10-06 | 0.5.0 | 新增接口 | 发布状态内部及外部接口、标准候选 webhook 信封、投递头、时效和重试契约 |
 | 2026-10-06 | 0.4.0 | 兼容扩展 | 自动状态增加 monitoring_status、websocket、recovery；HTTP 水位与 WS 接收、提交位置独立；stored 路径及 schema_version 不变 |
 | 2026-10-06 | 0.3.0 | 新增接口 | 新增单地址自动采集状态、扫描水位和错误说明；collector 内部状态及健康接口 |

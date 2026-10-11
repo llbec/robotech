@@ -46,6 +46,65 @@ impl CollectorClient {
             authorization,
         })))
     }
+    pub async fn watch(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        query: &str,
+        body: Option<serde_json::Value>,
+        trace: &str,
+    ) -> Result<serde_json::Value, QueryError> {
+        let base = self.url.trim_end_matches("/collection-status");
+        let mut request = self
+            .client
+            .request(method, format!("{base}/watch-accounts{path}{query}"))
+            .header("authorization", self.authorization.clone())
+            .header("x-trace-id", trace);
+        if let Some(body) = body {
+            request = request.json(&body)
+        }
+        let mut response = request
+            .send()
+            .await
+            .map_err(|_| QueryError::unavailable("Collector unavailable or timed out"))?;
+        let status = response.status();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| QueryError::unavailable("Collector response failed"))?
+        {
+            if bytes.len() + chunk.len() > 1048576 {
+                return Err(QueryError::unavailable("Collector response too large"));
+            }
+            bytes.extend_from_slice(&chunk)
+        }
+        let value: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|_| QueryError::unavailable("Invalid collector response"))?;
+        if status.is_success() {
+            return value
+                .get("data")
+                .cloned()
+                .ok_or_else(|| QueryError::unavailable("Invalid collector envelope"));
+        }
+        let code = value["code"].as_str().unwrap_or("DEPENDENCY_UNAVAILABLE");
+        if !matches!(
+            code,
+            "INVALID_ARGUMENT"
+                | "WATCH_ACCOUNT_NOT_FOUND"
+                | "WATCH_ACCOUNT_EXISTS"
+                | "WATCH_ACCOUNT_LIMIT_REACHED"
+        ) {
+            return Err(QueryError::unavailable("Collector operation unavailable"));
+        }
+        Err(trade_log::collection::error(
+            code,
+            value["message"]
+                .as_str()
+                .unwrap_or("Monitoring operation failed"),
+            false,
+        ))
+    }
     pub async fn status(&self, trace: &str) -> Result<CollectionList, QueryError> {
         let mut response = self
             .client

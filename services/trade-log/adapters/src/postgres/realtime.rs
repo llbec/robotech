@@ -61,7 +61,7 @@ impl Postgres {
     ) -> Result<(), QueryError> {
         let mut tx = self.pool.begin().await.map_err(db_error)?;
         self.lock_collection(&mut tx, l).await?;
-        sqlx::query("INSERT INTO trade_log.collection_stream_sessions(session_id,checkpoint_key,lease_epoch,account,network,status) VALUES($1,$2,$3,$4,$5,'CONNECTING')").bind(id).bind(&l.key).bind(l.epoch).bind(&c.account).bind(self.network.name()).execute(&mut *tx).await.map_err(db_error)?;
+        sqlx::query("INSERT INTO trade_log.collection_stream_sessions(session_id,checkpoint_key,lease_epoch,account,network,status,monitoring_generation) VALUES($1,$2,$3,$4,$5,'CONNECTING',$6)").bind(id).bind(&l.key).bind(l.epoch).bind(&c.account).bind(self.network.name()).bind(l.generation).execute(&mut *tx).await.map_err(db_error)?;
         sqlx::query("UPDATE trade_log.collection_checkpoints SET websocket_state=websocket_state || $2 WHERE partition_key=$1 AND source_id='official_http'").bind(&l.key).bind(json!({"enabled":true,"status":"CONNECTING","session_id":id,"connected_at":null,"subscribed_at":null,"last_pong_at":null,"next_retry_at":null})).execute(&mut *tx).await.map_err(db_error)?;
         self.open_gap_tx(&mut tx, l, c, id, "STARTUP").await?;
         refresh_recovery(&mut tx, &l.key).await?;

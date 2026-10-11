@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 use trade_log_adapters::{
     collector_http::{self, CollectorState},
-    collector_runtime::CollectorRuntime,
+    collector_supervisor::CollectorSupervisor,
     postgres::Postgres,
 };
 #[derive(Parser)]
@@ -59,15 +59,17 @@ pub async fn run() -> Result<(), (u8, String)> {
         tracing::warn!(code=%e.code,"evidence_mirror_unavailable");
     }
     store.mirror = Some(mirror);
-    // A persisted checkpoint takes precedence over the configuration start time.
-    let exists: bool = sqlx_exists(&store, &c.collection.account).await?;
-    if !exists
-        && trade_log::collection::start_ms(&c.collection.start_time).map_err(|e| (2, e.message))?
-            > chrono::Utc::now().timestamp_millis()
-                - (c.collection.safety_delay_seconds * 1000) as i64
-    {
-        return Err((2, "Initial collection start is in the future".into()));
-    }
+    store
+        .monitoring_configure(&c.monitoring, &c.source_budget)
+        .await
+        .map_err(|e| (3, e.message))?;
+    store
+        .import_watch(&c.collection.account, &c.collection.start_time)
+        .await
+        .map_err(|e| (2, e.message))?;
+    store.stream_memory = Some(Arc::new(tokio::sync::Semaphore::new(
+        c.monitoring.max_total_pending_bytes,
+    )));
     let source = hyperliquid::source::HttpSource::new(
         c.hyperliquid.network.endpoint(),
         Duration::from_secs(c.hyperliquid.connect_timeout_seconds),
@@ -89,18 +91,28 @@ pub async fn run() -> Result<(), (u8, String)> {
         &c.hyperliquid.network,
     ));
     let websocket_config = c.websocket;
-    let runtime = CollectorRuntime {
+    let runtime = CollectorSupervisor {
         store: store.clone(),
-        config: c.collection,
-        source: Arc::new(source),
+        defaults: c.collection,
+        monitoring: c.monitoring.clone(),
+        websocket: websocket_config,
+        realtime: Arc::new(trade_log_adapters::source_budget::BudgetRealtime {
+            store: store.clone(),
+            inner: realtime_source,
+        }),
+        source: Arc::new(trade_log_adapters::source_budget::BudgetSource {
+            store: store.clone(),
+            inner: Arc::new(source),
+            concurrent: Arc::new(tokio::sync::Semaphore::new(
+                c.monitoring.max_concurrent_http_requests,
+            )),
+        }),
         parser: Arc::new(hyperliquid::parser::HyperliquidParser),
     };
     let cancel = CancellationToken::new();
     let worker_cancel = cancel.clone();
     let worker = tokio::spawn(async move {
-        runtime
-            .run_with_realtime(worker_cancel, websocket_config, realtime_source)
-            .await;
+        runtime.run(worker_cancel).await;
     });
     tracing::info!(service="trade-collector",version=env!("CARGO_PKG_VERSION"),%address,config_path=%args.config.display(),"server_started");
     let signal_cancel = cancel.clone();
@@ -129,10 +141,4 @@ pub async fn run() -> Result<(), (u8, String)> {
     store.pool.close().await;
     result?;
     worker_result
-}
-async fn sqlx_exists(store: &Postgres, account: &str) -> Result<bool, (u8, String)> {
-    store
-        .checkpoint_exists(account)
-        .await
-        .map_err(|e| (3, e.message))
 }

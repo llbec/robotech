@@ -8,6 +8,7 @@ use trade_log::publishing::{CandidateContext, CandidatePolicy, decide};
 use uuid::Uuid;
 
 pub struct PublishingObservation {
+    monitoring_confirmed: bool,
     control: Option<(String, i64, CandidatePolicy)>,
     context: CandidateContext,
     query_id: String,
@@ -22,6 +23,25 @@ impl Postgres {
         policy: &CandidatePolicy,
     ) -> Result<(), QueryError> {
         let mut tx = self.pool.begin().await.map_err(db_error)?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,6))")
+            .bind(key)
+            .execute(&mut *tx)
+            .await
+            .map_err(db_error)?;
+        let watch = sqlx::query(
+            "SELECT generation,desired_state FROM trade_log.watch_accounts WHERE account_key=$1",
+        )
+        .bind(key)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(db_error)?;
+        let generation = watch
+            .as_ref()
+            .map(|r| r.get::<i64, _>("generation"))
+            .unwrap_or(1);
+        let active = watch
+            .as_ref()
+            .is_none_or(|r| r.get::<String, _>("desired_state") == "ACTIVE");
         // Serialize configuration even when the account has no existing control row.
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
             .bind(key)
@@ -47,12 +67,13 @@ impl Postgres {
             }
             let activate = enabled
                 && (!old.get::<bool, _>("enabled")
-                    || old.get::<Value, _>("policy") != json!(policy));
-            sqlx::query("UPDATE trade_log.publishing_control SET enabled=$2,target_url=CASE WHEN target_url='' THEN $3 ELSE target_url END,target_id=CASE WHEN target_url='' THEN $4 ELSE target_id END,activation_epoch=activation_epoch+CASE WHEN $5 THEN 1 ELSE 0 END,activated_at=CASE WHEN $5 THEN clock_timestamp() ELSE activated_at END,policy=$6,heartbeat_at=clock_timestamp(),last_error=NULL,updated_at=clock_timestamp() WHERE account_key=$1")
-                .bind(key).bind(enabled).bind(url).bind(target).bind(activate).bind(json!(policy)).execute(&mut *tx).await.map_err(db_error)?;
+                    || old.get::<Value, _>("policy") != json!(policy)
+                    || (active && old.get::<i64, _>("monitoring_generation") != generation));
+            sqlx::query("UPDATE trade_log.publishing_control SET enabled=$2,target_url=CASE WHEN target_url='' THEN $3 ELSE target_url END,target_id=CASE WHEN target_url='' THEN $4 ELSE target_id END,activation_epoch=activation_epoch+CASE WHEN $5 THEN 1 ELSE 0 END,activated_at=CASE WHEN $5 THEN clock_timestamp() ELSE activated_at END,policy=$6,monitoring_generation=CASE WHEN $8 THEN $7 ELSE monitoring_generation END,heartbeat_at=clock_timestamp(),last_error=CASE WHEN $5 THEN NULL ELSE last_error END,updated_at=clock_timestamp() WHERE account_key=$1")
+                .bind(key).bind(enabled).bind(url).bind(target).bind(activate).bind(json!(policy)).bind(generation).bind(active).execute(&mut *tx).await.map_err(db_error)?;
         } else {
-            sqlx::query("INSERT INTO trade_log.publishing_control(account_key,target_url,target_id,enabled,activation_epoch,policy,heartbeat_at) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp())")
-                .bind(key).bind(url).bind(target).bind(enabled).bind(if enabled {1_i64}else{0}).bind(json!(policy)).execute(&mut *tx).await.map_err(db_error)?;
+            sqlx::query("INSERT INTO trade_log.publishing_control(account_key,target_url,target_id,enabled,activation_epoch,policy,heartbeat_at,monitoring_generation) VALUES($1,$2,$3,$4,$5,$6,clock_timestamp(),$7)")
+                .bind(key).bind(url).bind(target).bind(enabled).bind(if enabled {1_i64}else{0}).bind(json!(policy)).bind(generation).execute(&mut *tx).await.map_err(db_error)?;
         }
         tx.commit().await.map_err(db_error)
     }
@@ -69,10 +90,22 @@ impl Postgres {
         .fetch_optional(&mut **tx)
         .await
         .map_err(db_error)?;
-        let raw=sqlx::query("SELECT r.observed_at,r.payload,r.message_mode,s.subscribed_at,s.snapshot_sequence,COALESCE((k.websocket_state->>'metadata_stale')::boolean,false) AS metadata_stale,clock_timestamp() AS decided FROM trade_log.raw_logs r JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id JOIN trade_log.collection_stream_sessions s ON s.session_id=r.session_id JOIN trade_log.collection_checkpoints k ON k.partition_key=s.checkpoint_key AND k.source_id='official_http' WHERE j.query_id=$1").bind(query).fetch_one(&mut **tx).await.map_err(db_error)?;
+        let raw=sqlx::query("SELECT r.observed_at,r.payload,r.message_mode,s.subscribed_at,s.snapshot_sequence,s.monitoring_generation,COALESCE((k.websocket_state->>'metadata_stale')::boolean,false) AS metadata_stale,clock_timestamp() AS decided FROM trade_log.raw_logs r JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id JOIN trade_log.collection_stream_sessions s ON s.session_id=r.session_id JOIN trade_log.collection_checkpoints k ON k.partition_key=s.checkpoint_key AND k.source_id='official_http' WHERE j.query_id=$1").bind(query).fetch_one(&mut **tx).await.map_err(db_error)?;
         let payload: Value = raw.get("payload");
+        let monitoring_confirmed = c.lease.generation.is_none_or(|g| {
+            raw.get::<Option<i64>, _>("monitoring_generation") == Some(g)
+                && control
+                    .as_ref()
+                    .is_some_and(|r| r.get::<i64, _>("monitoring_generation") == g)
+        });
         let context = CandidateContext {
-            enabled: control.as_ref().is_some_and(|r| r.get("enabled")),
+            enabled: control.as_ref().is_some_and(|r| {
+                r.get::<bool, _>("enabled")
+                    && c.lease.generation.is_none_or(|g| {
+                        r.get::<i64, _>("monitoring_generation") == g
+                            && raw.get::<Option<i64>, _>("monitoring_generation") == Some(g)
+                    })
+            }),
             account_key: c.lease.key.clone(),
             activated_at: control
                 .as_ref()
@@ -99,6 +132,7 @@ impl Postgres {
             })
             .transpose()?;
         Ok(PublishingObservation {
+            monitoring_confirmed,
             control,
             context,
             query_id: query.into(),
@@ -120,7 +154,12 @@ impl Postgres {
             version: "candidate-v1".into(),
         };
         let p = o.control.as_ref().map(|v| &v.2).unwrap_or(&fallback);
-        let (result, reason) = match decide(f, &o.context, p) {
+        let decision = if !o.monitoring_confirmed {
+            Err("MONITORING_GENERATION_UNCONFIRMED")
+        } else {
+            decide(f, &o.context, p)
+        };
+        let (result, reason) = match decision {
             Err(reason) => ("SUPPRESSED", reason),
             Ok(reason) => {
                 let canonical:Value=sqlx::query_scalar("SELECT payload FROM trade_log.account_fact_versions WHERE fact_id=$1 AND revision=1").bind(&f.fact_id).fetch_one(&mut **tx).await.map_err(db_error)?;
@@ -262,12 +301,25 @@ impl Postgres {
         let q=sqlx::query("SELECT min(created_at) FILTER(WHERE status<>'DELIVERED') AS oldest,max(published_at) AS sent,max(delivered_at) AS acknowledged,count(*) FILTER(WHERE status<>'DELIVERED' AND (payload->>'expires_at')::timestamptz<clock_timestamp()) AS expired FROM trade_log.outbox_events WHERE partition_key=$1").bind(key).fetch_one(&self.pool).await.map_err(db_error)?;
         let suppressed:Value=sqlx::query_scalar("SELECT COALESCE(jsonb_object_agg(reason,n),'{}') FROM (SELECT reason,count(*) n FROM trade_log.publication_decisions d JOIN trade_log.account_fact_versions f USING(fact_id,revision) WHERE f.account_key=$1 AND d.result='SUPPRESSED' GROUP BY reason) q").bind(key).fetch_one(&self.pool).await.map_err(db_error)?;
         let last:Option<String>=sqlx::query_scalar("SELECT last_error FROM trade_log.outbox_events WHERE partition_key=$1 AND last_error IS NOT NULL ORDER BY updated_at DESC LIMIT 1").bind(key).fetch_optional(&self.pool).await.map_err(db_error)?.flatten();
-        let enabled: bool = c.get("enabled");
+        let watch = sqlx::query(
+            "SELECT desired_state,generation FROM trade_log.watch_accounts WHERE account_key=$1",
+        )
+        .bind(key)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_error)?;
+        let paused = watch
+            .as_ref()
+            .is_some_and(|w| w.get::<String, _>("desired_state") == "PAUSED");
+        let ready = watch.as_ref().is_none_or(|w| {
+            w.get::<i64, _>("generation") == c.get::<i64, _>("monitoring_generation")
+        });
+        let enabled: bool = c.get::<bool, _>("enabled") && !paused && ready;
         let heartbeat: Option<DateTime<Utc>> = c.get("heartbeat_at");
         let now: DateTime<Utc> = c.get("current_time");
-        let status = if !enabled {
+        let status = if !c.get::<bool, _>("enabled") || paused {
             "DISABLED"
-        } else if heartbeat.is_none() {
+        } else if !ready || heartbeat.is_none() {
             "STARTING"
         } else if heartbeat.is_some_and(|h| (now - h).num_seconds() > 30) {
             "STOPPED"
@@ -291,4 +343,31 @@ pub struct Claim {
     pub epoch: i64,
     pub owner: Uuid,
     pub body: Vec<u8>,
+}
+impl Postgres {
+    pub async fn publication_event_key(&self, event: &str) -> Result<String, QueryError> {
+        sqlx::query_scalar("SELECT partition_key FROM trade_log.outbox_events WHERE event_id=$1")
+            .bind(event)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(db_error)?
+            .ok_or_else(QueryError::conflict)
+    }
+    pub async fn publishing_list(&self) -> Result<Value, QueryError> {
+        let keys:Vec<String>=sqlx::query_scalar("SELECT account_key FROM trade_log.publishing_control WHERE account_key LIKE $1 ORDER BY account_key").bind(format!("hyperliquid:{}:%",self.network.name())).fetch_all(&self.pool).await.map_err(db_error)?;
+        let mut items = vec![];
+        let mut counts = serde_json::Map::new();
+        for key in keys {
+            let item = self.publishing_status(&key).await?;
+            if let Some(outbox) = item["outbox"].as_object() {
+                for (state, n) in outbox {
+                    let total = counts.get(state).and_then(Value::as_i64).unwrap_or(0)
+                        + n.as_i64().unwrap_or(0);
+                    counts.insert(state.clone(), json!(total));
+                }
+            }
+            items.push(item)
+        }
+        Ok(json!({"items":items,"outbox":counts}))
+    }
 }

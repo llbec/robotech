@@ -31,6 +31,7 @@ pub async fn database() -> Postgres {
             pool,
             network: Network::Mainnet,
             mirror: None,
+            stream_memory: None,
         };
         store.migrate().await.unwrap();
         store.check_schema().await.unwrap();
@@ -51,6 +52,7 @@ pub async fn database() -> Postgres {
         pool,
         network: Network::Mainnet,
         mirror: None,
+        stream_memory: None,
     };
     store.migrate().await.unwrap();
     store.migrate().await.unwrap();

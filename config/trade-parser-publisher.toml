@@ -1,4 +1,5 @@
 config_version = 1
+network = "mainnet"
 [server]
 host = "0.0.0.0"
 port = 8083
@@ -15,7 +16,7 @@ connect_timeout_seconds = 5
 statement_timeout_seconds = 10
 [publishing]
 enabled = false
-collection_config_path = "/etc/robotech/trade-collector.toml"
+max_inflight = 2
 webhook_url = ""
 credential_file = "/run/secrets/webhook-token"
 allow_plain_http = false

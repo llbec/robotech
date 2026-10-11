@@ -45,6 +45,7 @@ pub struct PendingWork {
 }
 #[derive(Clone, Debug)]
 pub struct Lease {
+    pub generation: Option<i64>,
     pub key: String,
     pub owner: String,
     pub epoch: i64,

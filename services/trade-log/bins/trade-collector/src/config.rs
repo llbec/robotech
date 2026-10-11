@@ -8,6 +8,10 @@ use trade_log::collection::{CollectionConfig, start_ms};
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    #[serde(default)]
+    pub monitoring: trade_log::watch::MonitoringConfig,
+    #[serde(default)]
+    pub source_budget: trade_log::watch::BudgetConfig,
     pub config_version: u32,
     pub server: ServerConfig,
     pub logging: LoggingConfig,
@@ -58,8 +62,14 @@ impl Config {
         if c.config_version != 1 {
             return Err("config_version must be 1".into());
         }
-        c.collection.account = shared_types::account(&c.collection.account)?;
-        start_ms(&c.collection.start_time).map_err(|e| e.message)?;
+        c.monitoring.validate()?;
+        c.source_budget.validate()?;
+        if !c.collection.account.is_empty() {
+            c.collection.account = shared_types::account(&c.collection.account)?;
+            start_ms(&c.collection.start_time).map_err(|e| e.message)?;
+        } else if !c.collection.start_time.is_empty() {
+            return Err("Legacy account and start_time must both be set or empty".into());
+        }
         let t = &c.collection;
         if !(1..=86400).contains(&t.interval_seconds)
             || !(1..=86400).contains(&t.overlap_seconds)

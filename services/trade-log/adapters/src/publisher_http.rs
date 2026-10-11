@@ -48,9 +48,24 @@ async fn authentication(State(s): State<PublisherState>, mut r: Request, next: N
 async fn status(
     State(s): State<PublisherState>,
     axum::Extension(trace): axum::Extension<String>,
+    p: Result<axum::extract::Query<StatusParams>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
-    match tokio::time::timeout(Duration::from_secs(3),s.reader.publishing_status(&s.account_key)).await {
+    let p=match p{Ok(p)=>p.0,Err(_)=>return (StatusCode::BAD_REQUEST,Json(json!({"code":"INVALID_ARGUMENT","message":"Invalid query parameters","trace_id":trace}))).into_response()};
+    let result = async {
+        if let Some(account) = p.account {
+            let account = shared_types::account(&account).map_err(trade_log::watch::invalid)?;
+            s.reader
+                .publishing_status(&s.reader.checkpoint_key(&account))
+                .await
+        } else if s.account_key.is_empty() {
+            s.reader.publishing_list().await
+        } else {
+            s.reader.publishing_status(&s.account_key).await
+        }
+    };
+    match tokio::time::timeout(Duration::from_secs(10),result).await {
   Ok(Ok(data))=>Json(json!({"data":data,"meta":{"trace_id":trace,"schema_version":1}})).into_response(),
+  Ok(Err(e)) if e.code=="INVALID_ARGUMENT" => (StatusCode::BAD_REQUEST,Json(json!({"code":e.code,"message":e.message,"trace_id":trace}))).into_response(),
   _=>(StatusCode::SERVICE_UNAVAILABLE,Json(json!({"code":"DEPENDENCY_UNAVAILABLE","message":"Publishing status unavailable","trace_id":trace}))).into_response(),
  }
 }
@@ -82,4 +97,10 @@ pub fn router(state: PublisherState) -> Router {
             authentication,
         ))
         .with_state(state)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StatusParams {
+    account: Option<String>,
 }
