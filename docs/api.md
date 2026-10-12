@@ -101,6 +101,11 @@ Authorization: Bearer <服务凭证>
 Content-Type: application/json
 ```
 
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| account | JSON body | string | 是 | 无 | 钱包地址：小写 0x 开头，后接 40 个十六进制字符；不接受前后空格，入库规范化为小写 |
+| limit | JSON body | integer | 否 | 100 | 展示成交上限，1–2000；必须为 JSON 整数，不是字符串 |
+
 ```json
 {
   "account": "0x010461c14e146ac35fe42271bdc1134ee31c703a",
@@ -136,6 +141,14 @@ Authorization: Bearer <服务凭证>
 Content-Type: application/json
 ```
 
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| account | JSON body | string | 是 | 无 | 钱包地址：小写 0x 开头，后接 40 个十六进制字符；不接受前后空格，入库规范化为小写 |
+| limit | JSON body | integer | 否 | 100 | 每页成交上限，1–2000 |
+| start_time | JSON body | string（RFC3339） | 否 | 无下界 | 包含开始时刻；带时区、非负 Unix 时间、最多毫秒精度 |
+| end_time | JSON body | string（RFC3339） | 否 | 无上界 | 不包含结束时刻；两端都存在时须 start_time < end_time |
+| cursor | JSON body | string | 否 | 无，第一页 | 上页 next_cursor，最大 8192 字节；绑定账户、网络及时间条件 |
+
 ```json
 {
   "account": "0x010461c14e146ac35fe42271bdc1134ee31c703a",
@@ -161,13 +174,17 @@ collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"s
 
 v0.5 新增。网关向 `http://trade-parser-publisher:8083/internal/v1/publishing-status` 发送 GET，使用第 3.1 节的服务凭证及 trace 头。v0.6 支持可选 account 参数，返回第 4.6 节的账户级或汇总 data/meta 信封。发布器也提供认证的 `/internal/v1/health`，仅判断进程存活；数据库不可读时状态接口返回 503。
 
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| account | URL query | string | 否 | 无 | 规范化钱包地址；传入时返回对应账户发布状态；省略且 publisher 未设置旧固定账户时返回 items/outbox 汇总 |
+
 ## 4. 外部接口
 
 外部接口是面向业务客户端、运维人员和调用方的统一 HTTP 入口，由 query-api 提供。定义外部接口是为了提供稳定的调用约定，使调用方通过账户等业务参数获取结果，无需了解内部进程地址、服务凭证或来源采集细节。
 
 部署完成后，运维人员可调用健康接口确认网关可响应，调用版本接口确认运行版本；业务客户端在需要查看账户近期合约成交时调用成交查询接口。网关负责将成交查询转交内部服务，并统一返回结果、错误和请求追踪 ID。
 
-外部接口当前不要求身份凭证。健康接口只反映网关进程存活；确认交易查询链路是否可用，应调用成交查询接口。以下分节说明各接口。
+外部读接口当前不要求身份凭证；账户添加、暂停、恢复必须携带管理凭证，具体请求头见第 4.8.1 节。健康接口只反映网关进程存活；确认交易查询链路是否可用，应调用成交查询接口。以下分节说明各接口。
 
 ### 4.1 网关健康接口
 
@@ -484,6 +501,14 @@ curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events/stored' \
 
 新增于 v0.3，v0.6 改为多账户分页列表。`GET /api/v1/monitoring/accounts/list`，无请求正文。支持 state=ACTIVE/PAUSED、limit（默认 20，最大 100）和不透明 cursor；非法或未知参数返回 400。添加、暂停和恢复见第 4.8 节。采集由独立 trade-collector 运行；读取状态不会执行来源查询。
 
+**请求参数：**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| state | URL query | string | 否 | 不筛选 | 仅支持 ACTIVE 或 PAUSED，区分大小写；按期望管理状态筛选 |
+| limit | URL query | integer | 否 | 20 | 每页账户数，1–100；不是成交条数 |
+| cursor | URL query | string | 否 | 无，第一页 | 原样传入上一页 next_cursor，不自行构造；无下一页时停止分页 |
+
 ```sh
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 ```
@@ -636,6 +661,12 @@ WS 数据模式 SNAPSHOT、LIVE_UPDATE、UNKNOWN 保存在采集任务和原始�
 
 查询单账户请使用 `GET /api/v1/monitoring/accounts/publishing-status?id=<登记ID>`，返回 data 为单账户发布状态；不要将钱包地址填入 id。
 
+**汇总接口请求参数：**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| 无 | — | — | — | — | 不接受业务查询参数和请求正文；传 account 或 id 返回 400。单账户查询参数见第 4.8.1 节 |
+
 ```sh
 curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing/status
 ```
@@ -713,7 +744,62 @@ v0.6 新增。添加、暂停、恢复要求 `Authorization: Bearer <管理凭�
 
 GET 不使用请求正文，POST 使用 Content-Type: application/json。id 为添加响应的 UUID 登记 ID，不是钱包地址；列表可找回该 ID。参数缺失、ID 非 UUID、未知参数/JSON 字段返回 400；未登记 ID 返回 404。暂停和恢复不接受 account 或 start_time。
 
-#### 4.8.1 从添加到暂停、恢复的完整示例
+#### 4.8.1 各接口请求参数
+
+**添加账户：`POST /api/v1/monitoring/accounts/add`**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| Authorization | Header | string | 是 | 无 | Bearer <管理凭证>；凭证文件 secrets/watch-management-token；缺失或错误返回 401 |
+| Content-Type | Header | string | 是 | 无 | application/json；请求正文为 JSON 对象 |
+| account | JSON body | string | 是 | 无 | 钱包地址：小写 0x 开头，后接 40 个十六进制字符；不接受前后空格，入库规范化为小写 |
+| start_time | JSON body | string（RFC3339） | 是 | 无 | 首次历史采集起点；须带时区、不晚于当前时间、Unix 时间非负，最多毫秒精度；例如 2026-10-01T00:00:00Z |
+
+**账户列表：`GET /api/v1/monitoring/accounts/list`**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| state | URL query | string | 否 | 不筛选 | 仅支持 ACTIVE 或 PAUSED，区分大小写；按期望管理状态筛选 |
+| limit | URL query | integer | 否 | 20 | 每页账户数，1–100；不是成交条数 |
+| cursor | URL query | string | 否 | 无，第一页 | 原样传入上一页 next_cursor，不自行构造；无下一页时停止分页 |
+
+**账户详情：`GET /api/v1/monitoring/accounts/detail`**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| id | URL query | string（UUID） | 是 | 无 | 添加成功响应 data.id 或列表项 id；不是钱包地址；非 UUID 返回 400，未登记返回 404 |
+
+**暂停监控：`POST /api/v1/monitoring/accounts/pause`**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| Authorization | Header | string | 是 | 无 | Bearer <管理凭证>；凭证文件 secrets/watch-management-token；缺失或错误返回 401 |
+| Content-Type | Header | string | 是 | 无 | application/json；请求正文为 JSON 对象 |
+| id | JSON body | string（UUID） | 是 | 无 | 添加成功响应 data.id 或列表项 id；不是钱包地址；非 UUID 返回 400，未登记返回 404 |
+
+**恢复监控：`POST /api/v1/monitoring/accounts/resume`**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| Authorization | Header | string | 是 | 无 | Bearer <管理凭证>；凭证文件 secrets/watch-management-token；缺失或错误返回 401 |
+| Content-Type | Header | string | 是 | 无 | application/json；请求正文为 JSON 对象 |
+| id | JSON body | string（UUID） | 是 | 无 | 添加成功响应 data.id 或列表项 id；不是钱包地址；非 UUID 返回 400，未登记返回 404 |
+
+**采集状态：`GET /api/v1/monitoring/accounts/collection-status`**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| id | URL query | string（UUID） | 是 | 无 | 添加成功响应 data.id 或列表项 id；不是钱包地址；非 UUID 返回 400，未登记返回 404 |
+
+**发布状态：`GET /api/v1/monitoring/accounts/publishing-status`**
+
+| 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
+| --- | --- | --- | --- | --- | --- |
+| id | URL query | string（UUID） | 是 | 无 | 添加成功响应 data.id 或列表项 id；不是钱包地址；非 UUID 返回 400，未登记返回 404 |
+
+上述读接口不要求管理凭证；除表中字段外，不接受其他业务参数。GET 没有请求正文；POST 不从 URL 查询参数读取 id。请求参数与响应字段分别维护，下方登记对象字段表不是请求参数表。
+
+#### 4.8.2 从添加到暂停、恢复的完整示例
 
 在服务器项目根目录执行。以下地址为服务器本机；远程调用时替换 BASE。修改 ACCOUNT 和 START_TIME 为需要监控的钱包及采集起点（带时区、不能在未来）。
 
@@ -764,7 +850,7 @@ unset TOKEN
 
 第 5 步 collection=null 表示还没有采集检查点，并非删除了数据。暂停后的 collection 可能仍展示最后一次采集观测值，应结合 desired_state 判断。新添加账户的发布控制尚未初始化时，发布状态接口可返回 503，稍后重试。恢复补偿受来源可查询范围限制；历史补偿和初始快照不会生成实时跟单候选。
 
-#### 4.8.2 登记对象和字段
+#### 4.8.3 登记对象和字段
 
 添加、详情、暂停、恢复均返回统一 data/meta 信封。列表中每项为相同登记对象。示意片段如下，实际对象还包含下表其余字段：
 
@@ -842,6 +928,7 @@ unset TOKEN
 
 | 日期 | 程序版本 | 类型 | 更新内容 |
 | --- | --- | --- | --- |
+| 2026-10-13 | 0.6.0 | 文档补充 | 补齐监控各操作、列表、发布汇总及内部查询请求参数表；明确参数位置、类型、必填项、默认值和校验规则 |
 | 2026-10-12 | 0.6.0 | 功能路由调整 | 成交 live/stored 拆分；监控操作独立命名，GET 查询 id、POST JSON id；新增账户采集/发布状态及独立发布汇总；旧入口保留兼容 |
 | 2026-10-11 | 0.6.0 | 新增及结构变更 | 多账户管理、管理认证、列表分页与 collection 嵌套；发布状态支持 account 和汇总；原成交查询及 webhook 信封不变 |
 | 2026-10-06 | 0.5.0 | 新增接口 | 发布状态内部及外部接口、标准候选 webhook 信封、投递头、时效和重试契约 |
