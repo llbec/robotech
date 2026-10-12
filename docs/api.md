@@ -12,12 +12,16 @@
 | --- | --- | --- | --- |
 | 对外 | GET | [/api/v1/health](#41-网关健康接口) | 判断网关进程是否存活 |
 | 对外 | GET | [/api/v1/version](#42-版本接口) | 查询网关程序版本 |
-| 对外 | GET | [/api/v1/trade-events](#43-账户近期合约成交查询) | 实时查询并保存成交；[查询已保存成交](#44-已保存成交时间查询) |
-| 对外 | GET | [/api/v1/watch-accounts](#45-自动更新状态) | 分页查看监控账户及采集状态 |
-| 对外 | POST | [/api/v1/watch-accounts](#48-监控账户管理) | 添加监控，需要管理凭证 |
-| 对外 | GET/DELETE | [/api/v1/watch-accounts/{id}](#48-监控账户管理) | 查询详情或暂停；暂停需要管理凭证 |
-| 对外 | POST | [/api/v1/watch-accounts/{id}/resume](#48-监控账户管理) | 恢复监控，需要管理凭证 |
-| 对外 | GET | [/api/v1/publishing-status](#46-webhook-发布状态) | 查看候选输出开关、队列、心跳和错误 |
+| 对外 | GET | [/api/v1/trade-events/live](#43-账户近期合约成交查询) | 请求官方来源并保存查询结果 |
+| 对外 | GET | [/api/v1/trade-events/stored](#44-已保存成交时间查询) | 只查询已入库成交，支持时间范围和分页 |
+| 对外 | POST | [/api/v1/monitoring/accounts/add](#48-监控账户管理) | 添加监控，正文传 account、start_time |
+| 对外 | GET | [/api/v1/monitoring/accounts/list](#45-自动更新状态) | 查看登记列表，支持状态筛选和分页 |
+| 对外 | GET | [/api/v1/monitoring/accounts/detail](#48-监控账户管理) | 查询参数 id 指定账户详情 |
+| 对外 | POST | [/api/v1/monitoring/accounts/pause](#48-监控账户管理) | 正文传 id，暂停采集并保留数据 |
+| 对外 | POST | [/api/v1/monitoring/accounts/resume](#48-监控账户管理) | 正文传 id，从已保存水位继续采集 |
+| 对外 | GET | [/api/v1/monitoring/accounts/collection-status](#48-监控账户管理) | 查询参数 id 指定账户，查看 HTTP/WS 采集状态 |
+| 对外 | GET | [/api/v1/monitoring/accounts/publishing-status](#48-监控账户管理) | 查询参数 id 指定账户，查看候选投递状态 |
+| 对外 | GET | [/api/v1/publishing/status](#46-webhook-发布状态) | 全部账户发布汇总，不接受 account 或 id 参数 |
 | 输出 | POST | [配置的 webhook 地址](#47-webhook-候选事件) | 发送标准账户事实候选，接收方按 event_id 去重 |
 | 内部 | GET | [/internal/v1/publishing-status](#36-内部发布状态) | 网关读取 publisher 状态，需要服务凭证 |
 | 内部 | GET | [/internal/v1/collection-status](#35-内部自动采集状态) | 网关读取 collector 状态，需要服务凭证 |
@@ -75,7 +79,7 @@ JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与�
 
 内部接口用于项目内不同进程之间的通信。目前 query-api 负责对外 HTTP 请求，trade-log-query 负责手动成交查询和库存读取，trade-collector 独立执行单地址自动采集。通过内部接口明确这些进程的请求、响应、认证和错误边界，使业务查询过程可以独立运行和迭代，网关无需依赖交易查询进程的内部实现。
 
-当客户端调用外部成交查询接口时，网关完成参数校验，再调用内部成交查询接口；交易查询服务完成采集和证据保存后，网关将结果返回客户端。source=stored 时网关改调用内部库存查询接口，仅读取本库，不进行来源采集。内部健康接口供运维或受信任的服务调用方检查交易查询进程是否存活，当前网关不会在每次成交查询前主动调用它。
+当客户端调用外部成交查询接口时，网关完成参数校验，再调用内部成交查询接口；交易查询服务完成采集和证据保存后，网关将结果返回客户端。调用 /trade-events/stored 时网关改调用内部库存查询接口，仅读取本库，不进行来源采集。内部健康接口供运维或受信任的服务调用方检查交易查询进程是否存活，当前网关不会在每次成交查询前主动调用它。
 
 内部接口位于容器网络，默认不向宿主机发布端口。所有内部接口均要求服务凭证，普通业务客户端通过第 4 章的外部接口访问。
 
@@ -124,7 +128,7 @@ status 表示内部进程可响应，service 为服务名，version 为程序构
 
 ### 3.4 内部库存查询
 
-网关在外部请求 source=stored 时调用，只读数据库，不调用 Hyperliquid。内部认证、请求头、JSON 体上限与第 3.1、3.2 节相同。
+网关在外部请求 /trade-events/stored 时调用，只读数据库，不调用 Hyperliquid。内部认证、请求头、JSON 体上限与第 3.1、3.2 节相同。
 
 ```http
 POST /internal/v1/stored-trade-queries
@@ -149,7 +153,7 @@ account 必填；limit 为整数，可省略但不可为 null。start_time、end
 
 旧入口读取首次导入的配置账户，成功 data.items 每项仍为原采集状态，不包含管理对象。未配置原账户或检查点不存在时返回 503。必须携带内部服务凭证，未授权返回 401。
 
-v0.6 新增 `/internal/v1/watch-accounts` 及 `{id}`、`{id}/resume`，方法、参数和响应分别与第 4.5、4.8 节一致。调用方为网关，使用内部服务凭证；外部管理凭证由网关验证，不转发给 collector。读取状态只访问数据库，不查询官方来源。
+v0.6 新增 `/internal/v1/watch-accounts` 及 `{id}`、`{id}/resume`，内部仍按资源组织：GET 列表、POST 添加、GET /{id} 详情、DELETE /{id} 暂停、POST /{id}/resume 恢复。外部功能路由由网关转换为这些调用；不要把外部路径直接用于内部端口。调用方为网关，使用内部服务凭证；外部管理凭证由网关验证，不转发给 collector。读取状态只访问数据库，不查询官方来源。
 
 collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.6.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
 
@@ -231,23 +235,23 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 #### 4.3.1 请求格式和参数
 
 ```http
-GET /api/v1/trade-events?account=<账户地址>&limit=100
+GET /api/v1/trade-events/live?account=<账户地址>&limit=100
 ```
 
 | 参数 | 位置 | 类型 | 必填 | 默认值 | 意义及限制 |
 | --- | --- | --- | --- | --- | --- |
 | account | URL query | string | 是 | 无 | 被查询的账户；必须以小写 `0x` 开头，后跟 40 个十六进制字符，总长度 42；地址字符可大小写混合，结果规范化为小写；不接受前后空格 |
 | limit | URL query | integer | 否 | 100 | 最多展示多少条合约成交，范围 1–2000；不接受小数、负数或空字符串 |
-| source | URL query | string | 否 | live | live 调用来源并保存；stored 查询数据库，详见第 4.4 节 |
+| source | URL query | — | 不接受 | — | 功能由 /live 路径指定；传入此参数返回 400 |
 
-source=live（或省略 source）使用本节的实时响应；不允许 start_time、end_time 或 cursor。
+/live 使用本节的实时响应；不允许 start_time、end_time 或 cursor。
 
 请求不带 JSON body。缺少 account、未知参数、重复的同名参数、非法类型或超出范围均返回 400。network 从服务配置读取，不能通过请求切换。实时查询不提供起止时间和游标；已保存记录的时间查询见第 4.4 节。不提供市场筛选或自定义排序参数。
 
 示例账户为公开账户，实际近期成交会变化：
 
 ```sh
-curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
+curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-events/live' \
   --data-urlencode 'account=0x010461c14e146ac35fe42271bdc1134ee31c703a' \
   --data-urlencode 'limit=10'
 ```
@@ -416,29 +420,28 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 
 ### 4.4 已保存成交时间查询
 
-沿用 GET /api/v1/trade-events，以 source=stored 选择数据库查询。此调用只读取已保存事实，不调用来源、不创建采集 query_id。
+使用 GET /api/v1/trade-events/stored，路径明确选择数据库查询，不传 source 参数。此调用只读取已保存事实，不调用来源、不创建采集 query_id。
 
 | 参数 | 类型 | 必填/默认 | 意义与校验 |
 | --- | --- | --- | --- |
 | account | string | 必填 | 地址规则同第 4.3.1 节 |
-| source | string | 必须为 stored | 省略时仍执行 live，不是数据库查询 |
+| source | — | 不接受 | 使用 /stored 路径指定功能；传入此参数返回 400 |
 | limit | integer | 默认 100 | 每页展示上限，1–2000；下一页可调整 |
 | start_time | string | 可选，无下界 | 包含开始时刻；带时区 RFC 3339，最多 3 位小数秒，转换为 UTC |
 | end_time | string | 可选，无上界 | 不包含结束时刻；格式同 start_time |
 | cursor | string | 可选，第一页无游标 | 直接使用上一页 next_cursor；最大 8192 字节，绑定账户、网络及时间条件 |
 
-区间为 `[start_time,end_time)`；两者均存在时必须 start_time < end_time。无时区时间、负 Unix 时间、超出毫秒精度、未知 source、游标损坏或条件不匹配返回 400。分页期间新写入的事实不进入原快照；重新发起不带游标的请求才能看到新库存。
+区间为 `[start_time,end_time)`；两者均存在时必须 start_time < end_time。无时区时间、负 Unix 时间、超出毫秒精度、传入 source 参数、游标损坏或条件不匹配返回 400。分页期间新写入的事实不进入原快照；重新发起不带游标的请求才能看到新库存。
 
 ```sh
-curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
+curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events/stored' \
   --data-urlencode 'account=0x010461c14e146ac35fe42271bdc1134ee31c703a' \
-  --data-urlencode 'source=stored' \
   --data-urlencode 'start_time=2026-10-04T00:00:00.000Z' \
   --data-urlencode 'end_time=2026-10-05T00:00:00.000Z' \
   --data-urlencode 'limit=10'
 ```
 
-成功响应仍为 data/meta；data 字段如下，与实时响应按 source 区分：
+成功响应仍为 data/meta；data 字段如下，与实时响应按路径功能区分：
 
 | data 字段 | 类型 | 意义 |
 | --- | --- | --- |
@@ -475,14 +478,14 @@ curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
 }
 ```
 
-有下一页时，把 next_cursor 作为 URL cursor 参数传入，并保持 source、account、时间范围一致，limit 可调整。排序仍为成交时间降序、tid 数值降序、fact_id 升序。stored 不返回 live counts、采集 query_id 或 display_truncated。空库存不说明账户没有交易；数据库错误返回非 200。
+有下一页时，把 next_cursor 作为 URL cursor 参数传入，并保持 /stored 路径、account、时间范围一致，limit 可调整。排序仍为成交时间降序、tid 数值降序、fact_id 升序。stored 不返回 live counts、采集 query_id 或 display_truncated。空库存不说明账户没有交易；数据库错误返回非 200。
 
 ### 4.5 自动更新状态
 
-新增于 v0.3，v0.6 改为多账户分页列表。`GET /api/v1/watch-accounts`，无请求正文。支持 state=ACTIVE/PAUSED、limit（默认 20，最大 100）和不透明 cursor；非法或未知参数返回 400。添加、暂停和恢复见第 4.8 节。采集由独立 trade-collector 运行；读取状态不会执行来源查询。
+新增于 v0.3，v0.6 改为多账户分页列表。`GET /api/v1/monitoring/accounts/list`，无请求正文。支持 state=ACTIVE/PAUSED、limit（默认 20，最大 100）和不透明 cursor；非法或未知参数返回 400。添加、暂停和恢复见第 4.8 节。采集由独立 trade-collector 运行；读取状态不会执行来源查询。
 
 ```sh
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 ```
 
 成功 data 包含 items、next_cursor、total（本网络登记总数）、active_count 和 max_active_accounts。每项为管理对象，原采集字段移至 collection；这是需要调用方适配的结构变更，schema_version 仍为 1：
@@ -629,13 +632,15 @@ WS 数据模式 SNAPSHOT、LIVE_UPDATE、UNKNOWN 保存在采集任务和原始�
 
 ### 4.6 webhook 发布状态
 
-v0.5 新增，v0.6 支持多账户：`GET /api/v1/publishing-status`，可选 account 查询参数。指定 account 返回下表的账户级对象；不指定返回 `{ "items": [账户级对象], "outbox": {状态: 总数} }`，不自动选择第一个账户。进程不可达或数据库不可读返回 503，不能把不可用解释为空队列。
+`GET /api/v1/publishing/status` 返回全部登记发布控制的汇总，不接受查询参数。data 含 items（每账户状态数组）和 outbox（全部账户各队列状态的计数合计）；每项字段见下表及示例。只读取数据库，不触发推送。
+
+查询单账户请使用 `GET /api/v1/monitoring/accounts/publishing-status?id=<登记ID>`，返回 data 为单账户发布状态；不要将钱包地址填入 id。
 
 ```sh
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing/status
 ```
 
-返回公共 data/meta 信封，data 字段如下：
+返回公共 data/meta 信封。下表描述单账户 data（也就是汇总 items 中每项）的字段：
 
 | 字段 | 类型 | 意义 |
 | --- | --- | --- |
@@ -696,12 +701,76 @@ docker compose exec -T trade-parser-publisher trade-parser-publisher retry --eve
 
 v0.6 新增。添加、暂停、恢复要求 `Authorization: Bearer <管理凭证>`，凭证文件为 secrets/watch-management-token；与内部服务及 webhook 凭证分别管理。缺失或错误返回 JSON 401，读接口不要求管理凭证。
 
-| 方法与路径 | 请求 | 成功状态及含义 |
-| --- | --- | --- |
-| POST /api/v1/watch-accounts | JSON account、start_time；拒绝未知字段 | 201，登记成功，尚不保证已订阅或追平 |
-| GET /api/v1/watch-accounts/{id} | UUID 管理 ID，无正文 | 200，返回与列表项一致的账户对象 |
-| DELETE /api/v1/watch-accounts/{id} | UUID 管理 ID，无正文 | 202，持久暂停并撤销旧租约，不删除数据 |
-| POST /api/v1/watch-accounts/{id}/resume | UUID 管理 ID，无正文 | 202，从旧水位恢复，建立新监控代次和发布边界 |
+| 操作 | 方法与路径 | 参数位置 | 成功结果 |
+| --- | --- | --- | --- |
+| 添加 | POST /api/v1/monitoring/accounts/add | JSON account、start_time | 201，data 为登记对象，保存 data.id |
+| 列表 | GET /api/v1/monitoring/accounts/list | 查询 state、limit、cursor，均可选 | 200，data.items 为登记对象数组 |
+| 详情 | GET /api/v1/monitoring/accounts/detail | 必填查询 id | 200，data 为登记对象 |
+| 暂停 | POST /api/v1/monitoring/accounts/pause | JSON 必填 id | 202，data.desired_state=PAUSED |
+| 恢复 | POST /api/v1/monitoring/accounts/resume | JSON 必填 id | 202，data.desired_state=ACTIVE |
+| 采集状态 | GET /api/v1/monitoring/accounts/collection-status | 必填查询 id | 200，data 含 id、account、desired_state、observed_state、collection |
+| 发布状态 | GET /api/v1/monitoring/accounts/publishing-status | 必填查询 id | 200，data 为第 4.6 节的单账户发布对象 |
+
+GET 不使用请求正文，POST 使用 Content-Type: application/json。id 为添加响应的 UUID 登记 ID，不是钱包地址；列表可找回该 ID。参数缺失、ID 非 UUID、未知参数/JSON 字段返回 400；未登记 ID 返回 404。暂停和恢复不接受 account 或 start_time。
+
+#### 4.8.1 从添加到暂停、恢复的完整示例
+
+在服务器项目根目录执行。以下地址为服务器本机；远程调用时替换 BASE。修改 ACCOUNT 和 START_TIME 为需要监控的钱包及采集起点（带时区、不能在未来）。
+
+```sh
+BASE='http://127.0.0.1:8080'
+ACCOUNT='0x0000000000000000000000000000000000000001'
+START_TIME='2026-10-01T00:00:00Z'
+TOKEN=$(cat secrets/watch-management-token)
+
+# 1. 添加：201 表示登记完成，实际订阅和回补随后启动。
+curl --noproxy '*' -sS -i "$BASE/api/v1/monitoring/accounts/add" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  --data "{\"account\":\"$ACCOUNT\",\"start_time\":\"$START_TIME\"}"
+
+# 2. 从上一步响应 data.id 复制登记 ID 到这里（下面只是 UUID 格式示例）。
+ID='00000000-0000-0000-0000-000000000001'
+
+# 3. 列表：找回 ID，查看账户是 ACTIVE 还是 PAUSED。
+curl --noproxy '*' -sS --get "$BASE/api/v1/monitoring/accounts/list" \
+  --data-urlencode 'limit=20'
+
+# 4. 详情：查看登记起点、管理状态、代次及嵌套采集/发布状态。
+curl --noproxy '*' -sS --get "$BASE/api/v1/monitoring/accounts/detail" \
+  --data-urlencode "id=$ID"
+
+# 5. 采集状态：检查 collection.scanned_through 是否推进；WS 开启时检查 status 和 last_pong_at。
+curl --noproxy '*' -sS --get "$BASE/api/v1/monitoring/accounts/collection-status" \
+  --data-urlencode "id=$ID"
+
+# 6. 账户发布状态：检查 enabled、status、outbox、last_error。
+curl --noproxy '*' -sS --get "$BASE/api/v1/monitoring/accounts/publishing-status" \
+  --data-urlencode "id=$ID"
+
+# 7. 暂停：202 且 desired_state=PAUSED；不删除成交，旧投递队列仍可继续。
+curl --noproxy '*' -sS -i "$BASE/api/v1/monitoring/accounts/pause" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  --data "{\"id\":\"$ID\"}"
+
+# 8. 恢复：202 且 desired_state=ACTIVE；随后重新订阅并从旧水位补偿。
+curl --noproxy '*' -sS -i "$BASE/api/v1/monitoring/accounts/resume" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  --data "{\"id\":\"$ID\"}"
+
+# 9. 全部账户发布汇总：无需 account 或 id。
+curl --noproxy '*' -sS "$BASE/api/v1/publishing/status"
+unset TOKEN
+```
+
+第 5 步 collection=null 表示还没有采集检查点，并非删除了数据。暂停后的 collection 可能仍展示最后一次采集观测值，应结合 desired_state 判断。新添加账户的发布控制尚未初始化时，发布状态接口可返回 503，稍后重试。恢复补偿受来源可查询范围限制；历史补偿和初始快照不会生成实时跟单候选。
+
+#### 4.8.2 登记对象和字段
+
+添加、详情、暂停、恢复均返回统一 data/meta 信封。列表中每项为相同登记对象。示意片段如下，实际对象还包含下表其余字段：
+
+```json
+{"data":{"id":"00000000-0000-0000-0000-000000000001","account":"0x0000000000000000000000000000000000000001","desired_state":"ACTIVE","generation":1,"collection":null,"publishing":null},"meta":{"trace_id":"trace_example","schema_version":1}}
+```
 
 添加正文示例：
 
@@ -726,6 +795,22 @@ v0.6 新增。添加、暂停、恢复要求 `Authorization: Bearer <管理凭�
 重复添加返回 409 WATCH_ACCOUNT_EXISTS，message 包含 existing_id，不覆盖原起点或自动恢复。达到容量上限返回 409 WATCH_ACCOUNT_LIMIT_REACHED。默认 5 个活动账户、100 个登记账户；暂停账户不占活动额度，异常中的 ACTIVE 账户仍占额度。管理 ID 不存在返回 404，非法 UUID 返回 400。
 
 暂停停止新采集和新候选，既有 outbox 继续交付；不撤回信号或控制下游跟单。恢复时 HTTP、初始快照和旧会话归档只补存事实，不冒充新实时信号。管理成功不保证历史完整，详情须结合覆盖、缺口和 warnings 判断。
+
+### 4.9 旧入口兼容说明
+
+2026-10-12 起新调用使用本章功能路径。以下旧外部入口暂保留兼容，不再作为新接入示例：
+
+| 旧入口 | 新入口 |
+| --- | --- |
+| GET /api/v1/trade-events，source=live/stored | GET /api/v1/trade-events/live 或 /stored，不传 source |
+| GET/POST /api/v1/watch-accounts | GET /api/v1/monitoring/accounts/list；POST /api/v1/monitoring/accounts/add |
+| GET /api/v1/watch-accounts/{id} | GET /api/v1/monitoring/accounts/detail?id=... |
+| DELETE /api/v1/watch-accounts/{id} | POST /api/v1/monitoring/accounts/pause，JSON id |
+| POST /api/v1/watch-accounts/{id}/resume | POST /api/v1/monitoring/accounts/resume，JSON id |
+| GET /api/v1/publishing-status，无 account | GET /api/v1/publishing/status |
+| GET /api/v1/publishing-status?account=钱包地址 | GET /api/v1/monitoring/accounts/publishing-status?id=登记ID |
+
+验收脚本在当前 v0.6 部署上使用功能入口；在旧版本部署上仍使用对应旧入口。新增调用使用功能入口。内部服务接口维持各服务原契约，外部调用只访问网关，不直接调用内部端口。
 
 ## 5. HTTP 状态及错误码
 
@@ -757,6 +842,7 @@ v0.6 新增。添加、暂停、恢复要求 `Authorization: Bearer <管理凭�
 
 | 日期 | 程序版本 | 类型 | 更新内容 |
 | --- | --- | --- | --- |
+| 2026-10-12 | 0.6.0 | 功能路由调整 | 成交 live/stored 拆分；监控操作独立命名，GET 查询 id、POST JSON id；新增账户采集/发布状态及独立发布汇总；旧入口保留兼容 |
 | 2026-10-11 | 0.6.0 | 新增及结构变更 | 多账户管理、管理认证、列表分页与 collection 嵌套；发布状态支持 account 和汇总；原成交查询及 webhook 信封不变 |
 | 2026-10-06 | 0.5.0 | 新增接口 | 发布状态内部及外部接口、标准候选 webhook 信封、投递头、时效和重试契约 |
 | 2026-10-06 | 0.4.0 | 兼容扩展 | 自动状态增加 monitoring_status、websocket、recovery；HTTP 水位与 WS 接收、提交位置独立；stored 路径及 schema_version 不变 |

@@ -98,16 +98,20 @@ observed_state 根据当前代次的 worker 心跳和租约计算；进程退出
 
 ### 5.2 外部接口
 
+2026-10-12 按功能重组外部路径：GET 用查询参数 id，POST 用 JSON id，钱包地址与登记 ID 分开。旧入口保留兼容，内部服务契约不变；完整调用示例见 [接口说明](api.md#48-监控账户管理)。
+
 所有结果沿用 data/meta 信封、trace_id 和统一错误结构。列表按 created_at、id 稳定排序，默认 limit=20、最大 100，使用不透明 cursor 分页。
 
 | 方法与路径 | 请求 | 成功响应 |
 | --- | --- | --- |
-| POST /api/v1/watch-accounts | JSON account、start_time | 201，返回账户对象；仅表示登记成功，不表示已追平 |
-| GET /api/v1/watch-accounts | 可选 state、limit、cursor | 200，data.items、next_cursor、total、active_count、max_active_accounts |
-| GET /api/v1/watch-accounts/{id} | 管理 ID | 200，账户对象及 collection、publishing 状态 |
-| DELETE /api/v1/watch-accounts/{id} | 无正文 | 202，期望 PAUSED，返回当前停止进度 |
-| POST /api/v1/watch-accounts/{id}/resume | 无正文 | 202，期望 ACTIVE，返回当前启动进度 |
-| GET /api/v1/publishing-status | 可选 account | 指定账户返回原账户级结构；不指定返回 items 和队列汇总 |
+| POST /api/v1/monitoring/accounts/add | JSON account、start_time | 201，登记对象，保存 data.id |
+| GET /api/v1/monitoring/accounts/list | 可选 state、limit、cursor | 200，data.items、next_cursor、total、active_count、max_active_accounts |
+| GET /api/v1/monitoring/accounts/detail | 查询 id（登记 UUID） | 200，登记对象及 collection、publishing |
+| POST /api/v1/monitoring/accounts/pause | JSON id | 202，desired_state=PAUSED，不删除数据 |
+| POST /api/v1/monitoring/accounts/resume | JSON id | 202，desired_state=ACTIVE，从旧水位继续 |
+| GET /api/v1/monitoring/accounts/collection-status | 查询 id | 200，管理状态和 collection 采集观测 |
+| GET /api/v1/monitoring/accounts/publishing-status | 查询 id | 200，对应账户的发布状态 |
+| GET /api/v1/publishing/status | 无参数 | 200，items 和 outbox 汇总 |
 
 POST start_time 必须是非未来的有效 RFC3339 时间，时区明确，金额和事实模型不变。重复添加相同规范账户返回 409 WATCH_ACCOUNT_EXISTS，并提供 existing_id，不隐式恢复、不覆盖起点。暂停已暂停账户、恢复已活动账户保持幂等，不递增 generation，不重新激活发布。
 
@@ -217,7 +221,7 @@ collector 角色可管理 watch_accounts、账户租约及共享预算，publish
 | gateway/query-api/src/http/error.rs | 支持服务透传错误码 |
 | config/trade-collector.toml、config/trade-parser-publisher.toml、config/query-api.toml | 新配置、旧字段兼容和凭证引用 |
 | compose.yaml、gateway/query-api/Dockerfile | 版本、管理凭证、测试 target；保留原数据卷 |
-| scripts/verify-version.py | 旧版本脚本读取 collection 嵌套，显式查询所选账户发布状态 |
+| scripts/verify-version.py | 旧版本脚本读取 collection 嵌套；按运行版本选择功能入口，使用登记 ID 查询所选账户发布状态 |
 | services/trade-log/adapters/tests/publishing_chain.rs 及既有启动/集成测试 | 覆盖多账户后的原行为回归 |
 | docs/api.md、docs/verify.md | 实现时更新统一契约和简洁执行命令 |
 
@@ -311,8 +315,8 @@ docker compose up --build -d
 #### 第 1 步：检查升级后的原账户
 
 ```sh
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/watch-accounts
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/monitoring/accounts/list
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing/status
 ```
 
 通过标准：原账户、事实、水位、队列和激活边界保留，列表显示当前活动数量和上限。
@@ -320,7 +324,7 @@ curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
 #### 第 2 步：添加第二个账户
 
 ```sh
-curl --noproxy '*' -sS -X POST http://127.0.0.1:8080/api/v1/watch-accounts \
+curl --noproxy '*' -sS -X POST http://127.0.0.1:8080/api/v1/monitoring/accounts/add \
   -H "Authorization: Bearer $(cat secrets/watch-management-token)" \
   -H 'Content-Type: application/json' \
   -d '{"account":"<第二个实际账户>","start_time":"<RFC3339起点>"}'
@@ -331,8 +335,8 @@ curl --noproxy '*' -sS -X POST http://127.0.0.1:8080/api/v1/watch-accounts \
 #### 第 3 步：分别查询采集和发布
 
 ```sh
-curl --noproxy '*' -sS 'http://127.0.0.1:8080/api/v1/watch-accounts/<实际ID>'
-curl --noproxy '*' -sS 'http://127.0.0.1:8080/api/v1/publishing-status?account=<实际账户>'
+curl --noproxy '*' -sS 'http://127.0.0.1:8080/api/v1/monitoring/accounts/detail?id=<实际ID>'
+curl --noproxy '*' -sS 'http://127.0.0.1:8080/api/v1/monitoring/accounts/publishing-status?id=<实际ID>'
 docker compose logs --tail=100 trade-collector trade-parser-publisher
 ```
 
@@ -341,9 +345,11 @@ docker compose logs --tail=100 trade-collector trade-parser-publisher
 #### 第 4 步：暂停一个账户
 
 ```sh
-curl --noproxy '*' -sS -X DELETE \
-  'http://127.0.0.1:8080/api/v1/watch-accounts/<实际ID>' \
-  -H "Authorization: Bearer $(cat secrets/watch-management-token)"
+curl --noproxy '*' -sS -X POST \
+  'http://127.0.0.1:8080/api/v1/monitoring/accounts/pause' \
+  -H "Authorization: Bearer $(cat secrets/watch-management-token)" \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"<实际ID>"}'
 ```
 
 轮询详情直到 PAUSED，记录暂停前水位和时间。通过标准：该账户停止新采集和候选，其他账户水位继续推进；已有 outbox 可继续投递。重复暂停不改变代次。
@@ -352,8 +358,10 @@ curl --noproxy '*' -sS -X DELETE \
 
 ```sh
 curl --noproxy '*' -sS -X POST \
-  'http://127.0.0.1:8080/api/v1/watch-accounts/<实际ID>/resume' \
-  -H "Authorization: Bearer $(cat secrets/watch-management-token)"
+  'http://127.0.0.1:8080/api/v1/monitoring/accounts/resume' \
+  -H "Authorization: Bearer $(cat secrets/watch-management-token)" \
+  -H 'Content-Type: application/json' \
+  -d '{"id":"<实际ID>"}'
 ```
 
 通过标准：从旧水位继续、建立新会话和激活边界；HTTP 补偿只保存事实，不输出暂停期间历史信号；独立来源对账或固定样本证明补偿结果，不能只凭水位推进断言无缺口。

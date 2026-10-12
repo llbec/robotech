@@ -1,5 +1,7 @@
 # v0.1 开发文档：Hyperliquid 近期合约成交查询
 
+> 接口命令已于 2026-10-12 同步到当前功能路径，执行对象为最新部署；旧版本行为及验证记录仍作为历史保留。完整请求与响应见 [接口说明](api.md)。
+
 - 文档版本：0.1
 - 状态：代码已实现，本地与真实来源验证通过；Docker 部署待服务器验收
 - 更新日期：2026-10-04
@@ -36,7 +38,7 @@
 沿用详细设计的查询路径：
 
 ```text
-GET /api/v1/trade-events?account=<ADDRESS>&limit=100
+GET /api/v1/trade-events/live?account=<ADDRESS>&limit=100
 ```
 
 | 参数 | 规则 |
@@ -49,7 +51,7 @@ GET /api/v1/trade-events?account=<ADDRESS>&limit=100
 请求示例，替换为实际账户后执行：
 
 ```sh
-curl --get 'http://127.0.0.1:8080/api/v1/trade-events' \
+curl --get 'http://127.0.0.1:8080/api/v1/trade-events/live' \
   --data-urlencode 'account=<ADDRESS>' \
   --data-urlencode 'limit=100'
 ```
@@ -455,7 +457,7 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 #### 第 4 步：查询真实账户成交
 
 ```sh
-curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
+curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-events/live' \
   --data-urlencode 'account=0x010461c14e146ac35fe42271bdc1134ee31c703a' \
   --data-urlencode 'limit=10'
 ```
@@ -471,9 +473,9 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 分别执行：
 
 ```sh
-curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=invalid'
-curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=0'
-curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=2001'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events/live?account=invalid'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events/live?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=0'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events/live?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=2001'
 ```
 
 **看什么：** 三个请求均返回 400，响应体有 `code` 为 `VALIDATION_ERROR`，并有 trace_id。
@@ -486,7 +488,7 @@ curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x01046
 
 ```sh
 curl --noproxy '*' -i http://server.example.com:8080/api/v1/health
-curl --noproxy '*' --max-time 45 -i 'http://server.example.com:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
+curl --noproxy '*' --max-time 45 -i 'http://server.example.com:8080/api/v1/trade-events/live?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
 ```
 
 **通过标准：** health 返回 200 和 ok；成交查询返回 200，结构符合第 4 步。实时查询结果可能变化，不要求两次成交内容完全一致。如果服务器本机通过而此步失败，检查服务器安全组、系统防火墙和 Compose 的 8080 端口发布。
@@ -528,7 +530,7 @@ docker compose exec -T trade-log-query cat "/var/lib/robotech/trade-log/$v01_que
 
 ```sh
 docker compose stop trade-log-query
-curl --noproxy '*' --max-time 45 -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
+curl --noproxy '*' --max-time 45 -i 'http://127.0.0.1:8080/api/v1/trade-events/live?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
 docker compose start trade-log-query
 ```

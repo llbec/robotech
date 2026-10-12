@@ -42,3 +42,27 @@ pub async fn handle(
         ),
     }
 }
+
+pub async fn summary(
+    State(s): State<AppState>,
+    Extension(trace): Extension<TraceId>,
+    p: Result<
+        axum::extract::Query<std::collections::BTreeMap<String, String>>,
+        axum::extract::rejection::QueryRejection,
+    >,
+) -> Response {
+    if !matches!(&p, Ok(axum::extract::Query(values)) if values.is_empty()) {
+        return error::response(
+            StatusCode::BAD_REQUEST,
+            "INVALID_ARGUMENT",
+            "Summary accepts no query parameters; use monitoring/accounts/publishing-status?id=... for one account",
+            trace,
+        );
+    }
+    handle(
+        State(s),
+        Extension(trace),
+        Ok(axum::extract::Query(Params { account: None })),
+    )
+    .await
+}

@@ -1,5 +1,7 @@
 # v0.2 开发文档：成交持久化与时间区间查询
 
+> 接口命令已于 2026-10-12 同步到当前功能路径，执行对象为最新部署；旧版本行为及验证记录仍作为历史保留。完整请求与响应见 [接口说明](api.md)。
+
 - 文档版本：0.2
 - 状态：代码已实现，已通过本地 PostgreSQL、HTTP 链路及实际 release 程序验证；Docker 运行待服务器手动验收
 - 更新日期：2026-10-05
@@ -34,20 +36,20 @@ v0.1 的文件证据按单次 query_id 保存，不能提供跨查询合并账�
 ### 3.1 保留实时查询
 
 ```text
-GET /api/v1/trade-events?account=<ADDRESS>&limit=100
+GET /api/v1/trade-events/live?account=<ADDRESS>&limit=100
 ```
 
-省略 source 或使用 `source=live`：沿用 v0.1 来源查询语义，查询当前官方窗口，完成持久化后响应。相同调用再次执行仍会采集新原始响应，但已存在且相同的事实不重复写入。
+使用 `/api/v1/trade-events/live`：沿用 v0.1 来源查询语义，查询当前官方窗口，完成持久化后响应。相同调用再次执行仍会采集新原始响应，但已存在且相同的事实不重复写入。
 
 limit 默认 100、范围 1–2000，仍只限制展示条数；成功解析出的完整事实集合全部入库。live 不允许 start_time、end_time 或 cursor，避免误以为已经执行历史范围采集。
 
 ### 3.2 查询本库已保存记录
 
 ```text
-GET /api/v1/trade-events?account=<ADDRESS>&source=stored&start_time=<UTC>&end_time=<UTC>&limit=100
+GET /api/v1/trade-events/stored?account=<ADDRESS>&start_time=<UTC>&end_time=<UTC>&limit=100
 ```
 
-source=stored 时只调用交易日志服务的数据库查询端口，不调用来源、不生成新的采集 query_id，也不改写事实。start_time/end_time 均可省略，省略表示该方向无时间限制；两者都存在时必须 start_time < end_time。
+使用 `/api/v1/trade-events/stored` 时只调用交易日志服务的数据库查询端口，不调用来源、不生成新的采集 query_id，也不改写事实。start_time/end_time 均可省略，省略表示该方向无时间限制；两者都存在时必须 start_time < end_time。
 
 区间为 `[start_time, end_time)`：包含开始时刻，不包含结束时刻。时间必须为带时区的 RFC 3339，最大毫秒精度；输入偏移换算为 UTC，输出统一 UTC。超出支持精度、负 Unix 时间或非法时间返回 400。
 
@@ -90,7 +92,7 @@ stored 的 observed_range 按本次时间条件和固定分页快照下的完整
 
 | 接口变化 | 设计约定 |
 | --- | --- |
-| 外部 GET /api/v1/trade-events | 增加 source，默认 live；stored 支持 start_time、end_time、cursor |
+| 外部 GET /api/v1/trade-events/live、/stored | 路径区分来源查询与库存查询；stored 支持 start_time、end_time、cursor |
 | 内部 POST /internal/v1/trade-queries | 保持原语义，成功前保存事实；不接收 stored 参数 |
 | 内部 POST /internal/v1/stored-trade-queries | 接收账户、区间、limit、cursor；仅查询数据库 |
 | 内部认证 | 新接口沿用 Bearer 服务凭证和 trace_id 传播 |
@@ -100,7 +102,7 @@ live 保留原有全部响应字段，新增 `persistence`：status=COMMITTED、
 
 stored 使用相同 data/meta 信封及 trades[] 标准事实，但 data 结构按读取场景定义：account、network、query_scope=STORED_TIME_RANGE、coverage=STORED_RECORDS_ONLY、request_range、snapshot_seq（十进制字符串）、matched_records、returned_records、observed_range、trades、has_more、next_cursor、warnings。没有采集 query_id、live 来源计数或 display_truncated；next_cursor 无下一页时为 null。
 
-trades[] 保留持久化时的事实身份及首次来源 raw_log_id。每次 HTTP 的 trace_id 独立；重新读取不修改事实。调用方根据 source 区分响应，未指定 source 的已有客户端行为保持一致。
+trades[] 保留持久化时的事实身份及首次来源 raw_log_id。每次 HTTP 的 trace_id 独立；重新读取不修改事实。调用方根据 /live 或 /stored 路径区分响应；新路径不接受 source 参数，旧入口保留兼容。
 
 ### 5.2 数据库归属与模型
 
@@ -408,7 +410,7 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 #### 第 2 步：采集真实账户并保存
 
 ```sh
-curl --noproxy '*' --max-time 60 -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
+curl --noproxy '*' --max-time 60 -i 'http://127.0.0.1:8080/api/v1/trade-events/live?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
 ```
 
 **看什么：** 200，persistence.status=COMMITTED；inserted_records+existing_records=counts.perpetual_records，展示不超过 10 条。记下 query_id、任一 fact_id/occurred_at 和完整成交数。
@@ -418,7 +420,7 @@ curl --noproxy '*' --max-time 60 -i 'http://127.0.0.1:8080/api/v1/trade-events?a
 #### 第 3 步：查询已保存的同一账户
 
 ```sh
-curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&source=stored&limit=10'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events/stored?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
 ```
 
 **看什么：** 200；coverage=STORED_RECORDS_ONLY，有 matched_records 和分页字段。第 2 步的事实可在库存中找到，fact_id、金额、时间和 revision=1 一致。已有库存较多时按成交时间定位或翻页。
@@ -430,9 +432,8 @@ curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x01046
 把 T 替换为第 2 步记下的真实 occurred_at，T_NEXT 替换为 T 加 1 毫秒后的 UTC 时间：
 
 ```sh
-curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
+curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events/stored' \
   --data-urlencode 'account=0x010461c14e146ac35fe42271bdc1134ee31c703a' \
-  --data-urlencode 'source=stored' \
   --data-urlencode 'start_time=<T>' \
   --data-urlencode 'end_time=<T_NEXT>'
 ```
@@ -448,9 +449,8 @@ curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
 将第 3 步 limit 改为 1。库存多于一条时记下 next_cursor：
 
 ```sh
-curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events' \
+curl --noproxy '*' -i --get 'http://127.0.0.1:8080/api/v1/trade-events/stored' \
   --data-urlencode 'account=0x010461c14e146ac35fe42271bdc1134ee31c703a' \
-  --data-urlencode 'source=stored' \
   --data-urlencode 'limit=1' \
   --data-urlencode 'cursor=<上一页实际next_cursor>'
 ```
@@ -511,7 +511,7 @@ docker compose restart postgres trade-log-query
 
 ```sh
 docker compose stop postgres
-curl --noproxy '*' --max-time 60 -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&source=stored&limit=10'
+curl --noproxy '*' --max-time 60 -i 'http://127.0.0.1:8080/api/v1/trade-events/stored?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&limit=10'
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
 docker compose start postgres
 ```
@@ -520,12 +520,12 @@ docker compose start postgres
 
 **通过标准：** 故障明确，恢复后原记录仍能读取，未丢失数据。
 
-#### 第 10 步：错误参数、旧接口及停止
+#### 第 10 步：错误参数及停止
 
 ```sh
-curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=invalid&source=stored'
-curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&source=unknown'
-curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&source=stored&start_time=invalid'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events/stored?account=invalid'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events/stored?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&source=unknown'
+curl --noproxy '*' -i 'http://127.0.0.1:8080/api/v1/trade-events/stored?account=0x010461c14e146ac35fe42271bdc1134ee31c703a&start_time=invalid'
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
 docker compose stop
 docker compose ps -a

@@ -1,5 +1,8 @@
 # v0.3 开发文档：单地址自动更新与采集水位
 
+> 接口命令已于 2026-10-12 同步到当前功能路径，执行对象为最新部署；旧版本行为及验证记录仍作为历史保留。完整请求与响应见 [接口说明](api.md)。
+> 当前账户列表的采集字段位于 `data.items[].collection`，账户管理状态位于 `desired_state`；钱包地址与登记 UUID 不同。
+
 - 文档版本：0.3
 - 状态：代码已实现，50 项测试及三个 release 程序验收通过；Docker 与服务器持续更新待手动验收
 - 更新日期：2026-10-06
@@ -58,7 +61,7 @@ retry_max_seconds = 300
 ### 3.2 查看自动更新状态
 
 ```text
-GET /api/v1/watch-accounts
+GET /api/v1/monitoring/accounts/list
 ```
 
 本版仅提供只读列表，正常最多返回一个配置中的账户，不读取所有历史检查点充当正在监控的账户。新增 collector 内部调用后由网关返回统一响应。账户没有成交时，成功时间和扫描水位仍应更新，last_trade_at 可以为空。
@@ -66,7 +69,7 @@ GET /api/v1/watch-accounts
 ### 3.3 查看保存的成交
 
 ```text
-GET /api/v1/trade-events?account=<ADDRESS>&source=stored&limit=100
+GET /api/v1/trade-events/stored?account=<ADDRESS>&limit=100
 ```
 
 继续使用 v0.2 的时间范围和快照游标。自动采集完成后，新成交可通过新的 stored 请求看到；正在翻页的旧快照仍按原 snapshot_seq 返回。stored 不触发来源访问或立即轮询。
@@ -107,10 +110,10 @@ GET /api/v1/trade-events?account=<ADDRESS>&source=stored&limit=100
 
 | 类型 | 接口 | 用途 |
 | --- | --- | --- |
-| 外部，新增 | GET /api/v1/watch-accounts | 查看当前配置账户和自动采集状态 |
+| 外部，新增 | GET /api/v1/monitoring/accounts/list | 查看当前配置账户和自动采集状态 |
 | 内部，新增 | GET /internal/v1/collection-status | 网关向 collector 读取配置账户与数据库检查点 |
 | 内部，新增 | GET /internal/v1/health | collector 进程存活状态，需内部凭证 |
-| 外部，复用 | GET /api/v1/trade-events | live/stored 成交查询 |
+| 外部，复用 | GET /api/v1/trade-events/live、/stored | 路径区分 live/stored 成交查询 |
 | 外部，复用 | GET /api/v1/health、GET /api/v1/version | 网关基础接口 |
 
 新增接口沿用 data/meta 成功信封和 code/message/trace_id 错误格式；内部使用既有服务 token。collector 不发布宿主机端口，网关通过 Compose 服务名访问。暂不实现详细设计中的 POST/DELETE watch-accounts，避免在单配置地址版本提前交付多账户生命周期。
@@ -401,7 +404,7 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 #### 第 2 步：不调用 live，查看自动更新
 
 ```sh
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 docker compose exec -T postgres psql -U robotech_admin -d robotech -c "SELECT query_id,status,created_at FROM trade_log.collection_jobs WHERE job_origin='COLLECTOR' ORDER BY created_at DESC LIMIT 5;"
 ```
 
@@ -414,9 +417,8 @@ docker compose exec -T postgres psql -U robotech_admin -d robotech -c "SELECT qu
 #### 第 3 步：查看自动保存的成交
 
 ```sh
-curl --noproxy '*' -i --get http://127.0.0.1:8080/api/v1/trade-events \
+curl --noproxy '*' -i --get http://127.0.0.1:8080/api/v1/trade-events/stored \
   --data-urlencode 'account=<配置中的实际账户>' \
-  --data-urlencode 'source=stored' \
   --data-urlencode 'limit=10'
 ```
 
@@ -452,7 +454,7 @@ SQL
 
 ```sh
 docker compose restart trade-collector trade-log-query
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 ```
 
 等待租约释放或到期，以及下一轮成功后重复状态和 stored 查询。
@@ -467,7 +469,7 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
 
 ```sh
 docker compose stop postgres
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
 docker compose logs --tail=30 trade-collector
 docker compose start postgres
@@ -483,7 +485,7 @@ docker compose start postgres
 
 ```sh
 docker compose stop trade-collector
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
 docker compose start trade-collector
 ```

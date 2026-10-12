@@ -1,5 +1,8 @@
 # v0.4 开发文档：单地址实时监控与断线恢复
 
+> 接口命令已于 2026-10-12 同步到当前功能路径，执行对象为最新部署；旧版本行为及验证记录仍作为历史保留。完整请求与响应见 [接口说明](api.md)。
+> 当前账户列表的采集字段位于 `data.items[].collection`，账户管理状态位于 `desired_state`；钱包地址与登记 UUID 不同。
+
 - 文档版本：0.4
 - 状态：已实现并完成本地验收；Docker 服务器验收待执行，详见 [验收记录](version0.4-acceptance.md)
 - 更新日期：2026-10-06
@@ -61,7 +64,7 @@ start_time 继续只用于首次建立 HTTP 检查点。已有水位恢复后，
 ### 3.2 查看实时与补偿状态
 
 ```text
-GET /api/v1/watch-accounts
+GET /api/v1/monitoring/accounts/list
 ```
 
 在已有 items 状态对象中增加 websocket、recovery 和 monitoring_status。原 scanned_through、last_success_at、consecutive_failures、next_run_at、pending_range 等字段仍表示 HTTP 自动扫描，不改成“最近收到 WebSocket 消息”。
@@ -71,7 +74,7 @@ GET /api/v1/watch-accounts
 ### 3.3 查询保存的成交
 
 ```text
-GET /api/v1/trade-events?account=<ADDRESS>&source=stored&limit=100
+GET /api/v1/trade-events/stored?account=<ADDRESS>&limit=100
 ```
 
 复用 v0.2 的时间过滤、排序和快照分页。WebSocket 成交提交后，新查询可以看到；已有游标继续固定旧 snapshot_seq。stored 不连接 WebSocket，不触发 HTTP 补采。
@@ -125,7 +128,7 @@ WebSocket 最新成交时间不能替代 HTTP scanned_through。收到时间很�
 
 ### 5.1 接口兼容与状态字段
 
-不新增外部路径。扩展现有 GET /api/v1/watch-accounts 和内部 GET /internal/v1/collection-status 的状态对象；内部凭证、错误信封和 trace 规则保持不变。
+不新增外部路径。扩展现有 GET /api/v1/monitoring/accounts/list 和内部 GET /internal/v1/collection-status 的状态对象；内部凭证、错误信封和 trace 规则保持不变。
 
 顶层 status 继续表示 v0.3 HTTP 调度状态，以兼容已有调用方；新增 monitoring_status 表示双通道监控状态。JSON schema_version 仍为 1，新字段为兼容扩展，读取旧数据时提供明确默认值。
 
@@ -426,7 +429,7 @@ docker compose up --build -d
 docker compose ps -a
 docker compose logs --tail=50 trade-collector
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 ```
 
 **看什么：** 四个常驻服务运行，版本 0.4.0；连接和订阅成功、session_id 存在，HTTP 水位继续保留并推进。恢复目标未追赶完时允许 RECOVERING，不要求立刻 LIVE。
@@ -442,9 +445,8 @@ docker compose exec -T postgres psql -U robotech_admin -d robotech -c "SELECT qu
 若观察期间账户产生新成交，再执行：
 
 ```sh
-curl --noproxy '*' -i --get http://127.0.0.1:8080/api/v1/trade-events \
+curl --noproxy '*' -i --get http://127.0.0.1:8080/api/v1/trade-events/stored \
   --data-urlencode 'account=<配置中的实际账户>' \
-  --data-urlencode 'source=stored' \
   --data-urlencode 'limit=10'
 ```
 
@@ -482,7 +484,7 @@ docker compose exec -T postgres psql -U robotech_admin -d robotech -c "SELECT DI
 #### 第 4 步：安静账户与心跳
 
 ```sh
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 docker compose logs --tail=40 trade-collector
 ```
 
@@ -500,7 +502,7 @@ docker compose logs --tail=40 trade-collector
 docker compose stop trade-collector
 # 等待一个或多个原配置轮询间隔后启动。
 docker compose start trade-collector
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 docker compose exec -T postgres psql -U robotech_admin -d robotech -c "SELECT reason,start_ms,end_ms,status,detected_at,scanned_at FROM trade_log.collection_gaps ORDER BY detected_at DESC LIMIT 5;"
 ```
 
@@ -514,7 +516,7 @@ docker compose exec -T postgres psql -U robotech_admin -d robotech -c "SELECT re
 
 ```sh
 docker compose stop postgres
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
 docker compose logs --tail=40 trade-collector
 docker compose start postgres
@@ -544,7 +546,7 @@ docker compose exec -T trade-log-query trade-log-query reparse --query-id query_
 
 ```sh
 docker compose restart trade-collector
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 ```
 
 等待一个成功 HTTP 轮次后再次查看。
@@ -644,7 +646,7 @@ docker compose logs -f --tail=50 trade-collector
 另一个终端执行以下命令，等待超过一分钟后重复查询：
 
 ```sh
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 docker compose logs --no-color --since=10m trade-collector \
   | grep -E 'collection_completed|collection_failed|collection_lease_renewal_failed|websocket_stopped|statement timeout'
 ```
@@ -694,7 +696,7 @@ VERSION_CONFLICT 等真实数据错误的 BLOCKED 缺口不自动解除。未达
 按第 11.1 节部署后，等待一个成功 HTTP 轮次，再执行：
 
 ```sh
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 docker compose exec -T postgres psql -U robotech_admin -d robotech <<'SQL'
 \pset pager off
 SET TIME ZONE 'Asia/Shanghai';

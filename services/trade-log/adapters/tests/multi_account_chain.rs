@@ -320,17 +320,34 @@ async fn management_http(db: &Postgres) {
         },
     )
     .unwrap();
+    let (publisher_url, ph) = serve(trade_log_adapters::publisher_http::router(
+        trade_log_adapters::publisher_http::PublisherState {
+            reader: Arc::new(db.clone()),
+            account_key: String::new(),
+            credential: Arc::new(token.into()),
+        },
+    ))
+    .await;
+    state.publisher = query_api::clients::publisher::PublisherClient::from_config(
+        &query_api::config::TradeLogConfig {
+            enabled: true,
+            base_url: Some(publisher_url),
+            credential_file: Some(path.clone()),
+            request_timeout_seconds: Some(10),
+        },
+    )
+    .unwrap();
     let (url, gh) = serve(query_api::http::router::build(state)).await;
     let client = reqwest::Client::new();
     let r = client
-        .post(format!("{url}/api/v1/watch-accounts"))
+        .post(format!("{url}/api/v1/monitoring/accounts/add"))
         .json(&json!({}))
         .send()
         .await
         .unwrap();
     assert_eq!(r.status(), 401);
     let r = client
-        .post(format!("{url}/api/v1/watch-accounts"))
+        .post(format!("{url}/api/v1/monitoring/accounts/add"))
         .bearer_auth(token)
         .json(&json!({"account":"bad","start_time":"bad"}))
         .send()
@@ -338,7 +355,7 @@ async fn management_http(db: &Postgres) {
         .unwrap();
     assert_eq!(r.status(), 400);
     let r = client
-        .post(format!("{url}/api/v1/watch-accounts"))
+        .post(format!("{url}/api/v1/monitoring/accounts/add"))
         .bearer_auth(token)
         .json(&json!({"account":ACCOUNT,"start_time":add(ACCOUNT).start_time}))
         .send()
@@ -350,7 +367,7 @@ async fn management_http(db: &Postgres) {
     assert_eq!(data["trace_id"], trace);
     assert_eq!(data["code"], "WATCH_ACCOUNT_EXISTS");
     let r = client
-        .get(format!("{url}/api/v1/watch-accounts"))
+        .get(format!("{url}/api/v1/monitoring/accounts/list"))
         .send()
         .await
         .unwrap();
@@ -359,7 +376,9 @@ async fn management_http(db: &Postgres) {
     assert_eq!(data["data"]["total"], 3);
     assert_eq!(
         client
-            .get(format!("{url}/api/v1/watch-accounts/not-uuid"))
+            .get(format!(
+                "{url}/api/v1/monitoring/accounts/detail?id=not-uuid"
+            ))
             .send()
             .await
             .unwrap()
@@ -368,14 +387,77 @@ async fn management_http(db: &Postgres) {
     );
     assert_eq!(
         client
-            .get(format!("{url}/api/v1/watch-accounts/{}", Uuid::new_v4()))
+            .get(format!(
+                "{url}/api/v1/monitoring/accounts/detail?id={}",
+                Uuid::new_v4()
+            ))
             .send()
             .await
             .unwrap()
             .status(),
         404
     );
+    let row = data["data"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| !r["publishing"].is_null())
+        .unwrap();
+    let id = row["id"].as_str().unwrap();
+    let r = client
+        .get(format!(
+            "{url}/api/v1/monitoring/accounts/publishing-status"
+        ))
+        .query(&[("id", id)])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let publication: Value = r.json().await.unwrap();
+    assert_eq!(publication["data"]["account_key"], row["account_key"]);
+    let r = client
+        .get(format!("{url}/api/v1/publishing/status"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let summary: Value = r.json().await.unwrap();
+    assert!(summary["data"]["items"].is_array());
+    assert!(summary["data"]["outbox"].is_object());
+    for action in ["pause", "resume"] {
+        let r = client
+            .post(format!("{url}/api/v1/monitoring/accounts/{action}"))
+            .bearer_auth(token)
+            .json(&json!({"id": id}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 202);
+        let body: Value = r.json().await.unwrap();
+        assert_eq!(body["data"]["id"], id);
+        assert_eq!(
+            body["data"]["desired_state"],
+            if action == "pause" {
+                "PAUSED"
+            } else {
+                "ACTIVE"
+            }
+        );
+    }
+    let r = client
+        .get(format!(
+            "{url}/api/v1/monitoring/accounts/collection-status"
+        ))
+        .query(&[("id", id)])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let body: Value = r.json().await.unwrap();
+    assert_eq!(body["data"]["id"], id);
+    assert!(body["data"].get("collection").is_some());
     ih.abort();
+    ph.abort();
     gh.abort();
     let _ = std::fs::remove_file(path);
     println!(

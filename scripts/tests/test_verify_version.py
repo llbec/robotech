@@ -165,5 +165,30 @@ class AcceptanceTests(unittest.TestCase):
         self.assertEqual(commands[-1], ('start', 'trade-parser-publisher'))
 
 
+
+
+
+class FunctionRouteTests(unittest.TestCase):
+    def test_current_routes_keep_filters_and_duplicate_parameters(self):
+        v = verification()
+        v.function_routes = True
+        path, params = v.request_route('/api/v1/trade-events', [('account', 'a'), ('source', 'stored'), ('account', 'b'), ('limit', '1')])
+        self.assertEqual(path, '/api/v1/trade-events/stored')
+        self.assertEqual(params, [('account', 'a'), ('account', 'b'), ('limit', '1')])
+        path, params = v.request_route('/api/v1/trade-events', {'source': 'bad'})
+        self.assertEqual(path, '/api/v1/trade-events/live')
+        self.assertEqual(params, [('source', 'bad')])
+        self.assertEqual(v.request_route('/api/v1/watch-accounts', {'limit': 20}), ('/api/v1/monitoring/accounts/list', {'limit': 20}))
+
+    def test_publishing_uses_registration_id_and_old_deployments_keep_routes(self):
+        v = verification()
+        params = {'account': v.account}
+        self.assertEqual(v.request_route('/api/v1/publishing-status', params), ('/api/v1/publishing-status', params))
+        v.function_routes = True
+        v.registration_ids[v.account] = 'registered-uuid'
+        self.assertEqual(v.request_route('/api/v1/publishing-status', params), ('/api/v1/monitoring/accounts/publishing-status', {'id': 'registered-uuid'}))
+        self.assertEqual(v.request_route('/api/v1/publishing-status'), ('/api/v1/publishing/status', None))
+
+
 if __name__ == '__main__':
     unittest.main()

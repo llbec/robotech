@@ -1,5 +1,8 @@
 # v0.3 本地验收记录
 
+> 接口命令已于 2026-10-12 同步到当前功能路径，执行对象为最新部署；旧版本行为及验证记录仍作为历史保留。完整请求与响应见 [接口说明](api.md)。
+> 当前账户列表的采集字段位于 `data.items[].collection`，账户管理状态位于 `desired_state`；钱包地址与登记 UUID 不同。
+
 验证日期：2026-10-06。验证对象：当前工作区代码、本机 PostgreSQL 18.0，以及 query-api、trade-log-query、trade-collector 三个 release 程序。
 
 ## 1. 已完成验证
@@ -54,7 +57,7 @@ cargo test --locked --offline -p trade-log-adapters \
 docker compose stop query-api trade-log-query
 sh scripts/init-v0.3.sh
 docker compose up --build -d
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 ```
 
 逐步查看响应、水位和数据库记录，按 [v0.3 文档第 10.2 节](version0.3.md#102-手动验证步骤) 完成验收。没有执行远程部署，没有修改 README、roadmap 或详细设计说明。

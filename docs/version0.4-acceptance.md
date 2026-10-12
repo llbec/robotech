@@ -1,5 +1,8 @@
 # v0.4 本地验收记录
 
+> 接口命令已于 2026-10-12 同步到当前功能路径，执行对象为最新部署；旧版本行为及验证记录仍作为历史保留。完整请求与响应见 [接口说明](api.md)。
+> 当前账户列表的采集字段位于 `data.items[].collection`，账户管理状态位于 `desired_state`；钱包地址与登记 UUID 不同。
+
 验证日期：2026-10-06。验证对象：当前工作区代码、本机隔离 PostgreSQL 18.0、官方公开 HTTP/WSS，以及 query-api、trade-log-query、trade-collector 三个 release 程序。
 
 ## 1. 已完成验证
@@ -68,7 +71,7 @@ docker compose up --build -d
 docker compose ps -a
 docker compose logs --tail=50 trade-collector
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 ```
 
 随后按 [v0.4 第 10.2 节](version0.4.md#102-手动验证步骤) 的“命令—观察内容—通过标准”，检查消息模式、跨通道去重、安静账户心跳、进程断线、数据库故障、重新解析以及关闭 WS 后的 HTTP 兼容。升级前备份数据库；不用 down -v 做普通升级或重启验证。

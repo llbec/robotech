@@ -482,3 +482,59 @@ async fn trade_queries_validate_before_contacting_disabled_dependency() {
     stop.send(()).unwrap();
     task.await.unwrap().unwrap();
 }
+
+#[tokio::test]
+async fn function_routes_validate_selector_and_method_contracts() {
+    let mut state = AppState::new();
+    state.management_credential = Some(Arc::new("test-management-token".into()));
+    let (url, _, stop, task) = start(router::build(state), Duration::from_secs(2)).await;
+    let client = reqwest::Client::new();
+    for path in [
+        "/api/v1/monitoring/accounts/detail",
+        "/api/v1/monitoring/accounts/detail?id=bad",
+        "/api/v1/monitoring/accounts/detail?id=00000000-0000-0000-0000-000000000001&extra=1",
+        "/api/v1/monitoring/accounts/collection-status",
+        "/api/v1/monitoring/accounts/publishing-status?id=bad",
+        "/api/v1/publishing/status?account=bad",
+        "/api/v1/trade-events/live?account=bad&source=stored",
+        "/api/v1/trade-events/stored?account=bad&source=live",
+    ] {
+        let r = client.get(format!("{url}{path}")).send().await.unwrap();
+        assert_eq!(r.status(), 400, "{path}");
+        let trace = r.headers()["x-trace-id"].to_str().unwrap().to_owned();
+        let body: Value = r.json().await.unwrap();
+        assert_eq!(body["trace_id"], trace);
+    }
+    for action in ["add", "pause", "resume"] {
+        let path = format!("{url}/api/v1/monitoring/accounts/{action}");
+        let r = client.get(&path).send().await.unwrap();
+        assert_eq!(r.status(), 405);
+        assert_eq!(r.headers()["allow"], "POST");
+        let r = client
+            .post(&path)
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 401);
+        let r = client
+            .post(&path)
+            .bearer_auth("test-management-token")
+            .json(&serde_json::json!({}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 400);
+    }
+    for source in ["live", "stored"] {
+        let r = client
+            .get(format!("{url}/api/v1/trade-events/{source}"))
+            .query(&[("account", "0x0000000000000000000000000000000000000001")])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 503);
+    }
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+}

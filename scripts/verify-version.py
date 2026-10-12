@@ -37,6 +37,8 @@ class Verification:
         self.initial_status = None
         self.final_status = None
         self.container_ids = {}
+        self.function_routes = False
+        self.registration_ids = {}
 
     def record(self, state, name, detail=''):
         self.results[state] += 1
@@ -75,9 +77,33 @@ class Verification:
                             + expression + '; COMMIT;', timeout=25)
         return json.loads(text.strip())
 
+    def request_route(self, path, params=None):
+        if not self.function_routes:
+            return path, params
+        if path == '/api/v1/trade-events':
+            pairs = list(params.items()) if isinstance(params, dict) else list(params or [])
+            selectors = [value for key, value in pairs if key == 'source']
+            if len(selectors) == 1 and selectors[0] in ('live', 'stored'):
+                source = selectors[0]
+                pairs = [(key, value) for key, value in pairs if key != 'source']
+            else:
+                source = 'live'
+            return path + '/' + source, pairs
+        if path == '/api/v1/watch-accounts':
+            return '/api/v1/monitoring/accounts/list', params
+        if path == '/api/v1/publishing-status':
+            account = dict(params or {}).get('account')
+            if account:
+                identity = self.registration_ids.get(account)
+                self.require(identity, '找不到验收账户登记 ID，请先读取监控账户列表')
+                return '/api/v1/monitoring/accounts/publishing-status', {'id': identity}
+            return '/api/v1/publishing/status', params
+        return path, params
+
     def http(self, path, params=None, expected=200):
         if path == '/api/v1/publishing-status' and self.account and self.minor <= 5:
             params = dict(params or {}, account=self.account)
+        path, params = self.request_route(path, params)
         if params:
             path += '?' + urllib.parse.urlencode(params)
         req = urllib.request.Request(self.base + path)
@@ -98,7 +124,9 @@ class Verification:
             self.require(body['meta']['schema_version'] == 1 and body['meta']['trace_id'] == trace,
                          '成功信封或 trace 不一致')
             data = body['data']
-            if path.split('?')[0] == '/api/v1/watch-accounts' and self.minor <= 5:
+            if path.split('?')[0] in ('/api/v1/watch-accounts', '/api/v1/monitoring/accounts/list'):
+                self.registration_ids.update({row['account']: row['id'] for row in data['items'] if 'id' in row})
+            if path.split('?')[0] in ('/api/v1/watch-accounts', '/api/v1/monitoring/accounts/list') and self.minor <= 5:
                 data = dict(data, items=[dict(row['collection'], account=row['account'], network=row['network']) if 'collection' in row and row['collection'] else row for row in data['items']])
             return data
         self.require(body.get('trace_id') == trace and isinstance(body.get('message'), str),
@@ -145,6 +173,8 @@ class Verification:
         else:
             major, minor = [int(x) for x in v.split('.')[:2]]
             self.require(major > 0 or minor >= self.minor, '运行版本低于被验收版本')
+        major, minor = [int(x) for x in v.split('.')[:2]]
+        self.function_routes = major > 0 or minor >= 6
         return '运行版本 ' + v + '；仅验收 ' + self.args.version + ' 能力'
 
     def choose_account(self):

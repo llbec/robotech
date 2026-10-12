@@ -90,3 +90,40 @@ pub async fn handle(
         }
     }
 }
+
+pub async fn live(
+    State(state): State<AppState>,
+    Extension(trace): Extension<TraceId>,
+    parameters: Result<Query<Parameters>, QueryRejection>,
+) -> Response {
+    by_function(state, trace, parameters, "live").await
+}
+pub async fn stored(
+    State(state): State<AppState>,
+    Extension(trace): Extension<TraceId>,
+    parameters: Result<Query<Parameters>, QueryRejection>,
+) -> Response {
+    by_function(state, trace, parameters, "stored").await
+}
+async fn by_function(
+    state: AppState,
+    trace: TraceId,
+    parameters: Result<Query<Parameters>, QueryRejection>,
+    source: &str,
+) -> Response {
+    match parameters {
+        Ok(Query(mut p)) => {
+            if p.source.is_some() {
+                return error::response(
+                    StatusCode::BAD_REQUEST,
+                    "VALIDATION_ERROR",
+                    "source is not accepted; select /trade-events/live or /trade-events/stored",
+                    trace,
+                );
+            }
+            p.source = Some(source.into());
+            handle(State(state), Extension(trace), Ok(Query(p))).await
+        }
+        Err(e) => handle(State(state), Extension(trace), Err(e)).await,
+    }
+}

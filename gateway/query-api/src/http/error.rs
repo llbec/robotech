@@ -39,7 +39,11 @@ pub async fn method_not_allowed(
     Extension(trace): Extension<TraceId>,
     OriginalUri(uri): OriginalUri,
 ) -> Response {
-    let allow = if uri.path().ends_with("/resume") {
+    let allow = if matches!(
+        uri.path(),
+        "/api/v1/monitoring/accounts/add" | "/api/v1/monitoring/accounts/pause"
+    ) || uri.path().ends_with("/resume")
+    {
         "POST"
     } else if uri.path() == "/api/v1/watch-accounts" {
         "GET, HEAD, POST"

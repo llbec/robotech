@@ -762,11 +762,19 @@ RECEIVED → RULE_REJECTED
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| `POST /api/v1/watch-accounts` | 添加关注账户和起始范围 |
-| `DELETE /api/v1/watch-accounts/{id}` | 停止关注账户 |
-| `GET /api/v1/trade-events` | 查询标准交易事实 |
-| `GET /api/v1/trade-events/{fact_id}` | 查询当前版本及版本历史 |
-| `GET /api/v1/collection-status` | 查询采集水位、延迟和来源健康 |
+| `POST /api/v1/monitoring/accounts/add` | JSON account、start_time，登记监控账户 |
+| `GET /api/v1/monitoring/accounts/list` | 分页查询登记账户 |
+| `GET /api/v1/monitoring/accounts/detail?id=...` | 查询账户登记详情 |
+| `POST /api/v1/monitoring/accounts/pause` | JSON id，暂停采集，保留账户与数据 |
+| `POST /api/v1/monitoring/accounts/resume` | JSON id，恢复采集 |
+| `GET /api/v1/monitoring/accounts/collection-status?id=...` | 查询账户采集水位、会话及来源健康 |
+| `GET /api/v1/monitoring/accounts/publishing-status?id=...` | 查询账户候选发布状态 |
+| `GET /api/v1/publishing/status` | 全部账户发布队列汇总 |
+| `GET /api/v1/trade-events/live` | 来源查询并保存标准交易事实 |
+| `GET /api/v1/trade-events/stored` | 查询已保存事实，支持时间范围与分页 |
+| `GET /api/v1/trade-events/{fact_id}`（规划，未实现） | 查询当前版本及版本历史 |
+
+以上已实现入口于 2026-10-12 同步；参数及响应以 [接口说明](api.md) 为准。GET 通过查询参数选择登记 id，POST 通过 JSON id 选择；添加使用钱包 account 获取登记 id。旧路径暂保留兼容，内部服务接口不受外部重组影响。
 
 #### 账户分析
 

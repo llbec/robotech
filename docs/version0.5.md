@@ -1,5 +1,8 @@
 # v0.5 开发文档：候选信号与 webhook 输出
 
+> 接口命令已于 2026-10-12 同步到当前功能路径，执行对象为最新部署；旧版本行为及验证记录仍作为历史保留。完整请求与响应见 [接口说明](api.md)。
+> 本文发布验证查看单账户状态：先调用 `GET /api/v1/monitoring/accounts/list`，找到目标钱包对应的 `id`，在同一终端设置 `ID='实际登记UUID'`，再执行下文命令。需要全部账户汇总时使用 `/api/v1/publishing/status`。
+
 - 文档版本：0.5
 - 状态：已实现；本机开发验证通过，Docker 部署及真实来源投递待服务器验收
 - 更新日期：2026-10-06
@@ -40,14 +43,14 @@
 ```sh
 sh scripts/init-v0.5.sh
 docker compose up --build -d
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
+curl --noproxy '*' -sS "http://127.0.0.1:8080/api/v1/monitoring/accounts/publishing-status?id=$ID"
 ```
 
 脚本执行增量 migration 并保留旧卷及凭证；发布默认关闭，需配置后启用。
 
 ### 3.2 查看结果
 
-原 `source=stored` 查看成交事实；新发布状态接口查看队列和错误；接收端按 event_id 查看是否接收。stored 有成交不等于对应交易会发布，发布资格独立判定并保存原因。
+使用 `/api/v1/trade-events/stored` 查看成交事实；新发布状态接口查看队列和错误；接收端按 event_id 查看是否接收。stored 有成交不等于对应交易会发布，发布资格独立判定并保存原因。
 
 发布进程停止期间，已启用的候选仍可由采集事务进入 outbox；进程恢复后继续交付。显式关闭 publishing 时，停止新候选入队和新发送领取，已有队列保留；已经在途的请求按关闭机制收尾。启停配置由发布控制记录持久化，不把进程存活等同于业务开关。
 
@@ -174,7 +177,7 @@ publication_decisions 保存 ELIGIBLE、ALREADY_ENQUEUED 或 SUPPRESSED，并记
 
 ### 5.3 发布状态接口
 
-新增内部 `GET /internal/v1/publishing-status` 和内部健康接口，由发布进程提供，沿用服务凭证认证。网关新增 `GET /api/v1/publishing-status`，返回既有 data/meta 信封。
+新增内部 `GET /internal/v1/publishing-status` 和内部健康接口，由发布进程提供，沿用服务凭证认证。当前外部按功能区分：`GET /api/v1/publishing/status` 返回全部账户汇总；`GET /api/v1/monitoring/accounts/publishing-status?id=登记ID` 返回单账户状态，沿用 data/meta 信封。
 
 状态包含 enabled、status、account/account_key、target_id、activation_epoch/activated_at、heartbeat_at、策略阈值、各 outbox 状态数量、最老待发送事件时间、最后发送及确认时间、最后错误、过期未送达数量与抑制原因计数。状态枚举：DISABLED、STARTING、RUNNING、DEGRADED、BLOCKED、STOPPED。
 
@@ -408,7 +411,7 @@ curl --noproxy '*' -sS http://127.0.0.1:18080/health
 #### 第 2 步：核对真实信号和抑制原因
 
 ```sh
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
+curl --noproxy '*' -sS "http://127.0.0.1:8080/api/v1/monitoring/accounts/publishing-status?id=$ID"
 curl --noproxy '*' -sS http://127.0.0.1:18080/receipts
 docker compose logs --tail=50 trade-collector trade-parser-publisher
 docker compose exec -T postgres psql -U robotech_admin -d robotech <<'SQL'
@@ -431,7 +434,7 @@ SQL
 curl --noproxy '*' -sS -X POST http://127.0.0.1:18080/control \
   -H 'Content-Type: application/json' -d '{"response_status":500}'
 # 等待一个新候选，查看 RETRY_WAIT 和递增的 attempts。
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
+curl --noproxy '*' -sS "http://127.0.0.1:8080/api/v1/monitoring/accounts/publishing-status?id=$ID"
 curl --noproxy '*' -sS -X POST http://127.0.0.1:18080/control \
   -H 'Content-Type: application/json' -d '{"response_status":200}'
 ```
@@ -460,7 +463,7 @@ docker compose start trade-parser-publisher
 curl --noproxy '*' -sS -X POST http://127.0.0.1:18080/control \
   -H 'Content-Type: application/json' -d '{"response_status":200}'
 # 等待到期重试后检查原事件。
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
+curl --noproxy '*' -sS "http://127.0.0.1:8080/api/v1/monitoring/accounts/publishing-status?id=$ID"
 ```
 
 **通过标准：** 原队列和尝试记录保留，激活时间不变，领取租约过期后继续发送；重启不批量发布旧成交。
@@ -471,13 +474,13 @@ curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
 
 ```sh
 docker compose stop postgres
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/publishing-status
-curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -i "http://127.0.0.1:8080/api/v1/monitoring/accounts/publishing-status?id=$ID"
+curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/health
 docker compose start postgres
 # 等待数据库、采集和发布恢复后检查。
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/publishing-status
-curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/watch-accounts
+curl --noproxy '*' -sS "http://127.0.0.1:8080/api/v1/monitoring/accounts/publishing-status?id=$ID"
+curl --noproxy '*' -sS http://127.0.0.1:8080/api/v1/monitoring/accounts/list
 curl --noproxy '*' -sS http://127.0.0.1:18080/receipts
 ```
 

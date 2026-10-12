@@ -165,3 +165,94 @@ async fn change(s: AppState, trace: TraceId, id: String, h: HeaderMap, active: b
     .await;
     result(r, trace, StatusCode::ACCEPTED)
 }
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccountId {
+    id: String,
+}
+async fn record(s: &AppState, trace: &TraceId, id: &str) -> Result<serde_json::Value, QueryError> {
+    uuid::Uuid::parse_str(id).map_err(|_| invalid("id must be an account registration UUID"))?;
+    client(s)?
+        .watch(reqwest::Method::GET, &format!("/{id}"), "", None, &trace.0)
+        .await
+}
+pub async fn detail_by_id(
+    State(s): State<AppState>,
+    Extension(trace): Extension<TraceId>,
+    p: Result<Query<AccountId>, QueryRejection>,
+) -> Response {
+    let r = async {
+        let Query(p) =
+            p.map_err(|_| invalid("Query parameter id is required; unknown fields are rejected"))?;
+        record(&s, &trace, &p.id).await
+    }
+    .await;
+    result(r, trace, StatusCode::OK)
+}
+pub async fn collection_status(
+    State(s): State<AppState>,
+    Extension(trace): Extension<TraceId>,
+    p: Result<Query<AccountId>, QueryRejection>,
+) -> Response {
+    let r = async {
+        let Query(p) = p.map_err(|_| invalid("Query parameter id is required; unknown fields are rejected"))?;
+        let row = record(&s, &trace, &p.id).await?;
+        Ok(serde_json::json!({"id":row["id"], "account":row["account"], "desired_state":row["desired_state"], "observed_state":row["observed_state"], "collection":row["collection"]}))
+    }.await;
+    result(r, trace, StatusCode::OK)
+}
+pub async fn publishing_status(
+    State(s): State<AppState>,
+    Extension(trace): Extension<TraceId>,
+    p: Result<Query<AccountId>, QueryRejection>,
+) -> Response {
+    let r = async {
+        let Query(p) =
+            p.map_err(|_| invalid("Query parameter id is required; unknown fields are rejected"))?;
+        let row = record(&s, &trace, &p.id).await?;
+        let account = row["account"].as_str().ok_or_else(QueryError::storage)?;
+        s.publisher
+            .as_deref()
+            .ok_or_else(|| QueryError::unavailable("Publishing status is not enabled"))?
+            .status(&trace.0, Some(account))
+            .await
+    }
+    .await;
+    result(r, trace, StatusCode::OK)
+}
+pub async fn pause_by_id(
+    State(s): State<AppState>,
+    Extension(trace): Extension<TraceId>,
+    h: HeaderMap,
+    p: Result<Json<AccountId>, JsonRejection>,
+) -> Response {
+    change_by_id(s, trace, h, p, false).await
+}
+pub async fn resume_by_id(
+    State(s): State<AppState>,
+    Extension(trace): Extension<TraceId>,
+    h: HeaderMap,
+    p: Result<Json<AccountId>, JsonRejection>,
+) -> Response {
+    change_by_id(s, trace, h, p, true).await
+}
+async fn change_by_id(
+    s: AppState,
+    trace: TraceId,
+    h: HeaderMap,
+    p: Result<Json<AccountId>, JsonRejection>,
+    active: bool,
+) -> Response {
+    if !authorize(&s, &h) {
+        return unauthorized(trace);
+    }
+    match p {
+        Ok(Json(p)) => change(s, trace, p.id, h, active).await,
+        Err(_) => result(
+            Err(invalid("JSON body must contain only id")),
+            trace,
+            StatusCode::ACCEPTED,
+        ),
+    }
+}
