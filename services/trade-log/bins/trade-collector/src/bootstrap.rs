@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 use trade_log_adapters::{
@@ -9,8 +9,25 @@ use trade_log_adapters::{
 #[derive(Parser)]
 #[command(name="trade-collector",version=env!("CARGO_PKG_VERSION"))]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Command>,
     #[arg(long, default_value = "/etc/robotech/trade-collector.toml")]
     config: PathBuf,
+}
+#[derive(Subcommand)]
+enum Command {
+    BackfillSpot {
+        #[arg(long)]
+        account: String,
+        #[arg(long)]
+        start_time: String,
+        #[arg(long)]
+        end_time: String,
+    },
+    BackfillSpotStatus {
+        #[arg(long)]
+        job_id: uuid::Uuid,
+    },
 }
 pub async fn run() -> Result<(), (u8, String)> {
     let args = match Args::try_parse() {
@@ -77,6 +94,30 @@ pub async fn run() -> Result<(), (u8, String)> {
         c.hyperliquid.max_response_bytes,
     )
     .map_err(|e| (3, e.message))?;
+    if let Some(command) = args.command {
+        let value = match command {
+            Command::BackfillSpot {
+                account,
+                start_time,
+                end_time,
+            } => {
+                let start =
+                    trade_log::collection::start_ms(&start_time).map_err(|e| (2, e.message))?;
+                let end = trade_log::collection::start_ms(&end_time).map_err(|e| (2, e.message))?;
+                store
+                    .submit_spot_backfill(&account, start, end)
+                    .await
+                    .map_err(|e| (3, e.message))?
+            }
+            Command::BackfillSpotStatus { job_id } => store
+                .spot_backfill_status(job_id)
+                .await
+                .map_err(|e| (3, e.message))?,
+        };
+        println!("{value}");
+        store.pool.close().await;
+        return Ok(());
+    }
     let address = c.server.address();
     let signal = service_runtime::lifecycle::shutdown_signal().map_err(|e| (3, e.to_string()))?;
     let listener = tokio::net::TcpListener::bind(address)
@@ -110,6 +151,12 @@ pub async fn run() -> Result<(), (u8, String)> {
         parser: Arc::new(hyperliquid::parser::HyperliquidParser),
     };
     let cancel = CancellationToken::new();
+    let backfill_runtime = trade_log_adapters::spot_backfill_runtime::SpotBackfillRuntime {
+        store: store.clone(),
+        source: runtime.source.clone(),
+        parser: runtime.parser.clone(),
+    };
+    let mut backfill_worker = tokio::spawn(backfill_runtime.run(cancel.clone()));
     let worker_cancel = cancel.clone();
     let worker = tokio::spawn(async move {
         runtime.run(worker_cancel).await;
@@ -138,6 +185,13 @@ pub async fn run() -> Result<(), (u8, String)> {
             Err((4, "Collector shutdown timed out".into()))
         }
     };
+    if tokio::time::timeout(c.server.shutdown_timeout(), &mut backfill_worker)
+        .await
+        .is_err()
+    {
+        backfill_worker.abort();
+        let _ = backfill_worker.await;
+    }
     store.pool.close().await;
     result?;
     worker_result

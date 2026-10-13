@@ -32,6 +32,8 @@ pub enum PublishingState {
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PublishingStatus {
+    #[serde(default)]
+    pub instruments: serde_json::Value,
     pub enabled: bool,
     pub status: PublishingState,
     pub account: String,

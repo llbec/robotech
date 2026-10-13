@@ -1,6 +1,6 @@
 # 测试环境存储清理
 
-适用于当前 v0.6。在服务器项目根目录执行。全部清理按第 1–5 节顺序操作；仅清理 Webhook 接收器记录时，单独执行第 6 节。
+适用于当前 v0.7。在服务器项目根目录执行。全部清理按第 1–5 节顺序操作；仅清理 Webhook 接收器记录时，单独执行第 6 节。
 
 **本流程会永久删除本项目全部测试数据。代码、config 和 secrets 保留。**
 
@@ -12,7 +12,7 @@ docker compose --profile "*" down --volumes --remove-orphans
 
 删除内容：
 
-- PostgreSQL 卷 `trade-log-postgres`：成交、原始响应、采集水位、候选、发布队列及投递记录；v0.6 的监控账户清单、暂停状态、监控代次、监控设置和共享来源预算记录也全部删除。
+- PostgreSQL 卷 `trade-log-postgres`：成交、原始响应、采集水位、候选、发布队列及投递记录；v0.6 的监控账户清单、暂停状态、监控代次、监控设置和共享来源预算记录也全部删除；v0.7 的现货事实、补录任务及独立现货激活记录也删除。
 - 文件证据卷 `trade-log-evidence`。
 - 验收接收器记录卷 `webhook-verification`。
 - 本项目容器、容器输出日志和网络。
@@ -85,7 +85,7 @@ du -sh target 2>/dev/null
 v0.6 重新登记账户时，通过管理接口的 `start_time` 设置需要重新采集的起点，避免再次回补大量旧数据。若仍在 `config/trade-collector.toml` 中填写旧单账户 `account` 和 `start_time`，先调整其起点；空数据库首次启动 collector 时会导入该账户。两个字段均为空时，不会自动登记账户。
 
 ```sh
-sh scripts/init-v0.6.sh
+sh scripts/init-v0.7.sh
 docker compose up --build -d
 ```
 

@@ -15,6 +15,7 @@ fn exact_time_zone_and_request_validation() {
         assert!(time(value).is_err());
     }
     let mut r = StoredRequest {
+        instrument_type: Default::default(),
         account: "0x000000000000000000000000000000000000000A".into(),
         limit: 100,
         start_time: Some("2026-10-05T00:00:00Z".into()),
@@ -26,4 +27,19 @@ fn exact_time_zone_and_request_validation() {
     assert!(r.validated().unwrap().account.ends_with('a'));
     r.limit = 0;
     assert!(r.validated().is_err());
+}
+
+#[test]
+fn legacy_cursor_defaults_to_perpetual_and_cannot_cross_instrument_type() {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let request: trade_log::stored_query::StoredRequest = serde_json::from_value(
+        serde_json::json!({"account":"0x0000000000000000000000000000000000000001","limit":1}),
+    )
+    .unwrap();
+    let old = serde_json::json!({"version":1,"account":request.account,"network":"mainnet","range":{"start_time":null,"end_time":null},"snapshot":1,"time":"2026-10-01T00:00:00.000Z","tid":"1","fact_id":format!("hl_fill_v1_{}","a".repeat(64))});
+    let mut request = request;
+    request.cursor = Some(URL_SAFE_NO_PAD.encode(serde_json::to_vec(&old).unwrap()));
+    assert!(request.decode_cursor("mainnet").is_ok());
+    request.instrument_type = trade_log::instrument::InstrumentType::Spot;
+    assert!(request.decode_cursor("mainnet").is_err());
 }

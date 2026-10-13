@@ -73,7 +73,7 @@ impl RawEvidenceStore for FileEvidence {
                 .await
                 .map_err(|_| QueryError::storage())?;
         }
-        save(&directory.join("manifest.json"),&json!({"query_id":id,"request":request,"normalized_account":shared_types::account(&request.account).ok(),"trace_id":trace,"network":self.network,"started_at":shared_types::now(),"status":"RUNNING","tool_version":env!("CARGO_PKG_VERSION"),"parser_version":"hyperliquid-v1","schema_version":1,"identity_version":"hl-fill-v1"})).await
+        save(&directory.join("manifest.json"),&json!({"query_id":id,"request":request,"normalized_account":shared_types::account(&request.account).ok(),"trace_id":trace,"network":self.network,"started_at":shared_types::now(),"status":"RUNNING","tool_version":env!("CARGO_PKG_VERSION"),"parser_version":"hyperliquid-v2","schema_version":1,"identity_version":"hl-fill-v1"})).await
     }
     async fn save_response(
         &self,
@@ -171,7 +171,7 @@ impl FileEvidence {
             .await
             .map_err(|_| QueryError::storage())?
         {
-            save(&manifest,&json!({"query_id":id,"job_origin":"COLLECTOR","network":self.network,"started_at":shared_types::now(),"status":"RUNNING","tool_version":env!("CARGO_PKG_VERSION"),"parser_version":"hyperliquid-v1","schema_version":1,"identity_version":"hl-fill-v1"})).await?;
+            save(&manifest,&json!({"query_id":id,"job_origin":"COLLECTOR","network":self.network,"started_at":shared_types::now(),"status":"RUNNING","tool_version":env!("CARGO_PKG_VERSION"),"parser_version":"hyperliquid-v2","schema_version":1,"identity_version":"hl-fill-v1"})).await?;
         }
         atomic(
             &directory.join("responses").join(format!("{raw_id}.body")),
@@ -209,7 +209,7 @@ impl FileEvidence {
             .await
             .map_err(|_| QueryError::storage())?
         {
-            save(&manifest,&json!({"query_id":id,"job_origin":"COLLECTOR","transport":"WEBSOCKET","session_id":session,"message_sequence":sequence,"message_mode":message.mode,"network":self.network,"started_at":message.received_at,"status":"RUNNING","tool_version":env!("CARGO_PKG_VERSION"),"parser_version":"hyperliquid-v1","schema_version":1,"identity_version":"hl-fill-v1"})).await?;
+            save(&manifest,&json!({"query_id":id,"job_origin":"COLLECTOR","transport":"WEBSOCKET","session_id":session,"message_sequence":sequence,"message_mode":message.mode,"network":self.network,"started_at":message.received_at,"status":"RUNNING","tool_version":env!("CARGO_PKG_VERSION"),"parser_version":"hyperliquid-v2","schema_version":1,"identity_version":"hl-fill-v1"})).await?;
         }
         atomic(
             &directory.join("responses").join(format!("{raw}.body")),

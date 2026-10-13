@@ -3,7 +3,7 @@ services:
   # 外部 HTTP 网关；只有此业务服务映射宿主机端口。
   query-api:
     # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
-    image: robotech/query-api:0.6.0
+    image: robotech/query-api:0.7.0
     # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
       # 构建上下文为项目根目录，保持 .。
@@ -63,7 +63,7 @@ services:
   # 成交 live/stored 查询服务，仅供 Compose 网络内访问。
   trade-log-query:
     # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
-    image: robotech/trade-log-query:0.6.0
+    image: robotech/trade-log-query:0.7.0
     # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
       # 构建上下文为项目根目录，保持 .。
@@ -122,7 +122,7 @@ services:
   # 多账户 HTTP/WS 采集服务，账户清单通过管理接口维护。
   trade-collector:
     # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
-    image: robotech/trade-collector:0.6.0
+    image: robotech/trade-collector:0.7.0
     # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
       # 构建上下文为项目根目录，保持 .。
@@ -181,7 +181,7 @@ services:
   # 候选发布服务；network 在自身配置中指定，无需挂载 collector 配置。
   trade-parser-publisher:
     # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
-    image: robotech/trade-parser-publisher:0.6.0
+    image: robotech/trade-parser-publisher:0.7.0
     # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
       # 构建上下文为项目根目录，保持 .。
@@ -298,7 +298,7 @@ services:
   # 一次性证据卷权限初始化；由初始化脚本通过 init profile 执行。
   evidence-init:
     # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
-    image: robotech/trade-log-query:0.6.0
+    image: robotech/trade-log-query:0.7.0
     # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
       # 构建上下文为项目根目录，保持 .。
@@ -372,7 +372,7 @@ services:
   # 一次性增量数据库迁移；由初始化脚本通过 init profile 执行。
   trade-log-migrate:
     # 镜像名称/版本；应用发布时同步更新版本，数据库镜像固定摘要以保证可重复部署。
-    image: robotech/trade-log-query:0.6.0
+    image: robotech/trade-log-query:0.7.0
     # 本地构建配置；up --build 或初始化脚本按此构建。
     build:
       # 构建上下文为项目根目录，保持 .。

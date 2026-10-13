@@ -105,6 +105,27 @@ impl Postgres {
         if status != "RUNNING" {
             return Err(QueryError::conflict());
         }
+        let backfill: Option<Value> = sqlx::query_scalar(
+            "SELECT request->'spot_backfill' FROM trade_log.collection_jobs WHERE query_id=$1",
+        )
+        .bind(id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(db_error)?;
+        if let Some(b) = &backfill {
+            let key = b["account_key"].as_str().ok_or_else(QueryError::storage)?;
+            sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,6))")
+                .bind(key)
+                .execute(&mut *tx)
+                .await
+                .map_err(db_error)?;
+            let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT FROM trade_log.watch_accounts w JOIN trade_log.spot_backfill_jobs b ON b.account_key=w.account_key WHERE b.id=$1::text::uuid AND b.lease_owner=$2::text::uuid AND b.lease_until>clock_timestamp() AND w.generation=$3 AND w.desired_state='ACTIVE')").bind(b["job_id"].as_str()).bind(b["owner"].as_str()).bind(b["generation"].as_i64()).fetch_one(&mut *tx).await.map_err(db_error)?;
+            if !valid {
+                return Err(QueryError::unavailable(
+                    "Spot backfill lease or monitoring generation changed",
+                ));
+            }
+        }
         let mut position = if let Some(c) = collection {
             Some(self.lock_collection(&mut tx, c.lease).await?)
         } else {
@@ -127,7 +148,7 @@ impl Postgres {
             let hash = content_hash(fact)?;
             let semantic = trade_log::collection::content::semantic_hash(fact)?;
             let previous=sqlx::query("SELECT payload,content_hash,semantic_content_hash,semantic_hash_version FROM trade_log.account_fact_versions WHERE fact_id=$1 AND revision=1").bind(&fact.fact_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
-            let raw:Uuid=sqlx::query_scalar("SELECT r.id FROM trade_log.raw_logs r JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id WHERE r.source_event_id=$1 AND j.query_id=$2").bind(&fact.raw_log_id).bind(id).fetch_one(&mut *tx).await.map_err(db_error)?;
+            let raw:Uuid=sqlx::query_scalar("SELECT r.id FROM trade_log.raw_logs r JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id WHERE r.source_event_id=$1 AND j.query_id=COALESCE((SELECT request->>'origin_query_id' FROM trade_log.collection_jobs WHERE query_id=$2),$2)").bind(&fact.raw_log_id).bind(id).fetch_one(&mut *tx).await.map_err(db_error)?;
             if let Some(previous) = previous {
                 let old: AccountFact = serde_json::from_value(previous.get("payload"))
                     .map_err(|_| QueryError::storage())?;
@@ -152,7 +173,7 @@ impl Postgres {
                 let at = DateTime::parse_from_rfc3339(&fact.occurred_at)
                     .map_err(|_| QueryError::storage())?
                     .with_timezone(&Utc);
-                sqlx::query("INSERT INTO trade_log.account_fact_versions(fact_id,revision,event_id,account_key,fact_type,ordering_key,sub_index,change_type,confirmation_status,occurred_at,payload,raw_log_id,parser_version,content_hash) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'hyperliquid-v1',$12)")
+                sqlx::query("INSERT INTO trade_log.account_fact_versions(fact_id,revision,event_id,account_key,fact_type,ordering_key,sub_index,change_type,confirmation_status,occurred_at,payload,raw_log_id,parser_version,content_hash) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'hyperliquid-v2',$12)")
                     .bind(&fact.fact_id).bind(format!("{}:1",fact.fact_id)).bind(&fact.account_key).bind(&fact.fact_type).bind(&fact.ordering_key).bind(fact.sub_index as i32).bind(&fact.change_type).bind(&fact.confirmation_status).bind(at).bind(json!(fact)).bind(raw).bind(&hash).execute(&mut *tx).await.map_err(db_error)?;
                 sqlx::query("UPDATE trade_log.account_fact_versions SET semantic_hash_version=$2,semantic_content_hash=$3 WHERE fact_id=$1 AND revision=1").bind(&fact.fact_id).bind(trade_log::collection::content::HASH_VERSION).bind(&semantic).execute(&mut *tx).await.map_err(db_error)?;
                 seq = seq.checked_add(1).ok_or_else(QueryError::storage)?;

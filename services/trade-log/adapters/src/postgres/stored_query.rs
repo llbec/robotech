@@ -42,11 +42,11 @@ impl StoredQuery for Postgres {
         );
         let start = date(request.start_time.as_deref())?;
         let end = date(request.end_time.as_deref())?;
-        let filter = "c.account_key=$1 AND c.fact_type='TRADE' AND NOT c.is_retracted AND c.ingest_seq<=$2 AND ($3::timestamptz IS NULL OR c.occurred_at >= $3) AND ($4::timestamptz IS NULL OR c.occurred_at < $4)";
-        let stat=sqlx::query(&format!("SELECT count(*) AS n,min(c.occurred_at) AS first,max(c.occurred_at) AS last FROM trade_log.account_facts_current c WHERE {filter}"))
-            .bind(&account_key).bind(snapshot).bind(start).bind(end).fetch_one(&mut *tx).await.map_err(db_error)?;
+        let filter = "c.account_key=$1 AND c.fact_type='TRADE' AND ($9::text='ALL' OR (SELECT v.payload->'payload'->>'instrument_type' FROM trade_log.account_fact_versions v WHERE v.fact_id=c.fact_id AND v.revision=c.current_revision)=$9) AND NOT c.is_retracted AND c.ingest_seq<=$2 AND ($3::timestamptz IS NULL OR c.occurred_at >= $3) AND ($4::timestamptz IS NULL OR c.occurred_at < $4)";
+        let stat=sqlx::query(&format!("SELECT count(*) AS n,min(c.occurred_at) AS first,max(c.occurred_at) AS last FROM trade_log.account_facts_current c WHERE {}", filter.replace("$9", "$5")))
+            .bind(&account_key).bind(snapshot).bind(start).bind(end).bind(request.instrument_type.as_str()).fetch_one(&mut *tx).await.map_err(db_error)?;
         let page=sqlx::query(&format!("SELECT v.payload FROM trade_log.account_facts_current c JOIN trade_log.account_fact_versions v ON (v.fact_id,v.revision)=(c.fact_id,c.current_revision) WHERE {filter} AND ($5::timestamptz IS NULL OR c.occurred_at<$5 OR (c.occurred_at=$5 AND (c.source_tid<$6::text::numeric OR (c.source_tid=$6::text::numeric AND c.fact_id>$7)))) ORDER BY c.occurred_at DESC,c.source_tid DESC,c.fact_id ASC LIMIT $8"))
-            .bind(&account_key).bind(snapshot).bind(start).bind(end).bind(date(cursor.as_ref().map(|c|c.time.as_str()))?).bind(cursor.as_ref().map(|c|&c.tid)).bind(cursor.as_ref().map(|c|&c.fact_id)).bind((request.limit+1) as i64)
+            .bind(&account_key).bind(snapshot).bind(start).bind(end).bind(date(cursor.as_ref().map(|c|c.time.as_str()))?).bind(cursor.as_ref().map(|c|&c.tid)).bind(cursor.as_ref().map(|c|&c.fact_id)).bind((request.limit+1) as i64).bind(request.instrument_type.as_str())
             .fetch_all(&mut *tx).await.map_err(db_error)?;
         let mut trades: Vec<AccountFact> = page
             .into_iter()
@@ -61,7 +61,8 @@ impl StoredQuery for Postgres {
             let last = trades.last().ok_or_else(QueryError::storage)?;
             Some(
                 Cursor {
-                    version: 1,
+                    instrument_type: request.instrument_type,
+                    version: 2,
                     account: request.account.clone(),
                     network: self.network.name().into(),
                     range: request.range(),

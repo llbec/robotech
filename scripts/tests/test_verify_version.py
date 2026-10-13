@@ -190,5 +190,17 @@ class FunctionRouteTests(unittest.TestCase):
         self.assertEqual(v.request_route('/api/v1/publishing-status'), ('/api/v1/publishing/status', None))
 
 
+class MixedCountsTests(unittest.TestCase):
+    def test_v2_persistence_covers_both_markets_while_default_display_is_perpetual(self):
+        v = verification('v0.2', live=True)
+        data = copy.deepcopy(FIXTURE)
+        data['counts']['counts_version'] = 2
+        data['counts']['spot_records'] = 2
+        data['counts']['source_records'] += 2
+        data['persistence'] = {'status': 'COMMITTED', 'inserted_records': data['counts']['perpetual_records']+2, 'existing_records': 0}
+        v.http = lambda *args, **kwargs: data
+        self.assertIn('query_fixture', v.live())
+
+
 if __name__ == '__main__':
     unittest.main()

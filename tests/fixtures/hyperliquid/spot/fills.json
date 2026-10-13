@@ -1,0 +1,18 @@
+[
+  {
+    "coin": "PURR/USDC",
+    "tid": 9007199254740993,
+    "oid": 9007199254740995,
+    "time": 1791097200000,
+    "side": "B",
+    "px": "0.12345678",
+    "sz": "12.5",
+    "fee": "0.01",
+    "feeToken": "PURR",
+    "startPosition": "0",
+    "dir": "Buy",
+    "closedPnl": "0",
+    "hash": "0xexample",
+    "crossed": false
+  }
+]

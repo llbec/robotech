@@ -64,6 +64,7 @@ async fn interrupted_task_and_reconnect_do_not_lose_committed_facts() {
     db.begin(
         "query_running",
         &QueryRequest {
+            instrument_type: Default::default(),
             account: ACCOUNT.into(),
             limit: 100,
         },
@@ -168,6 +169,7 @@ async fn malformed_source_bytes_are_archived_before_failure() {
     };
     let db = database().await;
     let request = QueryRequest {
+        instrument_type: Default::default(),
         account: ACCOUNT.into(),
         limit: 100,
     };

@@ -107,6 +107,7 @@ pub async fn collect(
     .execute(
         id,
         &QueryRequest {
+            instrument_type: Default::default(),
             account: ACCOUNT.into(),
             limit,
         },
@@ -116,6 +117,7 @@ pub async fn collect(
 }
 pub fn request(limit: usize) -> StoredRequest {
     StoredRequest {
+        instrument_type: Default::default(),
         account: ACCOUNT.into(),
         limit,
         start_time: None,
@@ -197,6 +199,7 @@ pub async fn legacy_collect(
         raw_log::RawEvidenceStore,
     };
     let request = QueryRequest {
+        instrument_type: Default::default(),
         account: ACCOUNT.into(),
         limit: 100,
     };

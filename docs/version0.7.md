@@ -1,11 +1,11 @@
 # v0.7 开发文档：现货成交与候选信号
 
 - 文档版本：0.7
-- 状态：设计稿，尚未实现；本文中的新增字段、命令和脚本不能用于当前 v0.6
+- 状态：已实现，本机开发验证通过；Docker 及真实来源验收待服务器执行
 - 编写日期：2026-10-13
 - 前置版本：[v0.6 开发文档](version0.6.md)
 - 设计依据：[概要设计](overview-design.md)、[详细设计](detailed-design.md)、[路线图](roadmap.md)
-- 实现时更新 [统一接口说明](api.md)，不另建版本接口文档
+- 已更新 [统一接口说明](api.md)，不另建版本接口文档
 
 ## 1. 版本目标
 
@@ -116,7 +116,7 @@ HTTP 查询、定时补偿、手动补录、历史重解析、WS 初始快照和
 
 ### 5.2 查询请求参数
 
-以下是新增参数，其余 account、limit、时间及 cursor 沿用 api.md。实现时将完整参数表同步到统一文档。
+以下是新增参数，其余 account、limit、时间及 cursor 沿用 api.md。完整参数表已同步到统一文档。
 
 | 接口 | 参数 | 位置 | 类型 | 必填 | 默认值 | 校验 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -162,7 +162,7 @@ HTTP 查询、定时补偿、手动补录、历史重解析、WS 初始快照和
 
 补录有独立持久进度，不复用或倒退原采集水位。通过 collector CLI 提交固定半开时间范围任务，常驻 collector 在共享预算内分批处理，不由临时 CLI 持有长期采集循环。
 
-先扫描已有原始响应及其对应元数据，仅追加过去未入库的现货事实；不得改写旧永续结果、历史计数或已投递正文。历史任务重新解析得到新内容时输出带解析版本的独立执行报告，不把旧任务回执覆盖为“新版本一致”。
+先扫描已完成旧任务的原始响应及其对应元数据，仅追加过去未入库的现货事实；不得改写旧永续结果、历史计数或已投递正文。历史任务重新解析得到新内容时输出带解析版本的独立执行报告，不把旧任务回执覆盖为“新版本一致”。
 
 随后对指定范围执行官方 HTTP 扫描；不能把保存过一个原始包视为整个时间段已覆盖。来源分页饱和、范围不可继续或元数据不足时保留进度并标记 BLOCKED/覆盖不足，不能直接成功跳过。补录期间实时采集优先，按批让出共享资源。
 
@@ -174,14 +174,15 @@ HTTP 查询、定时补偿、手动补录、历史重解析、WS 初始快照和
 
 协议的市场映射、字段解析归属 protocols/implementations/hyperliquid；标准事实与策略归属现有业务 crate；持久化、查询、补录调度和投递归属 trade-log adapters；HTTP handler 只做参数、认证和转发。保持 workspace 和多进程 Docker 结构。
 
-以下为实施文件清单，新增和更新分开列示；实现时按最终文件归属修订，不能把计划写作已完成记录。
+以下为实施文件清单，新增和更新分开列示。开发验证与服务器验收分别记录，未验证项目不记为通过。
 
 ### 7.2 新增文件
 
 | 文件 | 用途 |
 | --- | --- |
 | protocols/implementations/hyperliquid/src/spot.rs | 现货交易对、token 与别名映射及字段解析 |
-| services/trade-log/src/spot_backfill/mod.rs | 补录请求、状态和处理端口 |
+| services/trade-log/src/instrument.rs | 市场类型枚举、默认值和筛选规则 |
+| services/trade-log/adapters/src/postgres/spot_activation.rs | 独立现货激活和幂等控制同步 |
 | services/trade-log/adapters/src/postgres/spot_backfill.rs | 补录任务、检查点、租约和结果持久化 |
 | services/trade-log/adapters/src/spot_backfill_runtime.rs | 分批重解析与 HTTP 补录，复用预算及暂停约束 |
 | services/trade-log/migrations/0006_spot_trades.sql | 能力激活、补录表及按类型查询索引 |
@@ -200,22 +201,24 @@ HTTP 查询、定时补偿、手动补录、历史重解析、WS 初始快照和
 | 文件 | 修改内容 |
 | --- | --- |
 | Cargo.toml、Cargo.lock | 版本 0.7.0，按需要调整依赖 |
-| crates/account-facts/src/lib.rs | 现货标准字段约定；保持既有身份及字段序列化兼容 |
+| services/trade-log/adapters/src/file_evidence.rs | 新证据记录解析版本；复用原标准事实结构 |
 | protocols/implementations/hyperliquid/src/lib.rs、src/parser.rs | 接入现货解析，统一市场去重与计数 |
-| services/trade-log/src/lib.rs、src/parsing/mod.rs、src/query/mod.rs、src/validation/mod.rs、src/stored_query/mod.rs | 类型筛选、计数版本、游标兼容及补录端口 |
+| services/trade-log/src/lib.rs、src/normalization/mod.rs、src/query/mod.rs、src/validation/mod.rs、src/stored_query/mod.rs | 类型筛选、计数版本、游标兼容 |
+| services/trade-log/src/collection/mod.rs、src/collection/content.rs、src/publishing/mod.rs | 合并计数、现货语义身份和能力状态 |
 | services/trade-log/src/publishing/policy.rs | 按成交类型判断准入，保留原永续条件 |
 | services/trade-log/adapters/src/lib.rs、src/postgres/mod.rs、src/postgres/migration.rs | 模块与迁移注册、角色最小权限 |
 | services/trade-log/adapters/src/postgres/facts.rs、src/postgres/stored_query.rs、src/postgres/replay.rs | 现货持久化、类型筛选和不可覆盖历史回执 |
 | services/trade-log/adapters/src/postgres/publishing.rs、src/postgres/watch.rs | 分类型能力边界、发布及补录状态 |
-| services/trade-log/adapters/src/collector_runtime.rs、src/collector_supervisor.rs、src/websocket_runtime.rs | 完整类型处理、补录装配、暂停与全局公平调度 |
 | services/trade-log/adapters/src/publisher_runtime.rs | 按类型同步控制，不重置永续激活 |
 | services/trade-log/bins/trade-collector/src/bootstrap.rs | 补录提交/状态命令和后台执行装配 |
-| services/trade-log/bins/trade-log-query/src/bootstrap.rs | 新查询参数与完整结果持久化 |
+| services/trade-log/bins/trade-collector/Cargo.toml | 补录 CLI 使用已有 workspace UUID 依赖 |
 | services/trade-log/bins/trade-parser-publisher/src/config.rs、src/bootstrap.rs | spot_enabled 校验及分类型策略 |
-| gateway/query-api/src/http/handlers/trade_events.rs、src/clients/trade_log.rs | 外部筛选参数及内部转发 |
+| gateway/query-api/src/http/handlers/trade_events.rs | 外部筛选参数，复用原客户端转发 |
 | config/trade-parser-publisher.toml | spot_enabled 及明确中文注释 |
 | compose.yaml、gateway/query-api/Dockerfile | 版本和验收 target，沿用原挂载及数据卷 |
 | scripts/verify-version.py、scripts/tests/test_verify_version.py | 兼容计数版本和旧默认 PERPETUAL，保持旧版本验收 |
+| protocols/implementations/hyperliquid/tests/parsing.rs、services/trade-log/adapters/tests/ 及既有请求校验测试 | 请求字段默认值、完整现货样本及原能力回归 |
+| tests/fixtures/hyperliquid/spot-meta.json | 固定元数据补齐 tokenId，不作为真实来源记录 |
 | docs/api.md、docs/verify.md、docs/test-clean.md | 统一参数表、执行命令、现货补录及能力记录的清理说明 |
 
 README、roadmap 及其他设计文件不增加入口。只有发现与当前设计存在实质冲突时再明确修订对应设计条款，不借版本实施改动无关内容。
@@ -268,7 +271,7 @@ README、roadmap 及其他设计文件不增加入口。只有发现与当前设
 
 ## 10. 交付、部署与手动验证
 
-以下命令为本版实施目标，当前 v0.6 尚不支持；实现后在统一接口说明和验收记录中确认实际行为。
+以下命令适用于 v0.7，需先升级应用及执行迁移。验证情况见 [验收记录](version0.7-acceptance.md)。
 
 ### 10.1 升级
 
@@ -305,7 +308,7 @@ curl --noproxy '*' -sS --get http://127.0.0.1:8080/api/v1/trade-events/stored \
 
 ### 10.3 历史现货补录
 
-补录只写事实，不生成历史候选。以下 CLI 是计划新增命令；起点和终点使用带时区 RFC3339，结束不包含，且不得晚于提交时刻。
+补录只写事实，不生成历史候选。以下 CLI 为新增补录命令；起点和终点使用带时区 RFC3339，结束不包含，且不得晚于提交时刻。
 
 | 命令 | 参数 | 类型 | 必填 | 默认值 | 含义及校验 |
 | --- | --- | --- | --- | --- | --- |
@@ -326,7 +329,7 @@ docker compose exec -T trade-collector trade-collector backfill-spot-status \
   --job-id '<实际补录任务UUID>'
 ```
 
-记录补录前后永续事实数、现货事实数、原 HTTP 水位、激活时间和 outbox；核对现货新增、永续身份不变、无历史候选。重复提交相同范围复用任务；尚在运行、BLOCKED 或覆盖不足不能记作历史完整。
+记录补录前后永续事实数、现货事实数、原 HTTP 水位、激活时间和 outbox；核对现货新增、永续身份不变、无历史候选。重复提交相同范围复用任务；若任务为 BLOCKED，修复原因后重新提交相同范围会重新进入 PENDING。尚在运行、BLOCKED 或覆盖不足不能记作历史完整。
 
 ### 10.4 实时发布与恢复
 
@@ -342,4 +345,4 @@ docker compose exec -T trade-collector trade-collector backfill-spot-status \
 sh scripts/verify-v0.7.sh --fixture-tests --lifecycle --database-fault --wait-seconds 180
 ```
 
-命令会短暂中断服务。参数沿用现有脚本含义；实现时加入 docs/verify.md。PASS、FAIL、SKIP 单独列出，未验证不算通过。验证记录在实施阶段写入 version0.7-acceptance.md；bug 沿用描述、影响、确认记录、修改逻辑、修改记录摘要、如何验证、验证记录七项格式。
+命令会短暂中断服务。参数沿用现有脚本含义，已加入 docs/verify.md；可额外加 --live 查询官方近期现货，默认只读部署库存。PASS、FAIL、SKIP 单独列出，未验证不算通过。验证记录写入 version0.7-acceptance.md；bug 沿用描述、影响、确认记录、修改逻辑、修改记录摘要、如何验证、验证记录七项格式。

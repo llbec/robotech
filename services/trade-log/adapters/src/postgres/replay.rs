@@ -1,5 +1,6 @@
 use super::facts::content_hash;
 use super::*;
+use chrono::DateTime;
 use protocol_api::QueryKind;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -14,11 +15,59 @@ use trade_log::{
     validation::QueryRequest,
 };
 impl Postgres {
-    pub async fn reparse(
+    pub async fn reparsed_result(
         &self,
         id: &str,
         parser: &dyn ProtocolParser,
-    ) -> Result<ReplayReport, QueryError> {
+    ) -> Result<QueryResult, QueryError> {
+        let request: Value =
+            sqlx::query_scalar("SELECT request FROM trade_log.collection_jobs WHERE query_id=$1")
+                .bind(id)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(db_error)?;
+        let origin = request["origin_query_id"].as_str().unwrap_or(id);
+        if origin != id {
+            let chained: bool = sqlx::query_scalar(
+                "SELECT request ? 'spot_backfill' FROM trade_log.collection_jobs WHERE query_id=$1",
+            )
+            .bind(origin)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(db_error)?;
+            if chained {
+                return Err(QueryError::incomplete("Invalid backfill evidence origin"));
+            }
+        }
+        let mut result = self.reparsed_original_result(origin, parser).await?;
+        if let Some(backfill) = request.get("spot_backfill") {
+            let (start, end): (i64, i64) = sqlx::query_as(
+                "SELECT start_ms,end_ms FROM trade_log.spot_backfill_jobs WHERE id=$1::text::uuid",
+            )
+            .bind(backfill["job_id"].as_str())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(db_error)?;
+            result.trades.retain(|f| {
+                f.payload.instrument_type == "SPOT"
+                    && DateTime::parse_from_rfc3339(&f.occurred_at)
+                        .is_ok_and(|t| t.timestamp_millis() >= start && t.timestamp_millis() < end)
+            });
+            result.query_id = id.into();
+            result.instrument_type = trade_log::instrument::InstrumentType::Spot;
+            result.counts.matched_records = result.trades.len();
+            result.counts.returned_records = result.trades.len();
+            result.query_scope = "SPOT_BACKFILL".into();
+            result.coverage = "SOURCE_HISTORY_NOT_VERIFIED".into();
+            result.display_truncated = false;
+        }
+        Ok(result)
+    }
+    async fn reparsed_original_result(
+        &self,
+        id: &str,
+        parser: &dyn ProtocolParser,
+    ) -> Result<QueryResult, QueryError> {
         let job = sqlx::query(
             "SELECT account,network,status,result,job_origin,request,transport FROM trade_log.collection_jobs WHERE query_id=$1",
         )
@@ -32,7 +81,7 @@ impl Postgres {
         let rows=sqlx::query("SELECT source_event_id,kind,body,sha256,parser_version FROM trade_log.raw_logs WHERE collection_job_id=(SELECT id FROM trade_log.collection_jobs WHERE query_id=$1) AND (http_status BETWEEN 200 AND 299 OR transport='WEBSOCKET') ORDER BY attempt DESC").bind(id).fetch_all(&self.pool).await.map_err(db_error)?;
         let mut bodies = BTreeMap::new();
         let mut raw_id = String::new();
-        let mut old = String::new();
+
         for row in rows {
             let kind: String = row.get("kind");
             let body: Vec<u8> = row.get("body");
@@ -41,7 +90,6 @@ impl Postgres {
             }
             if kind == "userFills" && raw_id.is_empty() {
                 raw_id = row.get("source_event_id");
-                old = row.get("parser_version");
             }
             bodies.entry(kind).or_insert(body);
         }
@@ -52,10 +100,10 @@ impl Postgres {
                 .ok_or_else(|| QueryError::incomplete("Missing successful source response"))
         };
         let account: String = job.get("account");
-        let (reparsed, source_records) = if job.get::<String, _>("transport") == "WEBSOCKET" {
+        let (reparsed, _source_records) = if job.get::<String, _>("transport") == "WEBSOCKET" {
             let result = self.stream_result(id, parser).await?;
             let count = result.counts.source_records;
-            old = "hyperliquid-v1".into();
+
             (result, count)
         } else if job.get::<String, _>("job_origin") == "COLLECTOR" {
             let request: Value = job.get("request");
@@ -71,7 +119,7 @@ impl Postgres {
                 .collection_result(id, &account, &ids, meta, spot, parser)
                 .await?;
             let count = result.counts.source_records;
-            old = "hyperliquid-v1".into();
+
             (result, count)
         } else {
             let parsed = parser.parse(ParseContext {
@@ -93,6 +141,24 @@ impl Postgres {
             )?;
             (reparsed, source_records)
         };
+        Ok(reparsed)
+    }
+    pub async fn reparse(
+        &self,
+        id: &str,
+        parser: &dyn ProtocolParser,
+    ) -> Result<ReplayReport, QueryError> {
+        let job = sqlx::query(
+            "SELECT account,network,status,result,job_origin,request,transport FROM trade_log.collection_jobs WHERE query_id=$1",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(db_error)?
+        .ok_or_else(|| QueryError::incomplete("Unknown query"))?;
+        let reparsed = self.reparsed_result(id, parser).await?;
+        let source_records = reparsed.counts.source_records;
+        let old: String=sqlx::query_scalar("SELECT parser_version FROM trade_log.raw_logs WHERE collection_job_id=(SELECT id FROM trade_log.collection_jobs WHERE query_id=COALESCE((SELECT request->>'origin_query_id' FROM trade_log.collection_jobs WHERE query_id=$1),$1)) ORDER BY observed_at LIMIT 1").bind(id).fetch_one(&self.pool).await.map_err(db_error)?;
         let saved: Option<Value> = job.get("result");
         let mut differences = Vec::new();
         let reference: QueryResult = serde_json::from_value(
@@ -125,11 +191,19 @@ impl Postgres {
             }
         }
         // Check the saved job against the immutable database versions and observations, not just its result JSON.
-        let facts=sqlx::query("SELECT DISTINCT v.fact_id,v.content_hash,v.payload,v.semantic_hash_version,v.semantic_content_hash FROM trade_log.fact_observations o JOIN trade_log.account_fact_versions v ON(v.fact_id,v.revision)=(o.fact_id,o.revision) JOIN trade_log.raw_logs r ON r.id=o.raw_log_id JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id WHERE j.query_id=$1").bind(id).fetch_all(&self.pool).await.map_err(db_error)?;
+        let facts=sqlx::query("SELECT DISTINCT v.fact_id,v.content_hash,v.payload,v.semantic_hash_version,v.semantic_content_hash FROM trade_log.fact_observations o JOIN trade_log.account_fact_versions v ON(v.fact_id,v.revision)=(o.fact_id,o.revision) JOIN trade_log.raw_logs r ON r.id=o.raw_log_id JOIN trade_log.collection_jobs j ON j.id=r.collection_job_id WHERE j.query_id=COALESCE((SELECT request->>'origin_query_id' FROM trade_log.collection_jobs WHERE query_id=$1),$1)").bind(id).fetch_all(&self.pool).await.map_err(db_error)?;
         let mut associated = BTreeMap::new();
         for row in facts {
             let f: account_facts::AccountFact =
                 serde_json::from_value(row.get("payload")).map_err(|_| QueryError::storage())?;
+            if job
+                .get::<Value, _>("request")
+                .get("spot_backfill")
+                .is_some()
+                && !before.contains_key(&f.fact_id)
+            {
+                continue;
+            }
             let hash = content_hash(&f)?;
             let stored: String = row.get("content_hash");
             if hash != stored {
@@ -157,7 +231,7 @@ impl Postgres {
         Ok(ReplayReport {
             query_id: id.into(),
             old_parser_version: old,
-            parser_version: "hyperliquid-v1".into(),
+            parser_version: "hyperliquid-v2".into(),
             source_records,
             fact_records: reparsed.trades.len(),
             comparison: if differences.is_empty() {
@@ -186,7 +260,9 @@ impl Postgres {
         }
         if manifest["status"] != "COMPLETED"
             || manifest["schema_version"] != 1
-            || manifest["parser_version"] != "hyperliquid-v1"
+            || !["hyperliquid-v1", "hyperliquid-v2"]
+                .iter()
+                .any(|v| manifest["parser_version"] == *v)
             || manifest["identity_version"] != "hl-fill-v1"
         {
             return Err(QueryError::incomplete(

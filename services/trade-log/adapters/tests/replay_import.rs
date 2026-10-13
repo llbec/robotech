@@ -109,6 +109,7 @@ async fn interrupted_partial_import_resumes_without_duplicate_raw_logs() {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../tests/fixtures/v0.2/import-evidence/query_fixture");
     let request = QueryRequest {
+        instrument_type: Default::default(),
         account: ACCOUNT.into(),
         limit: 100,
     };

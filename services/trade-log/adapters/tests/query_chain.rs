@@ -169,7 +169,10 @@ async fn filtering_counts_and_display_limits() {
     for (fills, coverage, empty) in [
         (json!([]), "SOURCE_WINDOW_UNVERIFIED", true),
         (
-            json!([{"coin":"@1","tid":1}]),
+            serde_json::from_str::<Value>(include_str!(
+                "../../../../tests/fixtures/hyperliquid/spot/fills.json"
+            ))
+            .unwrap(),
             "SOURCE_WINDOW_UNVERIFIED",
             true,
         ),
@@ -206,6 +209,7 @@ async fn filtering_counts_and_display_limits() {
             .execute(
                 "query_test",
                 &QueryRequest {
+                    instrument_type: Default::default(),
                     account: ADDRESS.into(),
                     limit: 1,
                 },
@@ -301,6 +305,7 @@ async fn source_failures_preserve_responses_and_bound_retries() {
             .execute(
                 "query_error",
                 &QueryRequest {
+                    instrument_type: Default::default(),
                     account: ADDRESS.into(),
                     limit: 1,
                 },
@@ -392,6 +397,7 @@ async fn timeout_capacity_and_response_size_limits() {
     assert_eq!(result.status(), 503);
     assert_eq!(permits.available_permits(), 1);
     let request = QueryRequest {
+        instrument_type: Default::default(),
         account: ADDRESS.into(),
         limit: 1,
     };
@@ -447,6 +453,7 @@ async fn full_evidence_survives_display_truncation_and_all_invalid_fails() {
             .execute(
                 "query_limit",
                 &QueryRequest {
+                    instrument_type: Default::default(),
                     account: ADDRESS.into(),
                     limit: 1,
                 },
@@ -622,6 +629,7 @@ async fn unwritable_evidence_is_not_reported_as_empty_success() {
         .execute(
             "query_storage",
             &QueryRequest {
+                instrument_type: Default::default(),
                 account: ADDRESS.into(),
                 limit: 1,
             },

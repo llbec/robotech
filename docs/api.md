@@ -2,7 +2,7 @@
 
 本文是项目统一的接口说明文档，集中维护所有对外接口和内部接口。后续版本在本文件中更新接口定义，并注明新增、变更或废弃的适用版本，不另建按开发版本命名的接口文档。
 
-当前对应程序版本：0.6.0；JSON schema_version：1。接口定义依据当前代码编写。
+当前对应程序版本：0.7.0；JSON schema_version：1。接口定义依据当前代码编写。
 
 ## 1. 地址和接口列表
 
@@ -51,7 +51,7 @@
 | --- | --- | --- |
 | data | object | 对应接口的业务数据，具体字段见后文 |
 | meta.trace_id | string | 本次 HTTP 请求的追踪 ID，用于关联网关、内部服务日志及查询证据 |
-| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.6.0 分开管理 |
+| meta.schema_version | integer | 响应结构版本，当前为 1；与程序版本 0.7.0 分开管理 |
 
 JSON 响应的 Content-Type 为 `application/json`。响应头 `x-trace-id` 与响应体中的 trace_id 相同。网关为每次外部请求生成新 trace_id，不沿用客户端传入的值。
 
@@ -103,6 +103,7 @@ Content-Type: application/json
 
 | 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
 | --- | --- | --- | --- | --- | --- |
+| instrument_type | JSON body | string | 否 | PERPETUAL | PERPETUAL、SPOT、ALL；与外部类型筛选相同 |
 | account | JSON body | string | 是 | 无 | 钱包地址：小写 0x 开头，后接 40 个十六进制字符；不接受前后空格，入库规范化为小写 |
 | limit | JSON body | integer | 否 | 100 | 展示成交上限，1–2000；必须为 JSON 整数，不是字符串 |
 
@@ -126,7 +127,7 @@ GET /internal/v1/health
 没有业务参数，需要 Authorization 请求头。成功返回 200，data 格式：
 
 ```json
-{"status":"ok","service":"trade-log-query","version":"0.6.0"}
+{"status":"ok","service":"trade-log-query","version":"0.7.0"}
 ```
 
 status 表示内部进程可响应，service 为服务名，version 为程序构建版本；完整响应使用 data/meta 包装。该接口不主动检查上游来源。
@@ -143,6 +144,7 @@ Content-Type: application/json
 
 | 参数 | 位置 | 类型 | 必填 | 默认值 | 含义及校验规则 |
 | --- | --- | --- | --- | --- | --- |
+| instrument_type | JSON body | string | 否 | PERPETUAL | PERPETUAL、SPOT、ALL；与外部类型筛选相同 |
 | account | JSON body | string | 是 | 无 | 钱包地址：小写 0x 开头，后接 40 个十六进制字符；不接受前后空格，入库规范化为小写 |
 | limit | JSON body | integer | 否 | 100 | 每页成交上限，1–2000 |
 | start_time | JSON body | string（RFC3339） | 否 | 无下界 | 包含开始时刻；带时区、非负 Unix 时间、最多毫秒精度 |
@@ -168,7 +170,7 @@ account 必填；limit 为整数，可省略但不可为 null。start_time、end
 
 v0.6 新增 `/internal/v1/watch-accounts` 及 `{id}`、`{id}/resume`，内部仍按资源组织：GET 列表、POST 添加、GET /{id} 详情、DELETE /{id} 暂停、POST /{id}/resume 恢复。外部功能路由由网关转换为这些调用；不要把外部路径直接用于内部端口。调用方为网关，使用内部服务凭证；外部管理凭证由网关验证，不转发给 collector。读取状态只访问数据库，不查询官方来源。
 
-collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.6.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
+collector 的 `GET /internal/v1/health` 使用相同凭证要求，data 为 `{"status":"ok","service":"trade-collector","version":"0.7.0"}`，只表示进程可响应，不表示来源访问或自动采集成功。
 
 ### 3.6 内部发布状态
 
@@ -237,13 +239,13 @@ curl --noproxy '*' -i http://127.0.0.1:8080/api/v1/version
 成功返回 200；data 格式：
 
 ```json
-{"service":"query-api","version":"0.6.0"}
+{"service":"query-api","version":"0.7.0"}
 ```
 
 | data 字段 | 类型 | 含义 |
 | --- | --- | --- |
 | service | string | 服务名 query-api |
-| version | string | 当前运行程序的构建版本，v0.6 为 0.6.0 |
+| version | string | 当前运行程序的构建版本，v0.7 为 0.7.0 |
 
 实际 HTTP 响应仍使用第 2 节的 data/meta 包装。
 
@@ -258,6 +260,7 @@ GET /api/v1/trade-events/live?account=<账户地址>&limit=100
 | 参数 | 位置 | 类型 | 必填 | 默认值 | 意义及限制 |
 | --- | --- | --- | --- | --- | --- |
 | account | URL query | string | 是 | 无 | 被查询的账户；必须以小写 `0x` 开头，后跟 40 个十六进制字符，总长度 42；地址字符可大小写混合，结果规范化为小写；不接受前后空格 |
+| instrument_type | URL query | string | 否 | PERPETUAL | PERPETUAL（合约）、SPOT（现货）、ALL（两类）；区分大小写，非法或重复参数返回 400；只筛选展示，完整有效事实均入库 |
 | limit | URL query | integer | 否 | 100 | 最多展示多少条合约成交，范围 1–2000；不接受小数、负数或空字符串 |
 | source | URL query | — | 不接受 | — | 功能由 /live 路径指定；传入此参数返回 400 |
 
@@ -289,6 +292,8 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
     "query_scope": "RECENT_SOURCE_WINDOW",
     "coverage": "SOURCE_WINDOW_UNVERIFIED",
     "counts": {
+      "counts_version": 2,
+      "matched_records": 0,
       "source_records": 0,
       "duplicate_records": 0,
       "spot_records": 0,
@@ -330,11 +335,20 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 | persistence | object | v0.2 保存回执，只有数据库提交成功才返回实时成功响应 |
 | persistence.status | string | 固定 COMMITTED |
 | persistence.inserted_records | integer | 本次完整标准集合中新入库的事实数，不受展示 limit 影响 |
-| persistence.existing_records | integer | 本次完整标准集合中已经存在且内容相同的事实数；与 inserted 之和为 perpetual_records，不是原始数组内 duplicate_records |
+| persistence.existing_records | integer | 本次完整标准集合中已经存在且内容相同的事实数；与 inserted 之和为 perpetual_records + spot_records（counts_version=2），不是原始数组内 duplicate_records |
 
 按 occurred_at 从新到旧排序；时间相同时按来源 tid 数值降序，再按 fact_id 字典升序。observed_range 根据完整标准成交集合计算，可能比展示的 10 条覆盖更长，不代表已覆盖该区间的所有历史记录。
 
 #### 4.3.3 counts：每种计数的意义
+
+自 v0.7 起 counts.counts_version=2：spot_records 表示成功解析、去重的现货事实；旧回执缺失 counts_version 时按 1 解读，其 spot_records 是过滤的现货条数。历史回执不改写。
+
+| 新增计数字段 | 类型 | 意义 |
+| --- | --- | --- |
+| counts_version | integer | 新查询为 2；不是外层 schema_version |
+| matched_records | integer | 完整结果中符合 instrument_type 的事实数，应用 limit 之前 |
+
+分类计数覆盖完整来源响应，returned_records 和 display_truncated 按筛选后集合计算。persistence.inserted_records + existing_records 覆盖全部有效永续及现货事实，不只覆盖展示条数。
 
 | 字段 | 类型 | 意义 |
 | --- | --- | --- |
@@ -427,11 +441,11 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 | --- | --- |
 | SOURCE_RECORD_LIMIT | 来源元素达到 2000，可能触及来源返回上限 |
 | NO_SOURCE_RECORDS | 来源返回空数组；只表示本次没有来源记录 |
-| NO_PERPETUAL_RECORDS | 没有标准永续成交，且来源包含被过滤的现货记录 |
+| NO_PERPETUAL_RECORDS | 旧计数版本中的警告：无标准永续成交且来源包含现货；新版展示范围以 instrument_type 为准 |
 | UNSUPPORTED_OR_UNKNOWN_MARKET:<index> | 原始数组该位置所属市场未知或当前未支持 |
 | INVALID_RECORD:<index>:<reason> | 原始数组该位置无法可靠解析；reason 是诊断文本，不建议按具体文案分支 |
 
-当前只返回默认永续 DEX 中、根据元数据确认的成交；现货被过滤，其他市场被披露为未支持。display_truncated 与 coverage 是不同维度：展示 limit 导致截断，不会单独把 coverage 改为 LIMITED。
+当前支持默认永续 DEX 及元数据确认的现货成交，按 instrument_type 筛选展示；其他市场被披露为未支持。display_truncated 与 coverage 是不同维度：展示 limit 导致截断，不会单独把 coverage 改为 LIMITED。
 
 成功的空 trades 不表示账户从未交易。来源请求失败、查询超时或存储失败会返回非 200 错误，不返回伪造的空列表。来源有记录但全部无法解析且没有现货或未支持市场时，返回 422。
 
@@ -441,6 +455,7 @@ curl --noproxy '*' --max-time 45 -i --get 'http://127.0.0.1:8080/api/v1/trade-ev
 
 | 参数 | 类型 | 必填/默认 | 意义与校验 |
 | --- | --- | --- | --- |
+| instrument_type | string | 可选，默认 PERPETUAL | PERPETUAL、SPOT、ALL；数据库先过滤再分页；下一页保持同类型，旧游标按 PERPETUAL 解码 |
 | account | string | 必填 | 地址规则同第 4.3.1 节 |
 | source | — | 不接受 | 使用 /stored 路径指定功能；传入此参数返回 400 |
 | limit | integer | 默认 100 | 每页展示上限，1–2000；下一页可调整 |
@@ -882,7 +897,38 @@ unset TOKEN
 
 暂停停止新采集和新候选，既有 outbox 继续交付；不撤回信号或控制下游跟单。恢复时 HTTP、初始快照和旧会话归档只补存事实，不冒充新实时信号。管理成功不保证历史完整，详情须结合覆盖、缺口和 warnings 判断。
 
-### 4.9 旧入口兼容说明
+### 4.9 现货事实、候选与历史补录
+
+现货仍使用 TRADE 事实和 account.fact.v1 webhook 信封。payload.instrument_type=SPOT；action/side 为 BUY 或 SELL，position_effect=NOT_APPLICABLE，reported_realized_pnl=null。价格、数量、成交额与费用保持十进制字符串，notional 不扣手续费。fee 可为负返佣；fee_asset 未确认时为 null，产生 SPOT_FEE_ASSET_UNCONFIRMED 警告且不允许候选。
+
+| 现货字段 | 意义 |
+| --- | --- |
+| market | hyperliquid:spot:<pair index>，稳定交易对身份 |
+| base_asset / quote_asset | 基础与计价资产显示名，不固定为 USDC |
+| extension.base_token / quote_token | 实际使用的 token 元数据，含 index、tokenId、name |
+| extension.pair_index / pair_name | 来源交易对索引与名称；可读名与 @index 归为同一身份 |
+| extension.fee_token | 已唯一确认的费用 token 元数据，否则 null |
+| extension.parser_version | hyperliquid-spot-v1，现货字段解析版本 |
+
+现货 fact_id 沿用 hl-fill-v1 摘要框架，市场输入使用 spot:<pair index>；原永续 ID 不变。不能凭显示名合并不同 token。未知市场索引或缺少资产元数据会明确失败，不猜测资产后推进自动水位。
+
+现货候选还要求 publishing.enabled=true 且 publishing.spot_enabled=true；现货开关默认 false，有独立激活时间，开启不重置合约激活。历史 HTTP、补录、重解析、快照及旧代次消息不生成现货候选。分账户发布状态增加 instruments.SPOT，包含 enabled、activation_epoch、activated_at、monitoring_generation、policy；enabled 为结合全局开关和账户状态后的有效开关。
+
+账户详情/列表增加 spot_backfill，未提交任务时为 null；有任务时显示最近任务对象：
+
+| 字段 | 类型 | 意义 |
+| --- | --- | --- |
+| id / account_key | UUID string / string | 补录任务 ID 和所属账户，与监控登记 ID 不同 |
+| start_ms / end_ms | integer | 固定半开补录范围，Unix 毫秒 |
+| scanned_ms | integer | 已完成的 HTTP 补录边界，不是原自动采集水位 |
+| evidence_complete / evidence_cursor | boolean / UUID或null | 旧归档扫描阶段是否完成及其游标 |
+| status | string | PENDING、RUNNING、RETRY_WAIT、BLOCKED、COMPLETED；暂停账户不执行任务，需结合 desired_state 判断 |
+| attempts / retry_at / last_error | integer / timestamp或null / string或null | 连续失败及重试状态 |
+| source_coverage | string | SOURCE_HISTORY_NOT_VERIFIED，不承诺完整历史 |
+
+提交和查询补录使用服务器内 collector CLI，参数和操作步骤见 [v0.7 补录说明](version0.7.md#103-历史现货补录)，不新增公网补录入口。补录保留原水位及历史回执，不发布旧成交。
+
+### 4.10 旧入口兼容说明
 
 2026-10-12 起新调用使用本章功能路径。以下旧外部入口暂保留兼容，不再作为新接入示例：
 
@@ -928,6 +974,7 @@ unset TOKEN
 
 | 日期 | 程序版本 | 类型 | 更新内容 |
 | --- | --- | --- | --- |
+| 2026-10-13 | 0.7.0 | 现货能力 | 增加 instrument_type 筛选、counts_version=2、现货资产与费用字段、独立现货候选边界及补录状态；默认合约查询和旧事实 ID 保持 |
 | 2026-10-13 | 0.6.0 | 文档补充 | 补齐监控各操作、列表、发布汇总及内部查询请求参数表；明确参数位置、类型、必填项、默认值和校验规则 |
 | 2026-10-12 | 0.6.0 | 功能路由调整 | 成交 live/stored 拆分；监控操作独立命名，GET 查询 id、POST JSON id；新增账户采集/发布状态及独立发布汇总；旧入口保留兼容 |
 | 2026-10-11 | 0.6.0 | 新增及结构变更 | 多账户管理、管理认证、列表分页与 collection 嵌套；发布状态支持 account 和汇总；原成交查询及 webhook 信封不变 |

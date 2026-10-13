@@ -80,6 +80,10 @@ impl QueryError {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Counts {
+    #[serde(default = "legacy_counts_version")]
+    pub counts_version: u32,
+    #[serde(default)]
+    pub matched_records: usize,
     pub source_records: usize,
     pub duplicate_records: usize,
     pub spot_records: usize,
@@ -95,6 +99,8 @@ pub struct ObservedRange {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QueryResult {
+    #[serde(default)]
+    pub instrument_type: crate::instrument::InstrumentType,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persistence: Option<crate::persistence::Persistence>,
     pub query_id: String,
@@ -112,6 +118,16 @@ pub struct QueryResult {
 }
 impl QueryResult {
     pub fn for_display(mut self) -> Self {
+        self.trades
+            .retain(|f| self.instrument_type.accepts(&f.payload.instrument_type));
+        self.observed_range = self
+            .trades
+            .first()
+            .zip(self.trades.last())
+            .map(|(last, first)| ObservedRange {
+                first_at: first.occurred_at.clone(),
+                last_at: last.occurred_at.clone(),
+            });
         self.trades.truncate(self.counts.returned_records);
         self
     }
@@ -195,13 +211,26 @@ impl QueryService {
             meta: &meta,
             spot_meta: &spot_meta,
         })?;
-        crate::normalization::result(
+        let mut result = crate::normalization::result(
             id,
             &request.account,
             &self.network,
             &queried_at,
             request.limit,
             parsed,
-        )
+        )?;
+        result.instrument_type = request.instrument_type;
+        result.counts.matched_records = result
+            .trades
+            .iter()
+            .filter(|f| request.instrument_type.accepts(&f.payload.instrument_type))
+            .count();
+        result.counts.returned_records = result.counts.matched_records.min(request.limit);
+        result.display_truncated = result.counts.matched_records > request.limit;
+        Ok(result)
     }
+}
+
+fn legacy_counts_version() -> u32 {
+    1
 }

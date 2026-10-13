@@ -14,3 +14,5 @@ pub mod validation;
 pub mod publishing;
 
 pub mod watch;
+
+pub mod instrument;

@@ -9,6 +9,7 @@ pub struct CandidatePolicy {
     pub clock_skew_tolerance_seconds: i64,
     pub version: String,
 }
+#[derive(Clone)]
 pub struct CandidateContext {
     pub enabled: bool,
     pub account_key: String,
@@ -51,11 +52,16 @@ pub fn decide(
         || f.fact_type != "TRADE"
         || f.revision != 1
         || f.change_type != "UPSERT"
-        || f.payload.instrument_type != "PERPETUAL"
+        || !["PERPETUAL", "SPOT"].contains(&f.payload.instrument_type.as_str())
         || f.payload.trigger_type != "USER"
         || !f.payload.copy_eligible
-        || !["OPEN", "INCREASE", "DECREASE", "CLOSE", "REVERSE"]
-            .contains(&f.payload.position_effect.as_str())
+        || (f.payload.instrument_type == "PERPETUAL"
+            && !["OPEN", "INCREASE", "DECREASE", "CLOSE", "REVERSE"]
+                .contains(&f.payload.position_effect.as_str()))
+        || (f.payload.instrument_type == "SPOT"
+            && (f.payload.position_effect != "NOT_APPLICABLE"
+                || !["BUY", "SELL"].contains(&f.payload.action.as_str())
+                || f.payload.fee_asset.is_none()))
     {
         return Err("NOT_COPY_ELIGIBLE");
     }

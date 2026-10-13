@@ -154,10 +154,26 @@ impl Postgres {
             version: "candidate-v1".into(),
         };
         let p = o.control.as_ref().map(|v| &v.2).unwrap_or(&fallback);
+        let mut context = o.context.clone();
+        let mut spot_epoch = None;
+        if f.payload.instrument_type == "SPOT" {
+            let activation = sqlx::query("SELECT * FROM trade_log.instrument_activation WHERE account_key=$1 AND instrument_type='SPOT' FOR SHARE").bind(&f.account_key).fetch_optional(&mut **tx).await.map_err(db_error)?;
+            context.enabled = context.enabled
+                && activation
+                    .as_ref()
+                    .is_some_and(|r| r.get::<bool, _>("enabled"));
+            if let Some(row) = activation {
+                let global_generation: Option<i64> = sqlx::query_scalar("SELECT monitoring_generation FROM trade_log.publishing_control WHERE account_key=$1").bind(&f.account_key).fetch_optional(&mut **tx).await.map_err(db_error)?;
+                context.enabled &=
+                    global_generation == Some(row.get::<i64, _>("monitoring_generation"));
+                context.activated_at = context.activated_at.max(row.get("activated_at"));
+                spot_epoch = Some(row.get::<i64, _>("activation_epoch"));
+            }
+        }
         let decision = if !o.monitoring_confirmed {
             Err("MONITORING_GENERATION_UNCONFIRMED")
         } else {
-            decide(f, &o.context, p)
+            decide(f, &context, p)
         };
         let (result, reason) = match decision {
             Err(reason) => ("SUPPRESSED", reason),
@@ -185,7 +201,7 @@ impl Postgres {
                     published_at: None,
                     expires_at: (at + chrono::Duration::seconds(p.signal_ttl_seconds))
                         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-                    observation: json!({"transport":"WEBSOCKET","query_id":o.query_id,"session_id":o.session_id,"message_sequence":o.context.sequence,"raw_log_id":f.raw_log_id,"message_mode":o.context.message_mode,"realtime_reason":reason,"publishing_policy_version":p.version}),
+                    observation: json!({"transport":"WEBSOCKET","query_id":o.query_id,"session_id":o.session_id,"message_sequence":o.context.sequence,"raw_log_id":f.raw_log_id,"message_mode":o.context.message_mode,"realtime_reason":reason,"publishing_policy_version":p.version,"instrument_activation_epoch":spot_epoch}),
                     fact,
                 };
                 let rows=sqlx::query("INSERT INTO trade_log.outbox_events(event_id,fact_id,revision,topic,partition_key,target_id,payload) VALUES($1,$2,1,'account.fact.v1',$3,$4,$5) ON CONFLICT DO NOTHING").bind(&event.event_id).bind(&f.fact_id).bind(&f.account_key).bind(&o.control.as_ref().ok_or_else(QueryError::storage)?.0).bind(json!(event)).execute(&mut **tx).await.map_err(db_error)?.rows_affected();
@@ -199,7 +215,7 @@ impl Postgres {
                 )
             }
         };
-        sqlx::query("INSERT INTO trade_log.publication_decisions(fact_id,revision,raw_log_id,source_index,session_id,message_sequence,activation_epoch,result,reason,decided_at) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(&f.fact_id).bind(raw).bind(index).bind(o.session_id).bind(o.context.sequence).bind(o.control.as_ref().map(|v|v.1).unwrap_or(0)).bind(result).bind(reason).bind(o.context.now).execute(&mut **tx).await.map_err(db_error)?;
+        sqlx::query("INSERT INTO trade_log.publication_decisions(fact_id,revision,raw_log_id,source_index,session_id,message_sequence,activation_epoch,result,reason,decided_at) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING").bind(&f.fact_id).bind(raw).bind(index).bind(o.session_id).bind(o.context.sequence).bind(spot_epoch.or_else(||o.control.as_ref().map(|v|v.1)).unwrap_or(0)).bind(result).bind(reason).bind(o.context.now).execute(&mut **tx).await.map_err(db_error)?;
         Ok(())
     }
     pub async fn claim_publication(
@@ -332,8 +348,19 @@ impl Postgres {
         } else {
             "RUNNING"
         };
+        let mut instruments: Value = sqlx::query_scalar("SELECT COALESCE(jsonb_object_agg(instrument_type,to_jsonb(a)-'account_key'),'{}'::jsonb) FROM trade_log.instrument_activation a WHERE account_key=$1").bind(key).fetch_one(&self.pool).await.map_err(db_error)?;
+        if let Some(spot) = instruments.get_mut("SPOT") {
+            spot["enabled"] = json!(
+                spot["enabled"] == true
+                    && enabled
+                    && watch
+                        .as_ref()
+                        .is_none_or(|w| spot["monitoring_generation"].as_i64()
+                            == Some(w.get::<i64, _>("generation")))
+            );
+        }
         Ok(
-            json!({"enabled":enabled,"status":status,"account":key.rsplit(':').next(),"account_key":key,"target_id":c.get::<String,_>("target_id"),"activation_epoch":c.get::<i64,_>("activation_epoch"),"activated_at":c.get::<DateTime<Utc>,_>("activated_at"),"heartbeat_at":heartbeat,"policy":c.get::<Value,_>("policy"),"outbox":counts,"oldest_pending_at":q.get::<Option<DateTime<Utc>>,_>("oldest"),"last_published_at":q.get::<Option<DateTime<Utc>>,_>("sent"),"last_delivered_at":q.get::<Option<DateTime<Utc>>,_>("acknowledged"),"last_error":last.or(c.get("last_error")),"expired_pending":q.get::<i64,_>("expired"),"suppression_counts":suppressed}),
+            json!({"instruments":instruments,"enabled":enabled,"status":status,"account":key.rsplit(':').next(),"account_key":key,"target_id":c.get::<String,_>("target_id"),"activation_epoch":c.get::<i64,_>("activation_epoch"),"activated_at":c.get::<DateTime<Utc>,_>("activated_at"),"heartbeat_at":heartbeat,"policy":c.get::<Value,_>("policy"),"outbox":counts,"oldest_pending_at":q.get::<Option<DateTime<Utc>>,_>("oldest"),"last_published_at":q.get::<Option<DateTime<Utc>>,_>("sent"),"last_delivered_at":q.get::<Option<DateTime<Utc>>,_>("acknowledged"),"last_error":last.or(c.get("last_error")),"expired_pending":q.get::<i64,_>("expired"),"suppression_counts":suppressed}),
         )
     }
 }

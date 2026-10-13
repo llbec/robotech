@@ -18,6 +18,9 @@ pub fn semantic_hash(fact: &AccountFact) -> Result<String, QueryError> {
         .as_object_mut()
         .ok_or_else(QueryError::storage)?
         .remove("extension");
+    if fact.payload.instrument_type == "SPOT" {
+        value["spot_assets"] = serde_json::json!({"base_token_id":fact.payload.extension["base_token"]["tokenId"],"quote_token_id":fact.payload.extension["quote_token"]["tokenId"],"fee_token_id":fact.payload.extension["fee_token"]["tokenId"]});
+    }
     for field in [
         "price",
         "quantity",

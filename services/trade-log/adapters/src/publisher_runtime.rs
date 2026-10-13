@@ -20,6 +20,18 @@ impl PublisherRuntime {
         policy: trade_log::publishing::CandidatePolicy,
         max_inflight: usize,
     ) {
+        self.run_multi_with_spot(cancel, url, enabled, policy, max_inflight, false)
+            .await
+    }
+    pub async fn run_multi_with_spot(
+        self,
+        cancel: CancellationToken,
+        url: String,
+        enabled: bool,
+        policy: trade_log::publishing::CandidatePolicy,
+        max_inflight: usize,
+        spot_enabled: bool,
+    ) {
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_inflight));
         let mut workers = DeliveryWorkers(std::collections::BTreeMap::new());
         let mut rotate = 0_usize;
@@ -60,6 +72,14 @@ impl PublisherRuntime {
                             .await
                         {
                             tracing::warn!(account_key=key,code=%e.code,"publication_control_failed");
+                            let _ = self.store.publishing_heartbeat(key, Some(&e.code)).await;
+                            continue;
+                        }
+                        if let Err(e) = self
+                            .store
+                            .configure_spot_publishing(key, enabled && spot_enabled, &policy)
+                            .await
+                        {
                             let _ = self.store.publishing_heartbeat(key, Some(&e.code)).await;
                             continue;
                         }

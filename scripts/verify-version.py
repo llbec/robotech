@@ -253,7 +253,7 @@ class Verification:
             raise Skip('查询成功但没有合约成交；不能认定真实成交验收通过，请更换 --account')
         if self.minor >= 2:
             p = data['persistence']
-            self.require(p['status'] == 'COMMITTED' and p['inserted_records'] + p['existing_records'] == c['perpetual_records'],
+            self.require(p['status'] == 'COMMITTED' and p['inserted_records'] + p['existing_records'] == c['perpetual_records'] + (c['spot_records'] if c.get('counts_version', 1) >= 2 else 0),
                          '数据库持久化回执不符')
         return 'query_id={}；展示 {} 条；完整合约数 {}'.format(data['query_id'], len(data['trades']), c['perpetual_records'])
 
@@ -295,7 +295,7 @@ class Verification:
             manifest = json.loads((root / 'manifest.json').read_text())
             result = json.loads((root / 'result.json').read_text())
             self.require(manifest['status'] == 'COMPLETED' and manifest['query_id'] == query, '证据任务未完成')
-            self.require(len(result['trades']) == self.live_result['counts']['perpetual_records'], '证据只保存了展示集合')
+            self.require(len(result['trades']) == self.live_result['counts']['perpetual_records'] + (self.live_result['counts']['spot_records'] if self.live_result['counts'].get('counts_version', 1) >= 2 else 0), '证据只保存了展示集合')
             files = list((root / 'metadata').glob('*.json'))
             self.require(files, '缺少原始响应元数据')
             for entry in files:

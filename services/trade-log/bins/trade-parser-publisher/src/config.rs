@@ -32,6 +32,8 @@ pub struct Database {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Publishing {
+    #[serde(default)]
+    pub spot_enabled: bool,
     pub enabled: bool,
     #[serde(default)]
     pub collection_config_path: PathBuf,

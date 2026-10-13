@@ -20,15 +20,18 @@
   "tokens": [
     {
       "index": 0,
-      "name": "USDC"
+      "name": "USDC",
+      "tokenId": "0x00000000000000000000000000000001"
     },
     {
       "index": 1,
-      "name": "PURR"
+      "name": "PURR",
+      "tokenId": "0x00000000000000000000000000000002"
     },
     {
       "index": 2,
-      "name": "TOKEN"
+      "name": "TOKEN",
+      "tokenId": "0x00000000000000000000000000000003"
     }
   ]
 }

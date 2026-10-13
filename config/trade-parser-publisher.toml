@@ -36,6 +36,8 @@ connect_timeout_seconds = 5
 statement_timeout_seconds = 10
 # 所有账户共用的候选发布及 webhook 投递策略
 [publishing]
+# 是否准入现货实时候选；默认 false，须同时 enabled=true；开启建立独立边界，不重置合约激活。
+spot_enabled = false
 # 是否生成并投递实时跟单候选；true 前必须配置可用 webhook_url 和令牌，false 不影响成交采集入库。
 enabled = false
 # 所有账户共享的同时投递数，1–10；默认 2，按账户轮转领取，避免单账户占满。

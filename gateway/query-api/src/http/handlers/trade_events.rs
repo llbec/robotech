@@ -14,6 +14,8 @@ use trade_log::{query::QueryError, validation::QueryRequest};
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Parameters {
+    #[serde(default)]
+    instrument_type: trade_log::instrument::InstrumentType,
     account: String,
     limit: Option<usize>,
     source: Option<String>,
@@ -39,6 +41,7 @@ pub async fn handle(
                     ));
                 }
                 let request = QueryRequest {
+                    instrument_type: p.instrument_type,
                     account: p.account,
                     limit: p.limit.unwrap_or(100),
                 };
@@ -50,6 +53,7 @@ pub async fn handle(
             }
             "stored" => {
                 let request = StoredRequest {
+                    instrument_type: p.instrument_type,
                     account: p.account,
                     limit: p.limit.unwrap_or(100),
                     start_time: p.start_time,

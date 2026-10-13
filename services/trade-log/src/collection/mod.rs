@@ -35,6 +35,7 @@ pub fn time(ms: i64) -> String {
 }
 pub fn start_ms(text: &str) -> Result<i64, QueryError> {
     let request = crate::stored_query::StoredRequest {
+        instrument_type: Default::default(),
         account: "0x0000000000000000000000000000000000000001".into(),
         limit: 1,
         start_time: Some(text.into()),
@@ -104,6 +105,9 @@ pub fn merge(parts: Vec<Parsed>) -> Result<(Parsed, Vec<AccountFact>), QueryErro
                     return Err(QueryError::conflict());
                 }
                 merged.duplicate_records += 1;
+                if fact.payload.instrument_type == "SPOT" {
+                    merged.spot_records = merged.spot_records.saturating_sub(1);
+                }
             } else {
                 facts.insert(fact.fact_id.clone(), (value, fact.clone()));
             }

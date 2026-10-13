@@ -71,3 +71,16 @@ COPY --from=multi-fixture-builder /out/multi-account-fixtures /app/multi-account
 COPY scripts/run-v06-fixtures.sh /app/
 ENV PYTHONDONTWRITEBYTECODE=1 ROBOTECH_TEST_DATABASE_EXACT=1
 ENTRYPOINT ["/bin/sh", "/app/run-v06-fixtures.sh"]
+
+FROM builder AS spot-fixture-builder
+RUN --mount=type=cache,id=robotech-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,id=robotech-cargo-git,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,id=robotech-cargo-target,target=/workspace/target,sharing=locked \
+    cargo test --locked --release -p trade-log-adapters --test spot_chain --no-run --message-format=json > /tmp/v07-fixture-build.json && \
+    v07_test_executable=$(sed -n 's/.*"executable":"\([^" ]*spot_chain-[^" ]*\)".*/\1/p' /tmp/v07-fixture-build.json | tail -n 1) && \
+    test -n "$v07_test_executable" && cp "$v07_test_executable" /out/spot-fixtures
+FROM python:3.13-slim-bookworm AS verify-v07
+COPY --from=spot-fixture-builder /out/spot-fixtures /app/spot-fixtures
+COPY scripts/run-v07-fixtures.sh /app/
+ENV PYTHONDONTWRITEBYTECODE=1 ROBOTECH_TEST_DATABASE_EXACT=1
+ENTRYPOINT ["/bin/sh", "/app/run-v07-fixtures.sh"]

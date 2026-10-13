@@ -12,3 +12,5 @@ pub mod webhook;
 
 pub mod collector_supervisor;
 pub mod source_budget;
+
+pub mod spot_backfill_runtime;

@@ -120,12 +120,13 @@ pub async fn run() -> Result<(), (u8, String)> {
         retry_base_seconds: c.publishing.retry_base_seconds,
         retry_max_seconds: c.publishing.retry_max_seconds,
     };
-    let mut worker = tokio::spawn(runtime.run_multi(
+    let mut worker = tokio::spawn(runtime.run_multi_with_spot(
         cancel.clone(),
         c.publishing.webhook_url.clone(),
         c.publishing.enabled,
         c.policy(),
         c.publishing.max_inflight,
+        c.publishing.spot_enabled,
     ));
     let signal_cancel = cancel.clone();
     tracing::info!(service="trade-parser-publisher",version=env!("CARGO_PKG_VERSION"),address=%c.server.address(),"server_started");

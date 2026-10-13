@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "account-facts"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "hyperliquid"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "account-facts",
  "async-trait",
@@ -1313,14 +1313,14 @@ dependencies = [
 
 [[package]]
 name = "protocol-api"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "query-api"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "axum",
  "chrono",
@@ -1746,7 +1746,7 @@ dependencies = [
 
 [[package]]
 name = "service-runtime"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "axum",
  "serde",
@@ -1790,7 +1790,7 @@ dependencies = [
 
 [[package]]
 name = "shared-types"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "rust_decimal",
@@ -2438,7 +2438,7 @@ dependencies = [
 
 [[package]]
 name = "trade-collector"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "clap",
@@ -2454,11 +2454,12 @@ dependencies = [
  "tracing",
  "trade-log",
  "trade-log-adapters",
+ "uuid",
 ]
 
 [[package]]
 name = "trade-log"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "account-facts",
  "async-trait",
@@ -2475,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "trade-log-adapters"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "account-facts",
  "async-trait",
@@ -2501,7 +2502,7 @@ dependencies = [
 
 [[package]]
 name = "trade-log-query"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "axum",
  "clap",
@@ -2524,7 +2525,7 @@ dependencies = [
 
 [[package]]
 name = "trade-parser-publisher"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "clap",
  "reqwest",

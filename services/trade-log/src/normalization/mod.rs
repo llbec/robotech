@@ -47,8 +47,13 @@ pub fn result(
             first_at: first.occurred_at.clone(),
             last_at: last.occurred_at.clone(),
         });
-    let perpetual_records = parsed.trades.len();
+    let perpetual_records = parsed
+        .trades
+        .iter()
+        .filter(|f| f.payload.instrument_type == "PERPETUAL")
+        .count();
     Ok(QueryResult {
+        instrument_type: Default::default(),
         persistence: None,
         query_id: id.into(),
         account: account.into(),
@@ -62,6 +67,8 @@ pub fn result(
         }
         .into(),
         counts: Counts {
+            counts_version: 2,
+            matched_records: perpetual_records,
             source_records: parsed.source_records,
             duplicate_records: parsed.duplicate_records,
             spot_records: parsed.spot_records,

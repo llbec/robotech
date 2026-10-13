@@ -221,11 +221,14 @@ impl Postgres {
         .fetch_one(&self.pool)
         .await
         .map_err(db_error)?;
+        let key = key.to_owned();
         value["publishing"] = if exists {
-            self.publishing_status(key).await?
+            self.publishing_status(&key).await?
         } else {
             Value::Null
         };
+        let backfill: Option<serde_json::Value> = sqlx::query_scalar("SELECT to_jsonb(b) FROM trade_log.spot_backfill_jobs b WHERE account_key=$1 ORDER BY created_at DESC LIMIT 1").bind(key).fetch_optional(&self.pool).await.map_err(db_error)?;
+        value["spot_backfill"] = serde_json::json!(backfill);
         Ok(value)
     }
     pub async fn watch_list(&self, p: ListParams) -> Result<Value, QueryError> {

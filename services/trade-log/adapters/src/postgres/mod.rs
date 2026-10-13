@@ -54,3 +54,7 @@ pub mod publishing;
 
 pub mod source_budget;
 pub mod watch;
+
+pub mod spot_activation;
+
+pub mod spot_backfill;

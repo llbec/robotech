@@ -45,7 +45,7 @@ fn mixed_records_dedup_and_precise_values() {
             result.invalid_records,
             result.trades.len()
         ),
-        (5, 1, 1, 1, 1, 1)
+        (5, 1, 1, 1, 1, 2)
     );
     let fact = &result.trades[0];
     assert_eq!(fact.source_ref, "9007199254740993");

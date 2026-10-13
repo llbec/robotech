@@ -10,6 +10,8 @@ fn default_limit() -> usize {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoredRequest {
+    #[serde(default)]
+    pub instrument_type: crate::instrument::InstrumentType,
     pub account: String,
     #[serde(default = "default_limit")]
     pub limit: usize,
@@ -41,6 +43,8 @@ pub struct StoredResult {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Cursor {
+    #[serde(default)]
+    pub instrument_type: crate::instrument::InstrumentType,
     pub version: u32,
     pub account: String,
     pub network: String,
@@ -86,6 +90,7 @@ impl StoredRequest {
             return Err(QueryError::validation("Cursor too large"));
         }
         Ok(Self {
+            instrument_type: self.instrument_type,
             account,
             limit: self.limit,
             start_time,
@@ -106,7 +111,9 @@ impl StoredRequest {
         let invalid = || QueryError::validation("Invalid cursor or query conditions");
         let bytes = URL_SAFE_NO_PAD.decode(encoded).map_err(|_| invalid())?;
         let c: Cursor = serde_json::from_slice(&bytes).map_err(|_| invalid())?;
-        if c.version != 1
+        if ![1, 2].contains(&c.version)
+            || c.instrument_type != self.instrument_type
+            || (c.version == 1 && c.instrument_type != crate::instrument::InstrumentType::Perpetual)
             || c.account != self.account
             || c.network != network
             || c.range != self.range()

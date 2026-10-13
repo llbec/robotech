@@ -38,6 +38,7 @@ impl ProtocolParser for HyperliquidParser {
     fn parse(&self, c: ParseContext<'_>) -> Result<Parsed, QueryError> {
         let meta = metadata(c.meta)?;
         let spots = metadata(c.spot_meta)?;
+        let spot_meta = object(c.spot_meta)?;
         let mut perps = BTreeSet::new();
         for market in &meta {
             perps.insert(
@@ -86,19 +87,34 @@ impl ProtocolParser for HyperliquidParser {
                     .push(format!("INVALID_RECORD:{index}:identity"));
                 continue;
             };
-            let key = (coin.to_owned(), tid);
+            let is_spot = spot_names.contains(coin);
+            let canonical = if is_spot {
+                let m = crate::spot::market(&spot_meta, coin)?;
+                format!(
+                    "spot:{}",
+                    m["index"]
+                        .as_u64()
+                        .ok_or_else(|| QueryError::incomplete("Invalid spot index"))?
+                )
+            } else {
+                coin.to_owned()
+            };
+            let key = (canonical, tid);
+            let parse = || {
+                if is_spot {
+                    crate::spot::parse(&c, fill, index, coin, tid, &spot_meta)
+                } else {
+                    parse_fill(&c, fill, index, coin, tid).map_err(QueryError::incomplete)
+                }
+            };
             if let Some((previous, trade_index)) = seen.get(&key) {
                 if previous != fill {
                     let same = if let Some(i) = trade_index {
-                        parse_fill(&c, fill, index, coin, tid)
-                            .ok()
-                            .is_some_and(|fact| {
-                                trade_log::collection::content::semantic_hash(&fact).ok()
-                                    == trade_log::collection::content::semantic_hash(
-                                        &result.trades[*i],
-                                    )
+                        parse().ok().is_some_and(|fact| {
+                            trade_log::collection::content::semantic_hash(&fact).ok()
+                                == trade_log::collection::content::semantic_hash(&result.trades[*i])
                                     .ok()
-                            })
+                        })
                     } else {
                         false
                     };
@@ -116,23 +132,35 @@ impl ProtocolParser for HyperliquidParser {
                 continue;
             }
             seen.insert(key.clone(), (fill.clone(), None));
-            if spot_names.contains(coin) {
-                result.spot_records += 1;
-                continue;
-            }
-            if !perps.contains(coin) {
+            if !is_spot && !perps.contains(coin) {
+                if coin.starts_with('@') {
+                    return Err(QueryError::incomplete(
+                        "Unknown spot index; metadata refresh required",
+                    ));
+                }
                 result.unsupported_records += 1;
                 result
                     .warnings
                     .push(format!("UNSUPPORTED_OR_UNKNOWN_MARKET:{index}"));
                 continue;
             }
-            match parse_fill(&c, fill, index, coin, tid) {
+            match parse() {
                 Ok(fact) => {
+                    if is_spot {
+                        result.spot_records += 1;
+                        if fact.payload.fee_asset.is_none() {
+                            result
+                                .warnings
+                                .push(format!("SPOT_FEE_ASSET_UNCONFIRMED:{index}"));
+                        }
+                    }
                     seen.get_mut(&key).expect("inserted identity").1 = Some(result.trades.len());
                     result.trades.push(fact);
                 }
                 Err(reason) => {
+                    if is_spot {
+                        return Err(reason);
+                    }
                     result.invalid_records += 1;
                     result
                         .warnings
@@ -144,7 +172,7 @@ impl ProtocolParser for HyperliquidParser {
     }
 }
 
-fn parse_fill(
+pub(crate) fn parse_fill(
     c: &ParseContext<'_>,
     fill: &Value,
     index: usize,
